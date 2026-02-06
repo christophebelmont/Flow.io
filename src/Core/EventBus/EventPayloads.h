@@ -56,6 +56,7 @@ enum DirtyFlags : uint32_t {
     DIRTY_TIME    = 1 << 1,
     DIRTY_MQTT    = 1 << 2,
     DIRTY_SENSORS = 1 << 3,
+    DIRTY_ACTUATORS = 1 << 4,
 };
 
 /** @brief Payload indicating a new data snapshot. */

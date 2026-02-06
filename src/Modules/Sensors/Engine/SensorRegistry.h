@@ -5,7 +5,7 @@
  */
 #include "ISensor.h"
 
-constexpr size_t MAX_SENSORS = 8;
+constexpr size_t MAX_SENSORS = 24;
 
 class SensorRegistry {
 public:

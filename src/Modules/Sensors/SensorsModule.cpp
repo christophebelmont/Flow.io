@@ -46,6 +46,7 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
     cfg.registerVar(airC0Var);
     cfg.registerVar(airC1Var);
     cfg.registerVar(airPrecVar);
+    cfg.registerVar(virtualActuatorsVar);
 
     if (!cfgData.enabled) {
         LOGW("Sensors disabled");
@@ -137,6 +138,21 @@ void SensorsModule::setupSensors() {
 
     if (waterTempDriver->hasAddress()) registry.add(waterSensor);
     if (airTempDriver->hasAddress()) registry.add(airSensor);
+
+    if (cfgData.virtualActuators && dataStore) {
+        for (uint8_t i = 0; i < ACTUATOR_MAX; ++i) {
+            snprintf(actTankNames[i], sizeof(actTankNames[i]), "act%u_tank", i);
+            snprintf(actUptimeNames[i], sizeof(actUptimeNames[i]), "act%u_uptime_h", i);
+            actTankDrivers[i] = new ActuatorVirtualDriver(actTankNames[i], dataStore, i,
+                                                          ActuatorVirtualDriver::Metric::TankFillPct);
+            actUptimeDrivers[i] = new ActuatorVirtualDriver(actUptimeNames[i], dataStore, i,
+                                                            ActuatorVirtualDriver::Metric::UptimeHours);
+            actTankSensors[i] = new SensorPipeline(actTankNames[i], actTankDrivers[i], nullptr, 0);
+            actUptimeSensors[i] = new SensorPipeline(actUptimeNames[i], actUptimeDrivers[i], nullptr, 0);
+            registry.add(actTankSensors[i]);
+            registry.add(actUptimeSensors[i]);
+        }
+    }
 
     LOGI("Sensors registered: %u", registry.count());
 }

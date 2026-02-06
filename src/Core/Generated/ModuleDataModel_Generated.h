@@ -11,6 +11,7 @@
 #define RUNTIME_DATA_CORE_FIELDS
 #endif
 
+#include "Modules/Actuators/ActuatorsModuleDataModel.h"
 #include "Modules/Network/MQTTModule/MQTTModuleDataModel.h"
 #include "Modules/Network/NTPModule/NTPModuleDataModel.h"
 #include "Modules/Network/WifiModule/WifiModuleDataModel.h"
@@ -18,6 +19,7 @@
 
 struct RuntimeData {
     RUNTIME_DATA_CORE_FIELDS
+    ActuatorsRuntimeData actuators;
     MQTTRuntimeData mqtt;
     NTPRuntimeData ntp;
     WifiRuntimeData wifi;

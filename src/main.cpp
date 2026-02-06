@@ -33,10 +33,12 @@
 #include "Modules/Logs/LogDispatcherModule/LogDispatcherModule.h"
 
 #include "Modules/Sensors/SensorsModule.h"
+#include "Modules/Actuators/ActuatorsModule.h"
 #include "Modules/EventBusModule/EventBusModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 
 #include "Modules/Sensors/SensorsRuntime.h"
+#include "Modules/Actuators/ActuatorsRuntime.h"
 #include "Core/SystemStats.h"
 #include <WiFi.h>
 
@@ -64,6 +66,7 @@ static LogDispatcherModule  logDispatcherModule;
 static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
 static SensorsModule        sensorsModule;
+static ActuatorsModule      actuatorsModule;
 
 static OneWireBus oneWireWater(19);
 static OneWireBus oneWireAir(18);
@@ -73,6 +76,7 @@ static ADS1115 adsSecondary(0x49, &Wire);
 static char topicSensorsState[128] = {0};
 static char topicNetworkState[128] = {0};
 static char topicSystemState[128] = {0};
+static char topicActuatorsState[128] = {0};
 
 static bool buildSensorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     if (!mqtt) return false;
@@ -130,6 +134,34 @@ static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     return true;
 }
 
+static bool buildActuatorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
+    if (!mqtt) return false;
+    DataStore* ds = mqtt->dataStorePtr();
+    if (!ds) return false;
+
+    size_t used = 0;
+    int wrote = snprintf(out, len, "{\"slots\":[");
+    if (wrote < 0 || (size_t)wrote >= len) return false;
+    used += (size_t)wrote;
+
+    for (uint8_t i = 0; i < ACTUATOR_MAX; ++i) {
+        ActuatorRuntime rt = actuatorRuntime(*ds, i);
+        wrote = snprintf(out + used, len - used,
+                         "%s{\"on\":%s,\"cmd\":%s,\"up\":%lu,\"tank\":%.2f}",
+                         (i == 0 ? "" : ","),
+                         rt.on ? "true" : "false",
+                         rt.commanded ? "true" : "false",
+                         (unsigned long)rt.uptimeMs,
+                         rt.tankFillPct);
+        if (wrote < 0 || (size_t)wrote >= (len - used)) return false;
+        used += (size_t)wrote;
+    }
+
+    wrote = snprintf(out + used, len - used, "],\"ts\":%lu}", (unsigned long)millis());
+    if (wrote < 0 || (size_t)wrote >= (len - used)) return false;
+    return true;
+}
+
 void setup() {
     Serial.begin(115200);
     delay(50);
@@ -150,12 +182,19 @@ void setup() {
     moduleManager.add(&mqttModule);
     moduleManager.add(&systemModule);
     moduleManager.add(&sensorsModule);
+    moduleManager.add(&actuatorsModule);
 
     systemMonitorModule.setModuleManager(&moduleManager);
     moduleManager.add(&systemMonitorModule);
 
     sensorsModule.setOneWireBuses(&oneWireWater, &oneWireAir);
     sensorsModule.setAdsDevices(&adsPrimary, &adsSecondary);
+
+    actuatorsModule.configureSlot(0, "filtration_pump", 32, ActuatorKind::Pump);
+    actuatorsModule.configureSlot(1, "ph_injection_pump", 25, ActuatorKind::Pump);
+    actuatorsModule.configureSlot(2, "chl_injection_pump", 26, ActuatorKind::Pump);
+    actuatorsModule.configureSlot(3, "electrolyzer_relay", 13, ActuatorKind::Relay, true, 400, 1000);
+    actuatorsModule.configureSlot(4, "pool_light", 27, ActuatorKind::Light);
 
     
     bool ok = moduleManager.initAll(registry, i2c, services);
@@ -166,9 +205,11 @@ void setup() {
     mqttModule.formatTopic(topicSensorsState, sizeof(topicSensorsState), "rt/sensors/state");
     mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");
     mqttModule.formatTopic(topicSystemState, sizeof(topicSystemState), "rt/system/state");
+    mqttModule.formatTopic(topicActuatorsState, sizeof(topicActuatorsState), "rt/actuators/state");
     mqttModule.addRuntimePublisher(topicSensorsState, 15000, 0, false, buildSensorsSnapshot);
     mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
     mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
+    mqttModule.addRuntimePublisher(topicActuatorsState, 15000, 0, false, buildActuatorsSnapshot);
 
     Serial.print(
         "\x1b[34m"

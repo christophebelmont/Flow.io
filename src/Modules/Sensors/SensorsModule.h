@@ -7,6 +7,7 @@
 #include "Core/Services/Services.h"
 
 #include "Modules/Sensors/Bus/OneWireBus.h"
+#include "Modules/Sensors/Drivers/ActuatorVirtualDriver.h"
 #include "Modules/Sensors/Drivers/DallasTempDriver.h"
 #include "Modules/Sensors/Engine/CachedSensor.h"
 #include "Modules/Sensors/Engine/SensorRegistry.h"
@@ -48,6 +49,7 @@ struct SensorsConfig {
     float airTempC0 = 1.0f;
     float airTempC1 = 0.0f;
     int32_t airTempPrec = 1;
+    bool virtualActuators = true;
 };
 
 class SensorsModule : public Module {
@@ -212,6 +214,10 @@ private:
         NVS_KEY("sens_tap"),"air_prec","sensors",ConfigType::Int32,
         &cfgData.airTempPrec,ConfigPersistence::Persistent,0
     };
+    ConfigVariable<bool,0> virtualActuatorsVar {
+        NVS_KEY("sens_vac"),"virtual_actuators","sensors",ConfigType::Bool,
+        &cfgData.virtualActuators,ConfigPersistence::Persistent,0
+    };
 
     OneWireBus* oneWireWater = nullptr;
     OneWireBus* oneWireAir = nullptr;
@@ -261,6 +267,13 @@ private:
     SensorPipeline* pumpSensor = nullptr;
     SensorPipeline* waterSensor = nullptr;
     SensorPipeline* airSensor = nullptr;
+
+    ActuatorVirtualDriver* actTankDrivers[ACTUATOR_MAX] = {nullptr};
+    ActuatorVirtualDriver* actUptimeDrivers[ACTUATOR_MAX] = {nullptr};
+    SensorPipeline* actTankSensors[ACTUATOR_MAX] = {nullptr};
+    SensorPipeline* actUptimeSensors[ACTUATOR_MAX] = {nullptr};
+    char actTankNames[ACTUATOR_MAX][20] = {{0}};
+    char actUptimeNames[ACTUATOR_MAX][20] = {{0}};
 
     SensorRegistry registry;
 };
