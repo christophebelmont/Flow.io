@@ -20,7 +20,8 @@
 /** @brief Sensor configuration values. */
 struct SensorsConfig {
     bool enabled = true;
-    int32_t onewirePin = 4;
+    int32_t onewirePinWater = 19;
+    int32_t onewirePinAir = 18;
     int32_t adcMode = 0; // 0=internal (ph/orp on primary), 1=external (ph/orp on secondary)
     int32_t pollMs = 1000;
     int32_t adcPollMs = 125;
@@ -32,6 +33,21 @@ struct SensorsConfig {
     int32_t adsRate = 1; // 16 sps for ADS1115
     float adsMin = -32768.0f;
     float adsMax = 32767.0f;
+    float phC0 = 1.0f;
+    float phC1 = 0.0f;
+    int32_t phPrec = 1;
+    float orpC0 = 1.0f;
+    float orpC1 = 0.0f;
+    int32_t orpPrec = 0;
+    float psiC0 = 1.0f;
+    float psiC1 = 0.0f;
+    int32_t psiPrec = 1;
+    float waterTempC0 = 1.0f;
+    float waterTempC1 = 0.0f;
+    int32_t waterTempPrec = 1;
+    float airTempC0 = 1.0f;
+    float airTempC1 = 0.0f;
+    int32_t airTempPrec = 1;
 };
 
 class SensorsModule : public Module {
@@ -57,6 +73,9 @@ private:
     void lockI2C();
     void unlockI2C();
     void applyAdcSample(CachedSensor& target, float value, bool valid, SensorPipeline* pipeline);
+    float applyCalibration(float value, float c0, float c1) const { return c0 * value + c1; }
+    float applyPrecision(float value, int32_t decimals) const;
+    float adsToMilliVolts(ADS1115* ads, int16_t raw) const;
 
     SensorsConfig cfgData;
 
@@ -68,8 +87,12 @@ private:
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
     ConfigVariable<int32_t,0> oneWirePinVar {
-        NVS_KEY("sens_ow"),"onewire_pin","sensors",ConfigType::Int32,
-        &cfgData.onewirePin,ConfigPersistence::Persistent,0
+        NVS_KEY("sens_oww"),"onewire_water_pin","sensors",ConfigType::Int32,
+        &cfgData.onewirePinWater,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> oneWireAirPinVar {
+        NVS_KEY("sens_owa"),"onewire_air_pin","sensors",ConfigType::Int32,
+        &cfgData.onewirePinAir,ConfigPersistence::Persistent,0
     };
     ConfigVariable<int32_t,0> adcModeVar {
         NVS_KEY("sens_mode"),"adc_mode","sensors",ConfigType::Int32,
@@ -115,8 +138,69 @@ private:
         NVS_KEY("sens_adx"),"ads_max","sensors",ConfigType::Float,
         &cfgData.adsMax,ConfigPersistence::Persistent,0
     };
+    ConfigVariable<float,0> phC0Var {
+        NVS_KEY("sens_ph0"),"ph_c0","sensors",ConfigType::Float,
+        &cfgData.phC0,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> phC1Var {
+        NVS_KEY("sens_ph1"),"ph_c1","sensors",ConfigType::Float,
+        &cfgData.phC1,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> phPrecVar {
+        NVS_KEY("sens_php"),"ph_prec","sensors",ConfigType::Int32,
+        &cfgData.phPrec,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> orpC0Var {
+        NVS_KEY("sens_or0"),"orp_c0","sensors",ConfigType::Float,
+        &cfgData.orpC0,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> orpC1Var {
+        NVS_KEY("sens_or1"),"orp_c1","sensors",ConfigType::Float,
+        &cfgData.orpC1,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> orpPrecVar {
+        NVS_KEY("sens_orp"),"orp_prec","sensors",ConfigType::Int32,
+        &cfgData.orpPrec,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> psiC0Var {
+        NVS_KEY("sens_ps0"),"psi_c0","sensors",ConfigType::Float,
+        &cfgData.psiC0,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> psiC1Var {
+        NVS_KEY("sens_ps1"),"psi_c1","sensors",ConfigType::Float,
+        &cfgData.psiC1,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> psiPrecVar {
+        NVS_KEY("sens_psp"),"psi_prec","sensors",ConfigType::Int32,
+        &cfgData.psiPrec,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> waterC0Var {
+        NVS_KEY("sens_tw0"),"water_c0","sensors",ConfigType::Float,
+        &cfgData.waterTempC0,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> waterC1Var {
+        NVS_KEY("sens_tw1"),"water_c1","sensors",ConfigType::Float,
+        &cfgData.waterTempC1,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> waterPrecVar {
+        NVS_KEY("sens_twp"),"water_prec","sensors",ConfigType::Int32,
+        &cfgData.waterTempPrec,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> airC0Var {
+        NVS_KEY("sens_ta0"),"air_c0","sensors",ConfigType::Float,
+        &cfgData.airTempC0,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<float,0> airC1Var {
+        NVS_KEY("sens_ta1"),"air_c1","sensors",ConfigType::Float,
+        &cfgData.airTempC1,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<int32_t,0> airPrecVar {
+        NVS_KEY("sens_tap"),"air_prec","sensors",ConfigType::Int32,
+        &cfgData.airTempPrec,ConfigPersistence::Persistent,0
+    };
 
-    OneWireBus* oneWireBus = nullptr;
+    OneWireBus* oneWireWater = nullptr;
+    OneWireBus* oneWireAir = nullptr;
     ADS1115* adsPrimary = nullptr;
     ADS1115* adsSecondary = nullptr;
     bool useExternalPhOrp = false;

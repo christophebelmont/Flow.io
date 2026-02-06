@@ -29,7 +29,7 @@ public:
     void loop() override;
 
     /** @brief Stack size override. */
-    uint16_t taskStackSize() const override { return 2048; }
+    uint16_t taskStackSize() const override { return 4096; }
     /** @brief Task priority override. */
     UBaseType_t taskPriority() const override { return 1; }
 

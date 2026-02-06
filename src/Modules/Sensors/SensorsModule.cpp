@@ -10,6 +10,7 @@
 #include <string.h>
 #include <Wire.h>
 #include "freertos/semphr.h"
+#include <math.h>
 
 void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) {
     logHub = services.get<LogHubService>("loghub");
@@ -18,6 +19,7 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 
     cfg.registerVar(enabledVar);
     cfg.registerVar(oneWirePinVar);
+    cfg.registerVar(oneWireAirPinVar);
     cfg.registerVar(adcModeVar);
     cfg.registerVar(pollMsVar);
     cfg.registerVar(adcPollMsVar);
@@ -29,6 +31,21 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
     cfg.registerVar(adsRateVar);
     cfg.registerVar(adsMinVar);
     cfg.registerVar(adsMaxVar);
+    cfg.registerVar(phC0Var);
+    cfg.registerVar(phC1Var);
+    cfg.registerVar(phPrecVar);
+    cfg.registerVar(orpC0Var);
+    cfg.registerVar(orpC1Var);
+    cfg.registerVar(orpPrecVar);
+    cfg.registerVar(psiC0Var);
+    cfg.registerVar(psiC1Var);
+    cfg.registerVar(psiPrecVar);
+    cfg.registerVar(waterC0Var);
+    cfg.registerVar(waterC1Var);
+    cfg.registerVar(waterPrecVar);
+    cfg.registerVar(airC0Var);
+    cfg.registerVar(airC1Var);
+    cfg.registerVar(airPrecVar);
 
     if (!cfgData.enabled) {
         LOGW("Sensors disabled");
@@ -62,8 +79,10 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
         }
     }
 
-    oneWireBus = new OneWireBus(cfgData.onewirePin);
-    oneWireBus->begin();
+    oneWireWater = new OneWireBus(cfgData.onewirePinWater);
+    oneWireWater->begin();
+    oneWireAir = new OneWireBus(cfgData.onewirePinAir);
+    oneWireAir->begin();
 
     setupDallasAddresses();
     setupSensors();
@@ -78,29 +97,27 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 }
 
 void SensorsModule::setupDallasAddresses() {
-    if (!oneWireBus) return;
+    if (!oneWireWater || !oneWireAir) return;
 
-    uint8_t count = oneWireBus->deviceCount();
-    if (count == 0) {
-        LOGW("No DS18B20 devices found");
-        return;
+    uint8_t countW = oneWireWater->deviceCount();
+    uint8_t countA = oneWireAir->deviceCount();
+
+    if (countW == 0) {
+        LOGW("No DS18B20 devices found on water bus");
+    } else if (oneWireWater->getAddress(0, waterAddr)) {
+        LOGI("Water temperature sensor bound to bus water index 0");
     }
 
-    if (count >= 1 && oneWireBus->getAddress(0, waterAddr)) {
-        LOGI("Water temperature sensor bound to index 0");
-    }
-    if (count >= 2 && oneWireBus->getAddress(1, airAddr)) {
-        LOGI("Air temperature sensor bound to index 1");
-    }
-
-    if (count == 1) {
-        LOGW("Only one DS18B20 found; air temperature disabled");
+    if (countA == 0) {
+        LOGW("No DS18B20 devices found on air bus");
+    } else if (oneWireAir->getAddress(0, airAddr)) {
+        LOGI("Air temperature sensor bound to bus air index 0");
     }
 }
 
 void SensorsModule::setupSensors() {
-    waterTempDriver = new DallasTempDriver("water_temp", oneWireBus, waterAddr);
-    airTempDriver = new DallasTempDriver("air_temp", oneWireBus, airAddr);
+    waterTempDriver = new DallasTempDriver("water_temp", oneWireWater, waterAddr);
+    airTempDriver = new DallasTempDriver("air_temp", oneWireAir, airAddr);
 
     phSensor = new SensorPipeline("ph", &phRaw, phFilters, 3);
     orpSensor = new SensorPipeline("orp", &orpRaw, orpFilters, 3);
@@ -133,6 +150,26 @@ void SensorsModule::unlockI2C() {
     xSemaphoreGive(i2cMutex);
 }
 
+float SensorsModule::applyPrecision(float value, int32_t decimals) const
+{
+    if (decimals <= 0) return (float)((int32_t)lroundf(value));
+    if (decimals == 1) return roundf(value * 10.0f) / 10.0f;
+    if (decimals == 2) return roundf(value * 100.0f) / 100.0f;
+    float scale = 1.0f;
+    for (int32_t i = 0; i < decimals; ++i) scale *= 10.0f;
+    return roundf(value * scale) / scale;
+}
+
+float SensorsModule::adsToMilliVolts(ADS1115* ads, int16_t raw) const
+{
+    if (!ads) return (float)raw * 0.1875f;
+    float v = ads->toVoltage(raw); // volts
+    if (v <= ADS1X15_INVALID_VOLTAGE) {
+        return (float)raw * 0.1875f;
+    }
+    return v * 1000.0f; // mV
+}
+
 void SensorsModule::applyAdcSample(CachedSensor& target, float value, bool valid, SensorPipeline* pipeline) {
     SensorReading raw;
     raw.timestampMs = millis();
@@ -150,14 +187,19 @@ void SensorsModule::applyAdcSample(CachedSensor& target, float value, bool valid
     if (filtered.valid) {
         if (dataStore) {
             if (pipeline == phSensor) {
-                setSensorsPh(*dataStore, filtered.value);
+                float v = applyCalibration(filtered.value, cfgData.phC0, cfgData.phC1);
+                v = applyPrecision(v, cfgData.phPrec);
+                setSensorsPh(*dataStore, v);
             } else if (pipeline == orpSensor) {
-                setSensorsOrp(*dataStore, filtered.value);
+                float v = applyCalibration(filtered.value, cfgData.orpC0, cfgData.orpC1);
+                v = applyPrecision(v, cfgData.orpPrec);
+                setSensorsOrp(*dataStore, v);
             } else if (pipeline == pumpSensor) {
-                setSensorsPsi(*dataStore, filtered.value);
+                float v = applyCalibration(filtered.value, cfgData.psiC0, cfgData.psiC1);
+                v = applyPrecision(v, cfgData.psiPrec);
+                setSensorsPsi(*dataStore, v);
             }
         }
-        if (shouldLog) LOGD("%s=%.2f", pipeline->name(), filtered.value);
     } else {
         if (shouldLog) LOGW("%s invalid", pipeline->name());
     }
@@ -199,15 +241,19 @@ void SensorsModule::adcLoop() {
             if (adcRequested && adsPrimary->isReady()) {
                 int16_t v = adsPrimary->getValue();
                 if (useExternalPhOrp) {
-                    applyAdcSample(pumpRaw, (float)v, true, pumpSensor);
+                    float mv = adsToMilliVolts(adsPrimary, v);
+                    applyAdcSample(pumpRaw, mv, true, pumpSensor);
                     adsPrimary->requestADC(2);
                 } else {
                     if (adcChannelIndex == 0) {
-                        applyAdcSample(phRaw, (float)v, true, phSensor);
+                        float mv = adsToMilliVolts(adsPrimary, v);
+                        applyAdcSample(phRaw, mv, true, phSensor);
                     } else if (adcChannelIndex == 1) {
-                        applyAdcSample(orpRaw, (float)v, true, orpSensor);
+                        float mv = adsToMilliVolts(adsPrimary, v);
+                        applyAdcSample(orpRaw, mv, true, orpSensor);
                     } else if (adcChannelIndex == 2) {
-                        applyAdcSample(pumpRaw, (float)v, true, pumpSensor);
+                        float mv = adsToMilliVolts(adsPrimary, v);
+                        applyAdcSample(pumpRaw, mv, true, pumpSensor);
                     }
                     adcChannelIndex = (uint8_t)((adcChannelIndex + 1) % 3);
                     adsPrimary->requestADC(adcChannelIndex);
@@ -221,11 +267,13 @@ void SensorsModule::adcLoop() {
             if (adcSecondaryRequested && adsSecondary->isReady()) {
                 int16_t v = adsSecondary->getValue();
                 if (adcSecondaryIndex == 0) {
-                    applyAdcSample(orpRaw, (float)v, true, orpSensor);
+                    float mv = adsToMilliVolts(adsSecondary, v);
+                    applyAdcSample(orpRaw, mv, true, orpSensor);
                     adcSecondaryIndex = 1;
                     adsSecondary->requestADC_Differential_2_3();
                 } else {
-                    applyAdcSample(phRaw, (float)v, true, phSensor);
+                    float mv = adsToMilliVolts(adsSecondary, v);
+                    applyAdcSample(phRaw, mv, true, phSensor);
                     adcSecondaryIndex = 0;
                     adsSecondary->requestADC_Differential_0_1();
                 }
@@ -251,7 +299,8 @@ void SensorsModule::loop() {
     lastPollMs = now;
 
     if (!tempPrimed) {
-        if (oneWireBus) oneWireBus->request();
+        if (oneWireWater) oneWireWater->request();
+        if (oneWireAir) oneWireAir->request();
         tempPrimed = true;
         vTaskDelay(pdMS_TO_TICKS(20));
         return;
@@ -260,23 +309,30 @@ void SensorsModule::loop() {
     if (waterSensor) {
         SensorReading r = waterSensor->read();
         if (r.valid) {
-            if (dataStore) setSensorsWaterTemp(*dataStore, r.value);
-            LOGD("%s=%.2f", waterSensor->name(), r.value);
+            if (dataStore) {
+                float v = applyCalibration(r.value, cfgData.waterTempC0, cfgData.waterTempC1);
+                v = applyPrecision(v, cfgData.waterTempPrec);
+                setSensorsWaterTemp(*dataStore, v);
+            }
+        } else {
+            LOGW("%s invalid", waterSensor->name());
         }
-        else LOGW("%s invalid", waterSensor->name());
     }
     if (airSensor) {
         SensorReading r = airSensor->read();
         if (r.valid) {
-            if (dataStore) setSensorsAirTemp(*dataStore, r.value);
-            LOGD("%s=%.2f", airSensor->name(), r.value);
+            if (dataStore) {
+                float v = applyCalibration(r.value, cfgData.airTempC0, cfgData.airTempC1);
+                v = applyPrecision(v, cfgData.airTempPrec);
+                setSensorsAirTemp(*dataStore, v);
+            }
+        } else {
+            LOGW("%s invalid", airSensor->name());
         }
-        else LOGW("%s invalid", airSensor->name());
     }
 
-    if (oneWireBus) {
-        oneWireBus->request();
-    }
+    if (oneWireWater) oneWireWater->request();
+    if (oneWireAir) oneWireAir->request();
 
     vTaskDelay(pdMS_TO_TICKS(20));
 }

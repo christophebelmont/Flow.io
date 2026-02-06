@@ -18,7 +18,7 @@ struct MQTTConfig {
     bool sensorsPublish = true;
     bool sensorsRetain = false;
     int32_t sensorsQos = 0;
-    int32_t sensorsMinPeriodMs = 5000;
+    int32_t sensorsMinPeriodMs = 15000;
 };
 
 /** @brief MQTT connection state. */
@@ -77,6 +77,8 @@ private:
     char topicSensorsPsi[128] = {0};
     char topicSensorsWater[128] = {0};
     char topicSensorsAir[128] = {0};
+    char topicNetworkState[128] = {0};
+    char topicSystemState[128] = {0};
     static constexpr size_t CFG_TOPIC_MAX = 16;
     const char* cfgModules[CFG_TOPIC_MAX] = {nullptr};
     uint8_t cfgModuleCount = 0;
@@ -91,6 +93,8 @@ private:
     char replyBuf[256] = {0};
     char stateCfgBuf[768] = {0};
     char sensorsBuf[256] = {0};
+    char networkBuf[256] = {0};
+    char systemBuf[256] = {0};
 
     ConfigVariable<char,0> hostVar {
         NVS_KEY("mq_host"),"host","mqtt",ConfigType::CharArray,
@@ -138,7 +142,9 @@ private:
     void connectMqtt();
     void processRx(const RxMsg& msg);
     void publishConfigBlocks(bool retained);
-    void publishSensors(bool force);
+    bool publishSensors(bool force);
+    void publishNetwork();
+    void publishSystem();
 
     const char* findJsonStringValue(const char* json, const char* key);
     const char* findJsonObjectStart(const char* json, const char* key);
@@ -159,4 +165,7 @@ private:
     uint8_t _retryCount = 0;
     uint32_t _retryDelayMs = 2000; // 2s start
     uint32_t _lastSensorsPublishMs = 0;
+    volatile bool _pendingSensorsPublish = false;
+    uint32_t _lastNetworkPublishMs = 0;
+    uint32_t _lastSystemPublishMs = 0;
 };
