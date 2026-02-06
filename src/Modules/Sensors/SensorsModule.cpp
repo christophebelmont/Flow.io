@@ -18,17 +18,13 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 
     cfg.registerVar(enabledVar);
     cfg.registerVar(oneWirePinVar);
-    cfg.registerVar(adcPhPinVar);
-    cfg.registerVar(adcOrpPinVar);
-    cfg.registerVar(adcPumpPinVar);
     cfg.registerVar(adcModeVar);
     cfg.registerVar(pollMsVar);
     cfg.registerVar(adcPollMsVar);
-    cfg.registerVar(adcResVar);
-    cfg.registerVar(adcAttenVar);
-    cfg.registerVar(adcMinVar);
-    cfg.registerVar(adcMaxVar);
+    cfg.registerVar(i2cSdaVar);
+    cfg.registerVar(i2cSclVar);
     cfg.registerVar(adsAddrVar);
+    cfg.registerVar(adsAddr2Var);
     cfg.registerVar(adsGainVar);
     cfg.registerVar(adsRateVar);
     cfg.registerVar(adsMinVar);
@@ -41,23 +37,29 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 
     i2cMutex = xSemaphoreCreateMutex();
 
-    bool wantExternal = (cfgData.adcMode != 0);
-    useExternalAdc = false;
-    if (wantExternal) {
-        adcRangeFilter.setRange(cfgData.adsMin, cfgData.adsMax);
-        ads = new ADS1115(cfgData.adsAddr, &Wire);
-        if (!ads->begin() || !ads->isConnected()) {
-            LOGW("ADS1115 begin failed (addr=0x%02X), fallback to internal ADC", cfgData.adsAddr);
-        } else {
-            ads->setGain((uint8_t)cfgData.adsGain);
-            ads->setDataRate((uint8_t)cfgData.adsRate);
-            useExternalAdc = true;
-        }
+    Wire.begin(cfgData.i2cSda, cfgData.i2cScl);
+
+    adcRangeFilter.setRange(cfgData.adsMin, cfgData.adsMax);
+
+    adsPrimary = new ADS1115(cfgData.adsAddr, &Wire);
+    adsPrimaryOk = adsPrimary->begin() && adsPrimary->isConnected();
+    if (!adsPrimaryOk) {
+        LOGW("ADS1115 primary not found (addr=0x%02X)", cfgData.adsAddr);
+    } else {
+        adsPrimary->setGain((uint8_t)cfgData.adsGain);
+        adsPrimary->setDataRate((uint8_t)cfgData.adsRate);
     }
 
-    if (!useExternalAdc) {
-        adcRangeFilter.setRange(cfgData.adcMin, cfgData.adcMax);
-        adcBus.begin((uint8_t)cfgData.adcResolutionBits, cfgData.adcAtten);
+    useExternalPhOrp = (cfgData.adcMode != 0);
+    if (useExternalPhOrp) {
+        adsSecondary = new ADS1115(cfgData.adsAddr2, &Wire);
+        adsSecondaryOk = adsSecondary->begin() && adsSecondary->isConnected();
+        if (!adsSecondaryOk) {
+            LOGW("ADS1115 secondary not found (addr=0x%02X)", cfgData.adsAddr2);
+        } else {
+            adsSecondary->setGain((uint8_t)cfgData.adsGain);
+            adsSecondary->setDataRate((uint8_t)cfgData.adsRate);
+        }
     }
 
     oneWireBus = new OneWireBus(cfgData.onewirePin);
@@ -66,8 +68,8 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
     setupDallasAddresses();
     setupSensors();
 
-    LOGI("Sensors ready (poll=%dms, mode=%s)", cfgData.pollMs,
-         useExternalAdc ? "external" : "internal");
+    LOGI("Sensors ready (poll=%dms, ph/orp=%s, psi=internal)", cfgData.pollMs,
+         useExternalPhOrp ? "external" : "internal");
 
     xTaskCreatePinnedToCore(
         SensorsModule::adcTaskEntry, "sensors_adc", 4096,
@@ -170,38 +172,65 @@ void SensorsModule::adcLoop() {
     TickType_t period = pdMS_TO_TICKS(cfgData.adcPollMs);
     TickType_t tick = xTaskGetTickCount();
 
-    if (useExternalAdc && ads) {
+    if (adsPrimaryOk && adsPrimary) {
         lockI2C();
-        ads->requestADC(0);
+        if (useExternalPhOrp) {
+            adsPrimary->requestADC(2); // PSI on channel 2
+            adcChannelIndex = 2;
+        } else {
+            adsPrimary->requestADC(0); // single ADS: ch0,1,2
+            adcChannelIndex = 0;
+        }
         adcRequested = true;
-        adcChannelIndex = 0;
+        unlockI2C();
+    }
+
+    if (useExternalPhOrp && adsSecondaryOk && adsSecondary) {
+        lockI2C();
+        adsSecondary->requestADC_Differential_0_1(); // ORP diff 0-1
+        adcSecondaryRequested = true;
+        adcSecondaryIndex = 0;
         unlockI2C();
     }
 
     for (;;) {
-        if (useExternalAdc && ads) {
+        if (adsPrimaryOk && adsPrimary) {
             lockI2C();
-            if (adcRequested && ads->isReady()) {
-                int16_t v = ads->getValue();
-                if (adcChannelIndex == 0) {
-                    applyAdcSample(phRaw, (float)v, true, phSensor);
-                } else if (adcChannelIndex == 1) {
-                    applyAdcSample(orpRaw, (float)v, true, orpSensor);
-                } else if (adcChannelIndex == 2) {
+            if (adcRequested && adsPrimary->isReady()) {
+                int16_t v = adsPrimary->getValue();
+                if (useExternalPhOrp) {
                     applyAdcSample(pumpRaw, (float)v, true, pumpSensor);
+                    adsPrimary->requestADC(2);
+                } else {
+                    if (adcChannelIndex == 0) {
+                        applyAdcSample(phRaw, (float)v, true, phSensor);
+                    } else if (adcChannelIndex == 1) {
+                        applyAdcSample(orpRaw, (float)v, true, orpSensor);
+                    } else if (adcChannelIndex == 2) {
+                        applyAdcSample(pumpRaw, (float)v, true, pumpSensor);
+                    }
+                    adcChannelIndex = (uint8_t)((adcChannelIndex + 1) % 3);
+                    adsPrimary->requestADC(adcChannelIndex);
                 }
-
-                adcChannelIndex = (uint8_t)((adcChannelIndex + 1) % 3);
-                ads->requestADC(adcChannelIndex);
             }
             unlockI2C();
-        } else {
-            int ph = adcBus.read(cfgData.adcPhPin);
-            int orp = adcBus.read(cfgData.adcOrpPin);
-            int pump = adcBus.read(cfgData.adcPumpPin);
-            applyAdcSample(phRaw, (float)ph, true, phSensor);
-            applyAdcSample(orpRaw, (float)orp, true, orpSensor);
-            applyAdcSample(pumpRaw, (float)pump, true, pumpSensor);
+        }
+
+        if (useExternalPhOrp && adsSecondaryOk && adsSecondary) {
+            lockI2C();
+            if (adcSecondaryRequested && adsSecondary->isReady()) {
+                int16_t v = adsSecondary->getValue();
+                if (adcSecondaryIndex == 0) {
+                    applyAdcSample(orpRaw, (float)v, true, orpSensor);
+                    adcSecondaryIndex = 1;
+                    adsSecondary->requestADC_Differential_2_3();
+                } else {
+                    applyAdcSample(phRaw, (float)v, true, phSensor);
+                    adcSecondaryIndex = 0;
+                    adsSecondary->requestADC_Differential_0_1();
+                }
+            }
+            unlockI2C();
         }
 
         vTaskDelayUntil(&tick, period);
@@ -230,12 +259,18 @@ void SensorsModule::loop() {
 
     if (waterSensor) {
         SensorReading r = waterSensor->read();
-        if (r.valid) LOGD("%s=%.2f", waterSensor->name(), r.value);
+        if (r.valid) {
+            if (dataStore) setSensorsWaterTemp(*dataStore, r.value);
+            LOGD("%s=%.2f", waterSensor->name(), r.value);
+        }
         else LOGW("%s invalid", waterSensor->name());
     }
     if (airSensor) {
         SensorReading r = airSensor->read();
-        if (r.valid) LOGD("%s=%.2f", airSensor->name(), r.value);
+        if (r.valid) {
+            if (dataStore) setSensorsAirTemp(*dataStore, r.value);
+            LOGD("%s=%.2f", airSensor->name(), r.value);
+        }
         else LOGW("%s invalid", airSensor->name());
     }
 

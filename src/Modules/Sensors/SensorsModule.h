@@ -6,7 +6,6 @@
 #include "Core/Module.h"
 #include "Core/Services/Services.h"
 
-#include "Modules/Sensors/Bus/AdcBus.h"
 #include "Modules/Sensors/Bus/OneWireBus.h"
 #include "Modules/Sensors/Drivers/DallasTempDriver.h"
 #include "Modules/Sensors/Engine/CachedSensor.h"
@@ -22,17 +21,13 @@
 struct SensorsConfig {
     bool enabled = true;
     int32_t onewirePin = 4;
-    int32_t adcMode = 0; // 0=internal, 1=external ADS1115
-    int32_t adcPhPin = 34;
-    int32_t adcOrpPin = 35;
-    int32_t adcPumpPin = 32;
+    int32_t adcMode = 0; // 0=internal (ph/orp on primary), 1=external (ph/orp on secondary)
     int32_t pollMs = 1000;
     int32_t adcPollMs = 125;
-    int32_t adcResolutionBits = 12;
-    int32_t adcAtten = 3; // ADC_11db
-    float adcMin = 0.0f;
-    float adcMax = 4095.0f;
+    int32_t i2cSda = 21;
+    int32_t i2cScl = 22;
     uint8_t adsAddr = 0x48;
+    uint8_t adsAddr2 = 0x49;
     int32_t adsGain = ADS1X15_GAIN_6144MV;
     int32_t adsRate = 1; // 16 sps for ADS1115
     float adsMin = -32768.0f;
@@ -76,18 +71,6 @@ private:
         NVS_KEY("sens_ow"),"onewire_pin","sensors",ConfigType::Int32,
         &cfgData.onewirePin,ConfigPersistence::Persistent,0
     };
-    ConfigVariable<int32_t,0> adcPhPinVar {
-        NVS_KEY("sens_ph"),"adc_ph_pin","sensors",ConfigType::Int32,
-        &cfgData.adcPhPin,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> adcOrpPinVar {
-        NVS_KEY("sens_orp"),"adc_orp_pin","sensors",ConfigType::Int32,
-        &cfgData.adcOrpPin,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> adcPumpPinVar {
-        NVS_KEY("sens_pmp"),"adc_pump_pin","sensors",ConfigType::Int32,
-        &cfgData.adcPumpPin,ConfigPersistence::Persistent,0
-    };
     ConfigVariable<int32_t,0> adcModeVar {
         NVS_KEY("sens_mode"),"adc_mode","sensors",ConfigType::Int32,
         &cfgData.adcMode,ConfigPersistence::Persistent,0
@@ -100,25 +83,21 @@ private:
         NVS_KEY("sens_apol"),"adc_poll_ms","sensors",ConfigType::Int32,
         &cfgData.adcPollMs,ConfigPersistence::Persistent,0
     };
-    ConfigVariable<int32_t,0> adcResVar {
-        NVS_KEY("sens_res"),"adc_res_bits","sensors",ConfigType::Int32,
-        &cfgData.adcResolutionBits,ConfigPersistence::Persistent,0
+    ConfigVariable<int32_t,0> i2cSdaVar {
+        NVS_KEY("sens_sda"),"i2c_sda","sensors",ConfigType::Int32,
+        &cfgData.i2cSda,ConfigPersistence::Persistent,0
     };
-    ConfigVariable<int32_t,0> adcAttenVar {
-        NVS_KEY("sens_att"),"adc_atten","sensors",ConfigType::Int32,
-        &cfgData.adcAtten,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<float,0> adcMinVar {
-        NVS_KEY("sens_min"),"adc_min","sensors",ConfigType::Float,
-        &cfgData.adcMin,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<float,0> adcMaxVar {
-        NVS_KEY("sens_max"),"adc_max","sensors",ConfigType::Float,
-        &cfgData.adcMax,ConfigPersistence::Persistent,0
+    ConfigVariable<int32_t,0> i2cSclVar {
+        NVS_KEY("sens_scl"),"i2c_scl","sensors",ConfigType::Int32,
+        &cfgData.i2cScl,ConfigPersistence::Persistent,0
     };
     ConfigVariable<uint8_t,0> adsAddrVar {
         NVS_KEY("sens_ads"),"ads_addr","sensors",ConfigType::UInt8,
         &cfgData.adsAddr,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<uint8_t,0> adsAddr2Var {
+        NVS_KEY("sens_ad2"),"ads_addr2","sensors",ConfigType::UInt8,
+        &cfgData.adsAddr2,ConfigPersistence::Persistent,0
     };
     ConfigVariable<int32_t,0> adsGainVar {
         NVS_KEY("sens_gain"),"ads_gain","sensors",ConfigType::Int32,
@@ -137,10 +116,12 @@ private:
         &cfgData.adsMax,ConfigPersistence::Persistent,0
     };
 
-    AdcBus adcBus;
     OneWireBus* oneWireBus = nullptr;
-    ADS1115* ads = nullptr;
-    bool useExternalAdc = false;
+    ADS1115* adsPrimary = nullptr;
+    ADS1115* adsSecondary = nullptr;
+    bool useExternalPhOrp = false;
+    bool adsPrimaryOk = false;
+    bool adsSecondaryOk = false;
     uint32_t lastPollMs = 0;
     bool tempPrimed = false;
     uint32_t lastAdcLogMs = 0;
@@ -148,6 +129,8 @@ private:
     TaskHandle_t adcTaskHandle = nullptr;
     uint8_t adcChannelIndex = 0;
     bool adcRequested = false;
+    uint8_t adcSecondaryIndex = 0;
+    bool adcSecondaryRequested = false;
 
     uint8_t waterAddr[8] = {0};
     uint8_t airAddr[8] = {0};

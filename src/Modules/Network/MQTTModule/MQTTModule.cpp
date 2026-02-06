@@ -4,6 +4,7 @@
  */
 #include "MQTTModule.h"
 #include "Core/Runtime.h"
+#include "Modules/Sensors/SensorsRuntime.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include "Core/EventBus/EventPayloads.h"
@@ -48,6 +49,13 @@ void MQTTModule::buildTopics() {
     snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status", cfgData.baseTopic, deviceId);
     snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/cfg/set", cfgData.baseTopic, deviceId);
     snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/cfg/ack", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsBase, sizeof(topicSensorsBase), "%s/%s/rt/sensors", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsState, sizeof(topicSensorsState), "%s/%s/rt/sensors/state", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsPh, sizeof(topicSensorsPh), "%s/%s/rt/sensors/ph", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsOrp, sizeof(topicSensorsOrp), "%s/%s/rt/sensors/orp", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsPsi, sizeof(topicSensorsPsi), "%s/%s/rt/sensors/psi", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsWater, sizeof(topicSensorsWater), "%s/%s/rt/sensors/temp/water", cfgData.baseTopic, deviceId);
+    snprintf(topicSensorsAir, sizeof(topicSensorsAir), "%s/%s/rt/sensors/temp/air", cfgData.baseTopic, deviceId);
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
                  "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
@@ -70,6 +78,7 @@ void MQTTModule::onConnect(bool) {
     client.subscribe(topicCfgSet, 1);
     client.publish(topicStatus, 1, true, "{\"online\":true}");
     publishConfigBlocks(true);
+    publishSensors(true);
 
     _retryCount = 0;
     _retryDelayMs = 2000;
@@ -125,6 +134,45 @@ void MQTTModule::publishConfigBlocks(bool retained) {
     }
 }
 
+void MQTTModule::publishSensors(bool force)
+{
+    if (!cfgData.sensorsPublish) return;
+    if (!dataStore) return;
+    if (state != MQTTState::Connected) return;
+
+    uint32_t now = millis();
+    uint32_t minMs = (cfgData.sensorsMinPeriodMs < 0) ? 0 : (uint32_t)cfgData.sensorsMinPeriodMs;
+    if (!force && (uint32_t)(now - _lastSensorsPublishMs) < minMs) return;
+    _lastSensorsPublishMs = now;
+
+    int qos = cfgData.sensorsQos;
+    if (qos < 0) qos = 0;
+    if (qos > 2) qos = 2;
+    bool retain = cfgData.sensorsRetain;
+
+    float ph = sensorsPh(*dataStore);
+    float orp = sensorsOrp(*dataStore);
+    float psi = sensorsPsi(*dataStore);
+    float w = sensorsWaterTemp(*dataStore);
+    float a = sensorsAirTemp(*dataStore);
+
+    char valBuf[24] = {0};
+    snprintf(valBuf, sizeof(valBuf), "%.3f", ph);
+    client.publish(topicSensorsPh, qos, retain, valBuf);
+    snprintf(valBuf, sizeof(valBuf), "%.3f", orp);
+    client.publish(topicSensorsOrp, qos, retain, valBuf);
+    snprintf(valBuf, sizeof(valBuf), "%.3f", psi);
+    client.publish(topicSensorsPsi, qos, retain, valBuf);
+    snprintf(valBuf, sizeof(valBuf), "%.2f", w);
+    client.publish(topicSensorsWater, qos, retain, valBuf);
+    snprintf(valBuf, sizeof(valBuf), "%.2f", a);
+    client.publish(topicSensorsAir, qos, retain, valBuf);
+
+    snprintf(sensorsBuf, sizeof(sensorsBuf),
+             "{\"ph\":%.3f,\"orp\":%.3f,\"psi\":%.3f,\"waterTemp\":%.2f,\"airTemp\":%.2f,\"ts\":%lu}",
+             ph, orp, psi, w, a, (unsigned long)now);
+    client.publish(topicSensorsState, qos, retain, sensorsBuf);
+}
 void MQTTModule::processRx(const RxMsg& msg) {
     if (strcmp(msg.topic, topicCmd) == 0) {
         const char* cmdVal = findJsonStringValue(msg.payload, "cmd");
@@ -165,6 +213,10 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
     cfg.registerVar(passVar);
     cfg.registerVar(baseTopicVar);
     cfg.registerVar(enabledVar);
+    cfg.registerVar(sensorsPubVar);
+    cfg.registerVar(sensorsRetainVar);
+    cfg.registerVar(sensorsQosVar);
+    cfg.registerVar(sensorsMinVar);
 
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
@@ -180,6 +232,7 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
     if (eventBus) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::ConfigChanged, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::DataSnapshotAvailable, &MQTTModule::onEventStatic, this);
     }
 
     makeDeviceId(deviceId, sizeof(deviceId));
@@ -292,6 +345,15 @@ void MQTTModule::onEvent(const Event& e)
         return;
     }
 
+    if (e.id == EventId::DataSnapshotAvailable) {
+        const DataSnapshotPayload* p = (const DataSnapshotPayload*)e.payload;
+        if (!p) return;
+        if ((p->dirtyFlags & DIRTY_SENSORS) != 0) {
+            publishSensors(false);
+        }
+        return;
+    }
+
     if (e.id == EventId::ConfigChanged) {
         const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
         if (!p) return;
@@ -303,7 +365,11 @@ void MQTTModule::onEvent(const Event& e)
             strcmp(key, "mq_host") == 0 ||
             strcmp(key, "mq_port") == 0 ||
             strcmp(key, "mq_user") == 0 ||
-            strcmp(key, "mq_pass") == 0)
+            strcmp(key, "mq_pass") == 0 ||
+            strcmp(key, "mq_sen") == 0 ||
+            strcmp(key, "mq_sret") == 0 ||
+            strcmp(key, "mq_sqos") == 0 ||
+            strcmp(key, "mq_smin") == 0)
         {
             LOGI("MQTT config changed (%s) -> reconnect", key);
             client.disconnect();
