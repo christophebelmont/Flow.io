@@ -50,15 +50,6 @@ void MQTTModule::buildTopics() {
     snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status", cfgData.baseTopic, deviceId);
     snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/cfg/set", cfgData.baseTopic, deviceId);
     snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/cfg/ack", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsBase, sizeof(topicSensorsBase), "%s/%s/rt/sensors", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsState, sizeof(topicSensorsState), "%s/%s/rt/sensors/state", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsPh, sizeof(topicSensorsPh), "%s/%s/rt/sensors/ph", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsOrp, sizeof(topicSensorsOrp), "%s/%s/rt/sensors/orp", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsPsi, sizeof(topicSensorsPsi), "%s/%s/rt/sensors/psi", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsWater, sizeof(topicSensorsWater), "%s/%s/rt/sensors/temp/water", cfgData.baseTopic, deviceId);
-    snprintf(topicSensorsAir, sizeof(topicSensorsAir), "%s/%s/rt/sensors/temp/air", cfgData.baseTopic, deviceId);
-    snprintf(topicNetworkState, sizeof(topicNetworkState), "%s/%s/rt/network/state", cfgData.baseTopic, deviceId);
-    snprintf(topicSystemState, sizeof(topicSystemState), "%s/%s/rt/system/state", cfgData.baseTopic, deviceId);
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
                  "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
@@ -81,7 +72,6 @@ void MQTTModule::onConnect(bool) {
     client.subscribe(topicCfgSet, 1);
     client.publish(topicStatus, 1, true, "{\"online\":true}");
     publishConfigBlocks(true);
-    publishSensors(true);
 
     _retryCount = 0;
     _retryDelayMs = 2000;
@@ -137,79 +127,32 @@ void MQTTModule::publishConfigBlocks(bool retained) {
     }
 }
 
-void MQTTModule::publishNetwork()
+bool MQTTModule::publish(const char* topic, const char* payload, int qos, bool retain)
 {
-    if (!dataStore) return;
-    if (state != MQTTState::Connected) return;
-
-    char ip[16] = {0};
-    IpV4 ip4 = wifiIp(*dataStore);
-    snprintf(ip, sizeof(ip), "%u.%u.%u.%u", ip4.b[0], ip4.b[1], ip4.b[2], ip4.b[3]);
-
-    bool netReady = wifiReady(*dataStore);
-    bool mqttOk = mqttReady(*dataStore);
-    int rssi = (WiFi.isConnected()) ? WiFi.RSSI() : -127;
-
-    snprintf(networkBuf, sizeof(networkBuf),
-             "{\"ready\":%s,\"ip\":\"%s\",\"rssi\":%d,\"mqtt\":%s,\"ts\":%lu}",
-             netReady ? "true" : "false",
-             ip,
-             rssi,
-             mqttOk ? "true" : "false",
-             (unsigned long)millis());
-
-    client.publish(topicNetworkState, 0, false, networkBuf);
-}
-
-void MQTTModule::publishSystem()
-{
-    if (state != MQTTState::Connected) return;
-
-    SystemStatsSnapshot snap{};
-    SystemStats::collect(snap);
-
-    snprintf(systemBuf, sizeof(systemBuf),
-             "{\"upt_ms\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"largest\":%lu,\"frag\":%u},\"ts\":%lu}",
-             (unsigned long)snap.uptimeMs,
-             (unsigned long)snap.heap.freeBytes,
-             (unsigned long)snap.heap.minFreeBytes,
-             (unsigned long)snap.heap.largestFreeBlock,
-             (unsigned int)snap.heap.fragPercent,
-             (unsigned long)millis());
-
-    client.publish(topicSystemState, 0, false, systemBuf);
-}
-
-bool MQTTModule::publishSensors(bool force)
-{
-    if (!cfgData.sensorsPublish) return false;
-    if (!dataStore) return false;
+    if (!topic || !payload) return false;
     if (state != MQTTState::Connected) return false;
+    client.publish(topic, qos, retain, payload);
+    return true;
+}
 
-    uint32_t now = millis();
-    uint32_t minMs = (cfgData.sensorsMinPeriodMs < 0) ? 0 : (uint32_t)cfgData.sensorsMinPeriodMs;
-    if (!force && (uint32_t)(now - _lastSensorsPublishMs) < minMs) return false;
-    _lastSensorsPublishMs = now;
+void MQTTModule::formatTopic(char* out, size_t outLen, const char* suffix) const
+{
+    if (!out || outLen == 0 || !suffix) return;
+    snprintf(out, outLen, "%s/%s/%s", cfgData.baseTopic, deviceId, suffix);
+}
 
-    int qos = cfgData.sensorsQos;
-    if (qos < 0) qos = 0;
-    if (qos > 2) qos = 2;
-    bool retain = cfgData.sensorsRetain;
-
-    float ph = sensorsPh(*dataStore);
-    float orp = sensorsOrp(*dataStore);
-    float psi = sensorsPsi(*dataStore);
-    float w = sensorsWaterTemp(*dataStore);
-    float a = sensorsAirTemp(*dataStore);
-
-    char valBuf[24] = {0};
-    snprintf(valBuf, sizeof(valBuf), "%.3f", ph);
-    (void)valBuf;
-
-    snprintf(sensorsBuf, sizeof(sensorsBuf),
-             "{\"ph\":%.3f,\"orp\":%.3f,\"psi\":%.3f,\"waterTemp\":%.2f,\"airTemp\":%.2f,\"ts\":%lu}",
-             ph, orp, psi, w, a, (unsigned long)now);
-    client.publish(topicSensorsState, qos, retain, sensorsBuf);
+bool MQTTModule::addRuntimePublisher(const char* topic, uint32_t periodMs, int qos, bool retain,
+                                     bool (*build)(MQTTModule* self, char* out, size_t outLen))
+{
+    if (!topic || !build) return false;
+    if (publisherCount >= MAX_PUBLISHERS) return false;
+    RuntimePublisher& p = publishers[publisherCount++];
+    p.topic = topic;
+    p.periodMs = periodMs;
+    p.qos = qos;
+    p.retain = retain;
+    p.build = build;
+    p.lastMs = 0;
     return true;
 }
 void MQTTModule::processRx(const RxMsg& msg) {
@@ -252,10 +195,6 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
     cfg.registerVar(passVar);
     cfg.registerVar(baseTopicVar);
     cfg.registerVar(enabledVar);
-    cfg.registerVar(sensorsPubVar);
-    cfg.registerVar(sensorsRetainVar);
-    cfg.registerVar(sensorsQosVar);
-    cfg.registerVar(sensorsMinVar);
 
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
@@ -271,7 +210,6 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
     if (eventBus) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::ConfigChanged, &MQTTModule::onEventStatic, this);
-        eventBus->subscribe(EventId::DataSnapshotAvailable, &MQTTModule::onEventStatic, this);
     }
 
     makeDeviceId(deviceId, sizeof(deviceId));
@@ -327,19 +265,17 @@ void MQTTModule::loop() {
     case MQTTState::Connected: {
         RxMsg m;
         while (xQueueReceive(rxQ, &m, 0) == pdTRUE) processRx(m);
-        if (_pendingSensorsPublish) {
-            if (publishSensors(false)) {
-                _pendingSensorsPublish = false;
-            }
-        }
+        if (_pendingPublish) _pendingPublish = false;
         uint32_t now = millis();
-        if (now - _lastNetworkPublishMs >= 60000) {
-            _lastNetworkPublishMs = now;
-            publishNetwork();
-        }
-        if (now - _lastSystemPublishMs >= 60000) {
-            _lastSystemPublishMs = now;
-            publishSystem();
+        for (uint8_t i = 0; i < publisherCount; ++i) {
+            RuntimePublisher& p = publishers[i];
+            if (!p.topic || !p.build) continue;
+            if (p.periodMs == 0) continue;
+            if ((uint32_t)(now - p.lastMs) < p.periodMs) continue;
+            if (p.build(this, publishBuf, sizeof(publishBuf))) {
+                publish(p.topic, publishBuf, p.qos, p.retain);
+                p.lastMs = now;
+            }
         }
         break;
     }
@@ -398,15 +334,6 @@ void MQTTModule::onEvent(const Event& e)
         return;
     }
 
-    if (e.id == EventId::DataSnapshotAvailable) {
-        const DataSnapshotPayload* p = (const DataSnapshotPayload*)e.payload;
-        if (!p) return;
-        if ((p->dirtyFlags & DIRTY_SENSORS) != 0) {
-            _pendingSensorsPublish = true;
-        }
-        return;
-    }
-
     if (e.id == EventId::ConfigChanged) {
         const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
         if (!p) return;
@@ -418,11 +345,7 @@ void MQTTModule::onEvent(const Event& e)
             strcmp(key, "mq_host") == 0 ||
             strcmp(key, "mq_port") == 0 ||
             strcmp(key, "mq_user") == 0 ||
-            strcmp(key, "mq_pass") == 0 ||
-            strcmp(key, "mq_sen") == 0 ||
-            strcmp(key, "mq_sret") == 0 ||
-            strcmp(key, "mq_sqos") == 0 ||
-            strcmp(key, "mq_smin") == 0)
+            strcmp(key, "mq_pass") == 0)
         {
             LOGI("MQTT config changed (%s) -> reconnect", key);
             client.disconnect();

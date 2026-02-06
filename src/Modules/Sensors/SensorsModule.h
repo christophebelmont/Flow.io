@@ -65,6 +65,20 @@ public:
     void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
     void loop() override;
 
+    void setOneWireBuses(OneWireBus* water, OneWireBus* air) {
+        oneWireWater = water;
+        oneWireAir = air;
+    }
+    void setAdsDevices(ADS1115* primary, ADS1115* secondary) {
+        adsPrimary = primary;
+        adsSecondary = secondary;
+        useExternalPhOrpOverride = false;
+    }
+    void setPhOrpExternalOverride(bool enabled) {
+        useExternalPhOrpOverride = true;
+        useExternalPhOrp = enabled;
+    }
+
 private:
     void setupDallasAddresses();
     void setupSensors();
@@ -204,6 +218,7 @@ private:
     ADS1115* adsPrimary = nullptr;
     ADS1115* adsSecondary = nullptr;
     bool useExternalPhOrp = false;
+    bool useExternalPhOrpOverride = false;
     bool adsPrimaryOk = false;
     bool adsSecondaryOk = false;
     uint32_t lastPollMs = 0;

@@ -36,6 +36,10 @@
 #include "Modules/EventBusModule/EventBusModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 
+#include "Modules/Sensors/SensorsRuntime.h"
+#include "Core/SystemStats.h"
+#include <WiFi.h>
+
 /// Only necessary services (global)
 #include "Core/Services/iLogger.h"
 
@@ -61,6 +65,71 @@ static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
 static SensorsModule        sensorsModule;
 
+static OneWireBus oneWireWater(19);
+static OneWireBus oneWireAir(18);
+static ADS1115 adsPrimary(0x48, &Wire);
+static ADS1115 adsSecondary(0x49, &Wire);
+
+static char topicSensorsState[128] = {0};
+static char topicNetworkState[128] = {0};
+static char topicSystemState[128] = {0};
+
+static bool buildSensorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
+    if (!mqtt) return false;
+    DataStore* ds = mqtt->dataStorePtr();
+    if (!ds) return false;
+
+    float ph = sensorsPh(*ds);
+    float orp = sensorsOrp(*ds);
+    float psi = sensorsPsi(*ds);
+    float w = sensorsWaterTemp(*ds);
+    float a = sensorsAirTemp(*ds);
+
+    snprintf(out, len,
+             "{\"ph\":%.3f,\"orp\":%.3f,\"psi\":%.3f,\"waterTemp\":%.2f,\"airTemp\":%.2f,\"ts\":%lu}",
+             ph, orp, psi, w, a, (unsigned long)millis());
+    return true;
+}
+
+static bool buildNetworkSnapshot(MQTTModule* mqtt, char* out, size_t len) {
+    if (!mqtt) return false;
+    DataStore* ds = mqtt->dataStorePtr();
+    if (!ds) return false;
+
+    IpV4 ip4 = wifiIp(*ds);
+    char ip[16];
+    snprintf(ip, sizeof(ip), "%u.%u.%u.%u", ip4.b[0], ip4.b[1], ip4.b[2], ip4.b[3]);
+    bool netReady = wifiReady(*ds);
+    bool mqttOk = mqttReady(*ds);
+    int rssi = (WiFi.isConnected()) ? WiFi.RSSI() : -127;
+
+    snprintf(out, len,
+             "{\"ready\":%s,\"ip\":\"%s\",\"rssi\":%d,\"mqtt\":%s,\"ts\":%lu}",
+             netReady ? "true" : "false",
+             ip,
+             rssi,
+             mqttOk ? "true" : "false",
+             (unsigned long)millis());
+    return true;
+}
+
+static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
+    if (!mqtt) return false;
+
+    SystemStatsSnapshot snap{};
+    SystemStats::collect(snap);
+
+    snprintf(out, len,
+             "{\"upt_ms\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"largest\":%lu,\"frag\":%u},\"ts\":%lu}",
+             (unsigned long)snap.uptimeMs,
+             (unsigned long)snap.heap.freeBytes,
+             (unsigned long)snap.heap.minFreeBytes,
+             (unsigned long)snap.heap.largestFreeBlock,
+             (unsigned int)snap.heap.fragPercent,
+             (unsigned long)millis());
+    return true;
+}
+
 void setup() {
     Serial.begin(115200);
     delay(50);
@@ -85,11 +154,21 @@ void setup() {
     systemMonitorModule.setModuleManager(&moduleManager);
     moduleManager.add(&systemMonitorModule);
 
+    sensorsModule.setOneWireBuses(&oneWireWater, &oneWireAir);
+    sensorsModule.setAdsDevices(&adsPrimary, &adsSecondary);
+
     
     bool ok = moduleManager.initAll(registry, i2c, services);
     if (!ok) {
         while (true) delay(1000);
     }
+
+    mqttModule.formatTopic(topicSensorsState, sizeof(topicSensorsState), "rt/sensors/state");
+    mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");
+    mqttModule.formatTopic(topicSystemState, sizeof(topicSystemState), "rt/system/state");
+    mqttModule.addRuntimePublisher(topicSensorsState, 15000, 0, false, buildSensorsSnapshot);
+    mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
+    mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
 
     Serial.print(
         "\x1b[34m"

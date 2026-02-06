@@ -58,7 +58,7 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 
     adcRangeFilter.setRange(cfgData.adsMin, cfgData.adsMax);
 
-    adsPrimary = new ADS1115(cfgData.adsAddr, &Wire);
+    if (!adsPrimary) adsPrimary = new ADS1115(cfgData.adsAddr, &Wire);
     adsPrimaryOk = adsPrimary->begin() && adsPrimary->isConnected();
     if (!adsPrimaryOk) {
         LOGW("ADS1115 primary not found (addr=0x%02X)", cfgData.adsAddr);
@@ -67,9 +67,11 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
         adsPrimary->setDataRate((uint8_t)cfgData.adsRate);
     }
 
-    useExternalPhOrp = (cfgData.adcMode != 0);
+    if (!useExternalPhOrpOverride) {
+        useExternalPhOrp = (cfgData.adcMode != 0);
+    }
     if (useExternalPhOrp) {
-        adsSecondary = new ADS1115(cfgData.adsAddr2, &Wire);
+        if (!adsSecondary) adsSecondary = new ADS1115(cfgData.adsAddr2, &Wire);
         adsSecondaryOk = adsSecondary->begin() && adsSecondary->isConnected();
         if (!adsSecondaryOk) {
             LOGW("ADS1115 secondary not found (addr=0x%02X)", cfgData.adsAddr2);
@@ -79,10 +81,14 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
         }
     }
 
-    oneWireWater = new OneWireBus(cfgData.onewirePinWater);
-    oneWireWater->begin();
-    oneWireAir = new OneWireBus(cfgData.onewirePinAir);
-    oneWireAir->begin();
+    if (!oneWireWater) {
+        oneWireWater = new OneWireBus(cfgData.onewirePinWater);
+        oneWireWater->begin();
+    }
+    if (!oneWireAir) {
+        oneWireAir = new OneWireBus(cfgData.onewirePinAir);
+        oneWireAir->begin();
+    }
 
     setupDallasAddresses();
     setupSensors();

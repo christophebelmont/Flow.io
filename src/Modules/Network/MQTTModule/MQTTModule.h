@@ -15,10 +15,7 @@ struct MQTTConfig {
     char user[32] = "";
     char pass[32] = "";
     char baseTopic[64] = "flowio";
-    bool sensorsPublish = true;
-    bool sensorsRetain = false;
-    int32_t sensorsQos = 0;
-    int32_t sensorsMinPeriodMs = 15000;
+    // reserved for future runtime publisher config
 };
 
 /** @brief MQTT connection state. */
@@ -50,6 +47,21 @@ public:
     /** @brief Extra stack for MQTT processing. */
     uint16_t taskStackSize() const override { return 4096; }
 
+    struct RuntimePublisher {
+        const char* topic = nullptr;
+        uint32_t periodMs = 0;
+        int qos = 0;
+        bool retain = false;
+        uint32_t lastMs = 0;
+        bool (*build)(MQTTModule* self, char* out, size_t outLen) = nullptr;
+    };
+
+    bool addRuntimePublisher(const char* topic, uint32_t periodMs, int qos, bool retain,
+                             bool (*build)(MQTTModule* self, char* out, size_t outLen));
+    bool publish(const char* topic, const char* payload, int qos = 0, bool retain = false);
+    void formatTopic(char* out, size_t outLen, const char* suffix) const;
+    DataStore* dataStorePtr() const { return dataStore; }
+
 private:
     MQTTConfig cfgData;
     MQTTState state = MQTTState::WaitingNetwork;
@@ -70,15 +82,9 @@ private:
     char topicStatus[128] = {0};
     char topicCfgSet[128] = {0};
     char topicCfgAck[128] = {0};
-    char topicSensorsBase[128] = {0};
-    char topicSensorsState[128] = {0};
-    char topicSensorsPh[128] = {0};
-    char topicSensorsOrp[128] = {0};
-    char topicSensorsPsi[128] = {0};
-    char topicSensorsWater[128] = {0};
-    char topicSensorsAir[128] = {0};
-    char topicNetworkState[128] = {0};
-    char topicSystemState[128] = {0};
+    static constexpr size_t MAX_PUBLISHERS = 8;
+    RuntimePublisher publishers[MAX_PUBLISHERS] = {};
+    uint8_t publisherCount = 0;
     static constexpr size_t CFG_TOPIC_MAX = 16;
     const char* cfgModules[CFG_TOPIC_MAX] = {nullptr};
     uint8_t cfgModuleCount = 0;
@@ -92,9 +98,7 @@ private:
     char ackBuf[512] = {0};
     char replyBuf[256] = {0};
     char stateCfgBuf[768] = {0};
-    char sensorsBuf[256] = {0};
-    char networkBuf[256] = {0};
-    char systemBuf[256] = {0};
+    char publishBuf[512] = {0};
 
     ConfigVariable<char,0> hostVar {
         NVS_KEY("mq_host"),"host","mqtt",ConfigType::CharArray,
@@ -120,31 +124,12 @@ private:
         NVS_KEY("mq_en"),"enabled","mqtt",ConfigType::Bool,
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
-    ConfigVariable<bool,0> sensorsPubVar {
-        NVS_KEY("mq_sen"),"mqtt_enable","sensors",ConfigType::Bool,
-        &cfgData.sensorsPublish,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<bool,0> sensorsRetainVar {
-        NVS_KEY("mq_sret"),"mqtt_retain","sensors",ConfigType::Bool,
-        &cfgData.sensorsRetain,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> sensorsQosVar {
-        NVS_KEY("mq_sqos"),"mqtt_qos","sensors",ConfigType::Int32,
-        &cfgData.sensorsQos,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> sensorsMinVar {
-        NVS_KEY("mq_smin"),"mqtt_min_ms","sensors",ConfigType::Int32,
-        &cfgData.sensorsMinPeriodMs,ConfigPersistence::Persistent,0
-    };
 
     void setState(MQTTState s);
     void buildTopics();
     void connectMqtt();
     void processRx(const RxMsg& msg);
     void publishConfigBlocks(bool retained);
-    bool publishSensors(bool force);
-    void publishNetwork();
-    void publishSystem();
 
     const char* findJsonStringValue(const char* json, const char* key);
     const char* findJsonObjectStart(const char* json, const char* key);
@@ -164,8 +149,5 @@ private:
     // ---- retry backoff ----
     uint8_t _retryCount = 0;
     uint32_t _retryDelayMs = 2000; // 2s start
-    uint32_t _lastSensorsPublishMs = 0;
-    volatile bool _pendingSensorsPublish = false;
-    uint32_t _lastNetworkPublishMs = 0;
-    uint32_t _lastSystemPublishMs = 0;
+    volatile bool _pendingPublish = false;
 };
