@@ -1,8 +1,8 @@
-# FlowIO Pool Controller — Spécification MQTT (v1.1)
+# FlowIO — Spécification MQTT (v1.1)
 
 Version : **1.1**
 
-Cette version conserve **un unique topic de commande** et **un unique ack**, tout en ajoutant `status` et `cfg/*`.
+Cette version conserve **un topic de commande** et **un ack unique**, avec publication des snapshots runtime (sensors/network/system).
 
 ---
 
@@ -24,50 +24,31 @@ flowio/ESP32-670D34/
 
 ---
 
-## 2) Espaces de noms (namespaces)
+## 2) Espaces de noms
 
 | Namespace | Rôle | Écriture autorisée | Persistant (NVS) | Produit par |
 |---|---|---:|---:|---|
-| `cfg` | Paramètres / configuration | ✅ Oui | ✅ Souvent | UI / MQTT |
-| `rt/*` | Valeurs runtime (télémétrie/état) | ❌ Non | ❌ Non | Firmware |
-| `cmd` | Commandes (actions ponctuelles) | ✅ Oui | ❌ Non | UI / MQTT |
-| `evt` | Évènements / notifications | ❌ Non | ❌ Non | Firmware |
+| `cfg` | Configuration | ✅ Oui | ✅ Souvent | UI / MQTT |
+| `rt/*` | Runtime (télémétrie/état) | ❌ Non | ❌ Non | Firmware |
+| `cmd` | Commandes | ✅ Oui | ❌ Non | UI / MQTT |
+| `evt` | Évènements | ❌ Non | ❌ Non | Firmware |
 
 ---
 
-## 3) Règles MQTT (QoS, retained, LWT)
+## 3) QoS & retained (recommandations)
 
-### 3.1 QoS recommandé
-
-| Famille topic | QoS |
-|---|---:|
-| `rt/*` | 0 (ou 1 si nécessaire) |
-| `cfg` | 1 |
-| `cfg/ack` | 1 |
-| `cfg/set` | 1 |
-| `cmd` | 0 ou 1 |
-| `ack` | 0 ou 1 |
-| `evt` | 1 |
-| `status` | 1 |
-
-### 3.2 retained
-
-| Topic | retained |
-|---|---:|
-| `status` | ✅ |
-| `cfg` | ✅ |
-| `rt/*` | ✅ recommandé |
-| `cmd` | ❌ |
-| `ack` | ❌ |
-| `evt` | ❌ |
-| `cfg/ack` | ❌ |
-| `cfg/set` | ❌ |
+| Famille topic | QoS | retained |
+|---|---:|---:|
+| `status` | 1 | ✅ |
+| `cfg/*` | 1 | ✅ |
+| `rt/*` | 0 (ou 1) | ✅ recommandé |
+| `cmd` | 0/1 | ❌ |
+| `ack` | 0/1 | ❌ |
+| `evt` | 1 | ❌ |
 
 ---
 
-## 4) Présence (LWT / availability)
-
-Topic :
+## 4) Présence
 
 ```
 flowio/<deviceId>/status
@@ -85,125 +66,119 @@ Offline (LWT retained) :
 
 ---
 
-## 5) Commandes (`cmd`) — topic unique
+## 5) Commandes
 
 Topic :
-
 ```
 flowio/<deviceId>/cmd
 ```
-
-Payload attendu :
-
+Payload :
 ```json
 {"cmd":"system.ping","args":{}}
 ```
 
-`cmd` est le nom de commande enregistré dans `CommandService`.
-Chaque module déclare ses commandes localement.
-
-### Ack unique
-
+Ack :
 ```
 flowio/<deviceId>/ack
 ```
-
-Payload exemple :
-
+Payload :
 ```json
 {"ok":true,"cmd":"system.ping","reply":{"ok":true,"pong":true}}
 ```
 
 ---
 
-## 6) Configuration (`cfg`)
+## 6) Configuration
 
-### 6.1 Snapshot par blocs (recommandé)
+### 6.1 Snapshot par blocs
 
 Topics :
 ```
-flowio/<deviceId>/cfg/mqtt
-flowio/<deviceId>/cfg/filtration
-flowio/<deviceId>/cfg/pid
-flowio/<deviceId>/cfg/limits
-flowio/<deviceId>/cfg/thresholds
-flowio/<deviceId>/cfg/swg
+flowio/<deviceId>/cfg/<module>
 ```
 
-Payload : JSON de la section correspondante (retained)
+Exemples :
+```
+flowio/<deviceId>/cfg/mqtt
+flowio/<deviceId>/cfg/sensors
+```
 
-### 6.2 Appliquer une config (partielle ou complète)
+### 6.2 Appliquer une config
 
 Topic :
 ```
 flowio/<deviceId>/cfg/set
 ```
-
-Payload exemple :
+Payload :
 ```json
 {"mqtt":{"baseTopic":"flowio2"}}
 ```
 
-Exemple partiel :
-```json
-{"pid":{"ph":{"setpoint":7.15}}}
-```
-
-Le parser est tolérant aux espaces.
-
-### 6.3 Ack config
-
-Topic :
+Ack :
 ```
 flowio/<deviceId>/cfg/ack
 ```
 
-Succès :
-```json
-{"ok":true}
-```
-
-Erreur :
-```json
-{"ok":false}
-```
-
 ---
 
-## 7) Runtime (`rt/*`) — inchangé
+## 7) Runtime (snapshots)
 
-Liste de topics recommandés :
-- `rt/network`
-- `rt/sensors`
-- `rt/controls`
-- `rt/uptime`
-- `rt/tanks`
-- `rt/pid`
-- `rt/filtration`
-- `rt/alarms`
-- `rt/health`
-
----
-
-## 8) Évènements (`evt`)
+### 7.1 Sensors
 
 Topic :
 ```
-flowio/<deviceId>/evt
+flowio/<deviceId>/rt/sensors/state
+```
+Payload :
+```json
+{
+  "ph": 7.12,
+  "orp": 732.0,
+  "psi": 1.8,
+  "waterTemp": 26.4,
+  "airTemp": 24.1,
+  "ts": 12345678
+}
 ```
 
-Payloads exemples :
+### 7.2 Network
+
+Topic :
+```
+flowio/<deviceId>/rt/network/state
+```
+Payload :
 ```json
-{"type":"ntpSynced","ts":1700000000}
-{"type":"alarmRaised","alarm":"PSI_LOW","ts":1700000000}
+{
+  "ready": true,
+  "ip": "192.168.86.28",
+  "rssi": -60,
+  "mqtt": true,
+  "ts": 12345678
+}
+```
+
+### 7.3 System
+
+Topic :
+```
+flowio/<deviceId>/rt/system/state
+```
+Payload :
+```json
+{
+  "upt_ms": 12345678,
+  "heap": {"free": 180000, "min": 160000, "largest": 90000, "frag": 15},
+  "ts": 12345678
+}
 ```
 
 ---
 
-## 9) Recommandations firmware
+## 8) Périodicité par défaut
 
-- éviter `String` / allocations heap dans les publications MQTT
-- publication runtime recommandée : event-driven (DataStore dirty flags)
-- throttling runtime : min 1 publication / seconde / bloc
-- traiter `cmd` dans un module dédié (`CommandModule`)
-- répondre systématiquement via `ack` et/ou `cfg/ack`
+- `rt/sensors/state` : 15 s
+- `rt/network/state` : 60 s
+- `rt/system/state` : 60 s
+
+Ces périodes sont configurables via `cfg/sensors` et `cfg/mqtt`.
