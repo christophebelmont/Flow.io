@@ -8,13 +8,6 @@
 #include "Core/ModuleLog.h"
 #include "Modules/IOModule/IORuntime.h"
 #include <Arduino.h>
-#include <string.h>
-
-static bool strEq(const char* a, const char* b)
-{
-    if (!a || !b) return false;
-    return strcmp(a, b) == 0;
-}
 
 void IOModule::setOneWireBuses(OneWireBus* water, OneWireBus* air)
 {
@@ -30,52 +23,21 @@ bool IOModule::defineAnalogInput(const IOAnalogDefinition& def)
         if (analogSlots_[i].used) continue;
         analogSlots_[i].used = true;
         analogSlots_[i].def = def;
-        syncProfileDefaultsFromDefinition_(def);
+
+        if (i < ANALOG_CFG_SLOTS) {
+            analogCfg_[i].source = def.source;
+            analogCfg_[i].channel = def.channel;
+            analogCfg_[i].c0 = def.c0;
+            analogCfg_[i].c1 = def.c1;
+            analogCfg_[i].precision = def.precision;
+            analogCfg_[i].minValid = def.minValid;
+            analogCfg_[i].maxValid = def.maxValid;
+        }
+
         return true;
     }
 
     return false;
-}
-
-void IOModule::syncProfileDefaultsFromDefinition_(const IOAnalogDefinition& def)
-{
-    IOAnalogProfileConfig* p = nullptr;
-    if (strEq(def.id, "ph")) p = &phCfg_;
-    else if (strEq(def.id, "orp")) p = &orpCfg_;
-    else if (strEq(def.id, "psi")) p = &psiCfg_;
-    else if (strEq(def.id, "water_temp")) p = &waterCfg_;
-    else if (strEq(def.id, "air_temp")) p = &airCfg_;
-
-    if (!p) return;
-
-    p->source = def.source;
-    p->channel = def.channel;
-    p->c0 = def.c0;
-    p->c1 = def.c1;
-    p->precision = def.precision;
-    p->minValid = def.minValid;
-    p->maxValid = def.maxValid;
-}
-
-bool IOModule::applyProfileToDefinition_(IOAnalogDefinition& def) const
-{
-    const IOAnalogProfileConfig* p = nullptr;
-    if (strEq(def.id, "ph")) p = &phCfg_;
-    else if (strEq(def.id, "orp")) p = &orpCfg_;
-    else if (strEq(def.id, "psi")) p = &psiCfg_;
-    else if (strEq(def.id, "water_temp")) p = &waterCfg_;
-    else if (strEq(def.id, "air_temp")) p = &airCfg_;
-
-    if (!p) return false;
-
-    def.source = p->source;
-    def.channel = p->channel;
-    def.c0 = p->c0;
-    def.c1 = p->c1;
-    def.precision = p->precision;
-    def.minValid = p->minValid;
-    def.maxValid = p->maxValid;
-    return true;
 }
 
 bool IOModule::tickFastAds_(void* ctx, uint32_t nowMs)
@@ -88,7 +50,7 @@ bool IOModule::tickFastAds_(void* ctx, uint32_t nowMs)
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
-        const uint8_t src = self->analogSlots_[i].def.source;
+        uint8_t src = self->analogSlots_[i].def.source;
         if (src == IO_SRC_ADS_INTERNAL_SINGLE || src == IO_SRC_ADS_EXTERNAL_DIFF) {
             self->processAnalogDefinition_(i, nowMs);
         }
@@ -106,7 +68,7 @@ bool IOModule::tickSlowDs_(void* ctx, uint32_t nowMs)
 
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!self->analogSlots_[i].used) continue;
-        const uint8_t src = self->analogSlots_[i].def.source;
+        uint8_t src = self->analogSlots_[i].def.source;
         if (src == IO_SRC_DS18_WATER || src == IO_SRC_DS18_AIR) {
             self->processAnalogDefinition_(i, nowMs);
         }
@@ -154,21 +116,12 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     if (!slot.lastRoundedValid || rounded != slot.lastRounded) {
         slot.lastRounded = rounded;
         slot.lastRoundedValid = true;
-        publishCanonical_(slot.def.id, rounded);
+        if (slot.def.onValueChanged) {
+            slot.def.onValueChanged(slot.def.onValueCtx, rounded);
+        }
     }
 
     return true;
-}
-
-void IOModule::publishCanonical_(const char* id, float value)
-{
-    if (!dataStore_ || !id) return;
-
-    if (strEq(id, "ph")) setIoPh(*dataStore_, value);
-    else if (strEq(id, "orp")) setIoOrp(*dataStore_, value);
-    else if (strEq(id, "psi")) setIoPsi(*dataStore_, value);
-    else if (strEq(id, "water_temp")) setIoWaterTemp(*dataStore_, value);
-    else if (strEq(id, "air_temp")) setIoAirTemp(*dataStore_, value);
 }
 
 bool IOModule::svcSetMask_(void* ctx, uint8_t mask)
@@ -235,7 +188,15 @@ bool IOModule::configureRuntime_()
     for (uint8_t i = 0; i < MAX_ANALOG_ENDPOINTS; ++i) {
         if (!analogSlots_[i].used) continue;
 
-        applyProfileToDefinition_(analogSlots_[i].def);
+        if (i < ANALOG_CFG_SLOTS) {
+            analogSlots_[i].def.source = analogCfg_[i].source;
+            analogSlots_[i].def.channel = analogCfg_[i].channel;
+            analogSlots_[i].def.c0 = analogCfg_[i].c0;
+            analogSlots_[i].def.c1 = analogCfg_[i].c1;
+            analogSlots_[i].def.precision = analogCfg_[i].precision;
+            analogSlots_[i].def.minValid = analogCfg_[i].minValid;
+            analogSlots_[i].def.maxValid = analogCfg_[i].maxValid;
+        }
 
         if (analogSlots_[i].def.source == IO_SRC_ADS_INTERNAL_SINGLE) needAdsInternal = true;
         else if (analogSlots_[i].def.source == IO_SRC_ADS_EXTERNAL_DIFF) needAdsExternal = true;
@@ -352,8 +313,6 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     services_ = &services;
     logHub_ = services.get<LogHubService>("loghub");
-    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
-    dataStore_ = dsSvc ? dsSvc->store : nullptr;
 
     cfg.registerVar(enabledVar_);
     cfg.registerVar(i2cSdaVar_);
@@ -368,20 +327,20 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(pcfAddressVar_);
     cfg.registerVar(pcfMaskDefaultVar_);
 
-    cfg.registerVar(phSourceVar_); cfg.registerVar(phChannelVar_); cfg.registerVar(phC0Var_);
-    cfg.registerVar(phC1Var_); cfg.registerVar(phPrecVar_); cfg.registerVar(phMinVar_); cfg.registerVar(phMaxVar_);
+    cfg.registerVar(a0SourceVar_); cfg.registerVar(a0ChannelVar_); cfg.registerVar(a0C0Var_);
+    cfg.registerVar(a0C1Var_); cfg.registerVar(a0PrecVar_); cfg.registerVar(a0MinVar_); cfg.registerVar(a0MaxVar_);
 
-    cfg.registerVar(orpSourceVar_); cfg.registerVar(orpChannelVar_); cfg.registerVar(orpC0Var_);
-    cfg.registerVar(orpC1Var_); cfg.registerVar(orpPrecVar_); cfg.registerVar(orpMinVar_); cfg.registerVar(orpMaxVar_);
+    cfg.registerVar(a1SourceVar_); cfg.registerVar(a1ChannelVar_); cfg.registerVar(a1C0Var_);
+    cfg.registerVar(a1C1Var_); cfg.registerVar(a1PrecVar_); cfg.registerVar(a1MinVar_); cfg.registerVar(a1MaxVar_);
 
-    cfg.registerVar(psiSourceVar_); cfg.registerVar(psiChannelVar_); cfg.registerVar(psiC0Var_);
-    cfg.registerVar(psiC1Var_); cfg.registerVar(psiPrecVar_); cfg.registerVar(psiMinVar_); cfg.registerVar(psiMaxVar_);
+    cfg.registerVar(a2SourceVar_); cfg.registerVar(a2ChannelVar_); cfg.registerVar(a2C0Var_);
+    cfg.registerVar(a2C1Var_); cfg.registerVar(a2PrecVar_); cfg.registerVar(a2MinVar_); cfg.registerVar(a2MaxVar_);
 
-    cfg.registerVar(waterSourceVar_); cfg.registerVar(waterChannelVar_); cfg.registerVar(waterC0Var_);
-    cfg.registerVar(waterC1Var_); cfg.registerVar(waterPrecVar_); cfg.registerVar(waterMinVar_); cfg.registerVar(waterMaxVar_);
+    cfg.registerVar(a3SourceVar_); cfg.registerVar(a3ChannelVar_); cfg.registerVar(a3C0Var_);
+    cfg.registerVar(a3C1Var_); cfg.registerVar(a3PrecVar_); cfg.registerVar(a3MinVar_); cfg.registerVar(a3MaxVar_);
 
-    cfg.registerVar(airSourceVar_); cfg.registerVar(airChannelVar_); cfg.registerVar(airC0Var_);
-    cfg.registerVar(airC1Var_); cfg.registerVar(airPrecVar_); cfg.registerVar(airMinVar_); cfg.registerVar(airMaxVar_);
+    cfg.registerVar(a4SourceVar_); cfg.registerVar(a4ChannelVar_); cfg.registerVar(a4C0Var_);
+    cfg.registerVar(a4C1Var_); cfg.registerVar(a4PrecVar_); cfg.registerVar(a4MinVar_); cfg.registerVar(a4MaxVar_);
 
     LOGI("I/O config registered");
     (void)logHub_;

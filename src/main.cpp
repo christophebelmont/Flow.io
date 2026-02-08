@@ -63,6 +63,7 @@ static LogDispatcherModule  logDispatcherModule;
 static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
 static IOModule             ioModule;
+static DataStore*           gIoDataStore = nullptr;
 
 static OneWireBus oneWireWater(19);
 static OneWireBus oneWireAir(18);
@@ -71,16 +72,29 @@ static char topicSensorsState[128] = {0};
 static char topicNetworkState[128] = {0};
 static char topicSystemState[128] = {0};
 
+static constexpr uint8_t IO_IDX_PH = 0;
+static constexpr uint8_t IO_IDX_ORP = 1;
+static constexpr uint8_t IO_IDX_PSI = 2;
+static constexpr uint8_t IO_IDX_WATER_TEMP = 3;
+static constexpr uint8_t IO_IDX_AIR_TEMP = 4;
+
+static void onIoFloatValue(void* ctx, float value) {
+    if (!gIoDataStore) return;
+    uint8_t idx = (uint8_t)(uintptr_t)ctx;
+    setIoEndpointFloat(*gIoDataStore, idx, value, millis(), DIRTY_SENSORS);
+}
+
 static bool buildSensorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     if (!mqtt) return false;
     DataStore* ds = mqtt->dataStorePtr();
     if (!ds) return false;
 
-    float ph = ioPh(*ds);
-    float orp = ioOrp(*ds);
-    float psi = ioPsi(*ds);
-    float w = ioWaterTemp(*ds);
-    float a = ioAirTemp(*ds);
+    float ph = 0.0f, orp = 0.0f, psi = 0.0f, w = 0.0f, a = 0.0f;
+    ioEndpointFloat(*ds, IO_IDX_PH, ph);
+    ioEndpointFloat(*ds, IO_IDX_ORP, orp);
+    ioEndpointFloat(*ds, IO_IDX_PSI, psi);
+    ioEndpointFloat(*ds, IO_IDX_WATER_TEMP, w);
+    ioEndpointFloat(*ds, IO_IDX_AIR_TEMP, a);
 
     snprintf(out, len,
              "{\"ph\":%.3f,\"orp\":%.3f,\"psi\":%.3f,\"waterTemp\":%.2f,\"airTemp\":%.2f,\"ts\":%lu}",
@@ -158,6 +172,8 @@ void setup() {
     phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     phDef.channel = 0;
     phDef.precision = 1;
+    phDef.onValueChanged = onIoFloatValue;
+    phDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PH;
     ioModule.defineAnalogInput(phDef);
 
     IOAnalogDefinition orpDef{};
@@ -165,6 +181,8 @@ void setup() {
     orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     orpDef.channel = 1;
     orpDef.precision = 0;
+    orpDef.onValueChanged = onIoFloatValue;
+    orpDef.onValueCtx = (void*)(uintptr_t)IO_IDX_ORP;
     ioModule.defineAnalogInput(orpDef);
 
     IOAnalogDefinition psiDef{};
@@ -172,6 +190,8 @@ void setup() {
     psiDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     psiDef.channel = 2;
     psiDef.precision = 1;
+    psiDef.onValueChanged = onIoFloatValue;
+    psiDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PSI;
     ioModule.defineAnalogInput(psiDef);
 
     IOAnalogDefinition waterDef{};
@@ -181,6 +201,8 @@ void setup() {
     waterDef.precision = 1;
     waterDef.minValid = -55.0f;
     waterDef.maxValid = 125.0f;
+    waterDef.onValueChanged = onIoFloatValue;
+    waterDef.onValueCtx = (void*)(uintptr_t)IO_IDX_WATER_TEMP;
     ioModule.defineAnalogInput(waterDef);
 
     IOAnalogDefinition airDef{};
@@ -190,6 +212,8 @@ void setup() {
     airDef.precision = 1;
     airDef.minValid = -55.0f;
     airDef.maxValid = 125.0f;
+    airDef.onValueChanged = onIoFloatValue;
+    airDef.onValueCtx = (void*)(uintptr_t)IO_IDX_AIR_TEMP;
     ioModule.defineAnalogInput(airDef);
 
     
@@ -197,6 +221,9 @@ void setup() {
     if (!ok) {
         while (true) delay(1000);
     }
+
+    const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
+    gIoDataStore = dsSvc ? dsSvc->store : nullptr;
 
     mqttModule.formatTopic(topicSensorsState, sizeof(topicSensorsState), "rt/sensors/state");
     mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");

@@ -40,6 +40,8 @@ enum IOAnalogSource : uint8_t {
     IO_SRC_DS18_AIR = 3
 };
 
+typedef void (*IOAnalogValueCallback)(void* ctx, float value);
+
 struct IOAnalogDefinition {
     char id[24] = {0};
     uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
@@ -49,9 +51,11 @@ struct IOAnalogDefinition {
     int32_t precision = 1;
     float minValid = -32768.0f;
     float maxValid = 32767.0f;
+    IOAnalogValueCallback onValueChanged = nullptr;
+    void* onValueCtx = nullptr;
 };
 
-struct IOAnalogProfileConfig {
+struct IOAnalogSlotConfig {
     uint8_t source = IO_SRC_ADS_INTERNAL_SINGLE;
     uint8_t channel = 0;
     float c0 = 1.0f;
@@ -105,11 +109,9 @@ private:
 
     bool configureRuntime_();
     bool processAnalogDefinition_(uint8_t idx, uint32_t nowMs);
-    void publishCanonical_(const char* id, float value);
-    bool applyProfileToDefinition_(IOAnalogDefinition& def) const;
-    void syncProfileDefaultsFromDefinition_(const IOAnalogDefinition& def);
 
     static constexpr uint8_t MAX_ANALOG_ENDPOINTS = 12;
+    static constexpr uint8_t ANALOG_CFG_SLOTS = 5;
 
     struct AnalogSlot {
         bool used = false;
@@ -121,14 +123,9 @@ private:
     };
 
     IOModuleConfig cfgData_{};
-    IOAnalogProfileConfig phCfg_{};
-    IOAnalogProfileConfig orpCfg_{};
-    IOAnalogProfileConfig psiCfg_{};
-    IOAnalogProfileConfig waterCfg_{};
-    IOAnalogProfileConfig airCfg_{};
+    IOAnalogSlotConfig analogCfg_[ANALOG_CFG_SLOTS]{};
 
     const LogHubService* logHub_ = nullptr;
-    DataStore* dataStore_ = nullptr;
     ServiceRegistry* services_ = nullptr;
 
     IORegistry registry_{};
@@ -152,92 +149,56 @@ private:
     AnalogSlot analogSlots_[MAX_ANALOG_ENDPOINTS]{};
     bool runtimeReady_ = false;
 
-    ConfigVariable<bool,0> enabledVar_ {
-        NVS_KEY("io_en"),"enabled","io",ConfigType::Bool,
-        &cfgData_.enabled,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> i2cSdaVar_ {
-        NVS_KEY("io_sda"),"i2c_sda","io",ConfigType::Int32,
-        &cfgData_.i2cSda,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> i2cSclVar_ {
-        NVS_KEY("io_scl"),"i2c_scl","io",ConfigType::Int32,
-        &cfgData_.i2cScl,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> adsPollVar_ {
-        NVS_KEY("io_ads"),"ads_poll_ms","io",ConfigType::Int32,
-        &cfgData_.adsPollMs,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> dsPollVar_ {
-        NVS_KEY("io_ds"),"ds_poll_ms","io",ConfigType::Int32,
-        &cfgData_.dsPollMs,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<uint8_t,0> adsInternalAddrVar_ {
-        NVS_KEY("io_aiad"),"ads_internal_addr","io",ConfigType::UInt8,
-        &cfgData_.adsInternalAddr,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<uint8_t,0> adsExternalAddrVar_ {
-        NVS_KEY("io_aead"),"ads_external_addr","io",ConfigType::UInt8,
-        &cfgData_.adsExternalAddr,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> adsGainVar_ {
-        NVS_KEY("io_agai"),"ads_gain","io",ConfigType::Int32,
-        &cfgData_.adsGain,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<int32_t,0> adsRateVar_ {
-        NVS_KEY("io_arat"),"ads_rate","io",ConfigType::Int32,
-        &cfgData_.adsRate,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<bool,0> pcfEnabledVar_ {
-        NVS_KEY("io_pcfen"),"pcf_enabled","io",ConfigType::Bool,
-        &cfgData_.pcfEnabled,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<uint8_t,0> pcfAddressVar_ {
-        NVS_KEY("io_pcfad"),"pcf_address","io",ConfigType::UInt8,
-        &cfgData_.pcfAddress,ConfigPersistence::Persistent,0
-    };
-    ConfigVariable<uint8_t,0> pcfMaskDefaultVar_ {
-        NVS_KEY("io_pcfmk"),"pcf_mask_default","io",ConfigType::UInt8,
-        &cfgData_.pcfMaskDefault,ConfigPersistence::Persistent,0
-    };
+    ConfigVariable<bool,0> enabledVar_ { NVS_KEY("io_en"),"enabled","io",ConfigType::Bool,&cfgData_.enabled,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> i2cSdaVar_ { NVS_KEY("io_sda"),"i2c_sda","io",ConfigType::Int32,&cfgData_.i2cSda,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> i2cSclVar_ { NVS_KEY("io_scl"),"i2c_scl","io",ConfigType::Int32,&cfgData_.i2cScl,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> adsPollVar_ { NVS_KEY("io_ads"),"ads_poll_ms","io",ConfigType::Int32,&cfgData_.adsPollMs,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> dsPollVar_ { NVS_KEY("io_ds"),"ds_poll_ms","io",ConfigType::Int32,&cfgData_.dsPollMs,ConfigPersistence::Persistent,0 };
+    ConfigVariable<uint8_t,0> adsInternalAddrVar_ { NVS_KEY("io_aiad"),"ads_internal_addr","io",ConfigType::UInt8,&cfgData_.adsInternalAddr,ConfigPersistence::Persistent,0 };
+    ConfigVariable<uint8_t,0> adsExternalAddrVar_ { NVS_KEY("io_aead"),"ads_external_addr","io",ConfigType::UInt8,&cfgData_.adsExternalAddr,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> adsGainVar_ { NVS_KEY("io_agai"),"ads_gain","io",ConfigType::Int32,&cfgData_.adsGain,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> adsRateVar_ { NVS_KEY("io_arat"),"ads_rate","io",ConfigType::Int32,&cfgData_.adsRate,ConfigPersistence::Persistent,0 };
+    ConfigVariable<bool,0> pcfEnabledVar_ { NVS_KEY("io_pcfen"),"pcf_enabled","io",ConfigType::Bool,&cfgData_.pcfEnabled,ConfigPersistence::Persistent,0 };
+    ConfigVariable<uint8_t,0> pcfAddressVar_ { NVS_KEY("io_pcfad"),"pcf_address","io",ConfigType::UInt8,&cfgData_.pcfAddress,ConfigPersistence::Persistent,0 };
+    ConfigVariable<uint8_t,0> pcfMaskDefaultVar_ { NVS_KEY("io_pcfmk"),"pcf_mask_default","io",ConfigType::UInt8,&cfgData_.pcfMaskDefault,ConfigPersistence::Persistent,0 };
 
-    ConfigVariable<uint8_t,0> phSourceVar_{NVS_KEY("io_phs"),"ph_source","io",ConfigType::UInt8,&phCfg_.source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> phChannelVar_{NVS_KEY("io_phc"),"ph_channel","io",ConfigType::UInt8,&phCfg_.channel,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> phC0Var_{NVS_KEY("io_ph0"),"ph_c0","io",ConfigType::Float,&phCfg_.c0,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> phC1Var_{NVS_KEY("io_ph1"),"ph_c1","io",ConfigType::Float,&phCfg_.c1,ConfigPersistence::Persistent,0};
-    ConfigVariable<int32_t,0> phPrecVar_{NVS_KEY("io_php"),"ph_prec","io",ConfigType::Int32,&phCfg_.precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> phMinVar_{NVS_KEY("io_phn"),"ph_min","io",ConfigType::Float,&phCfg_.minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> phMaxVar_{NVS_KEY("io_phx"),"ph_max","io",ConfigType::Float,&phCfg_.maxValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a0SourceVar_{NVS_KEY("io_a0s"),"a0_source","io",ConfigType::UInt8,&analogCfg_[0].source,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a0ChannelVar_{NVS_KEY("io_a0c"),"a0_channel","io",ConfigType::UInt8,&analogCfg_[0].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a0C0Var_{NVS_KEY("io_a00"),"a0_c0","io",ConfigType::Float,&analogCfg_[0].c0,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a0C1Var_{NVS_KEY("io_a01"),"a0_c1","io",ConfigType::Float,&analogCfg_[0].c1,ConfigPersistence::Persistent,0};
+    ConfigVariable<int32_t,0> a0PrecVar_{NVS_KEY("io_a0p"),"a0_prec","io",ConfigType::Int32,&analogCfg_[0].precision,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a0MinVar_{NVS_KEY("io_a0n"),"a0_min","io",ConfigType::Float,&analogCfg_[0].minValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a0MaxVar_{NVS_KEY("io_a0x"),"a0_max","io",ConfigType::Float,&analogCfg_[0].maxValid,ConfigPersistence::Persistent,0};
 
-    ConfigVariable<uint8_t,0> orpSourceVar_{NVS_KEY("io_ors"),"orp_source","io",ConfigType::UInt8,&orpCfg_.source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> orpChannelVar_{NVS_KEY("io_orc"),"orp_channel","io",ConfigType::UInt8,&orpCfg_.channel,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> orpC0Var_{NVS_KEY("io_or0"),"orp_c0","io",ConfigType::Float,&orpCfg_.c0,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> orpC1Var_{NVS_KEY("io_or1"),"orp_c1","io",ConfigType::Float,&orpCfg_.c1,ConfigPersistence::Persistent,0};
-    ConfigVariable<int32_t,0> orpPrecVar_{NVS_KEY("io_orp"),"orp_prec","io",ConfigType::Int32,&orpCfg_.precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> orpMinVar_{NVS_KEY("io_orn"),"orp_min","io",ConfigType::Float,&orpCfg_.minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> orpMaxVar_{NVS_KEY("io_orx"),"orp_max","io",ConfigType::Float,&orpCfg_.maxValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a1SourceVar_{NVS_KEY("io_a1s"),"a1_source","io",ConfigType::UInt8,&analogCfg_[1].source,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a1ChannelVar_{NVS_KEY("io_a1c"),"a1_channel","io",ConfigType::UInt8,&analogCfg_[1].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a1C0Var_{NVS_KEY("io_a10"),"a1_c0","io",ConfigType::Float,&analogCfg_[1].c0,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a1C1Var_{NVS_KEY("io_a11"),"a1_c1","io",ConfigType::Float,&analogCfg_[1].c1,ConfigPersistence::Persistent,0};
+    ConfigVariable<int32_t,0> a1PrecVar_{NVS_KEY("io_a1p"),"a1_prec","io",ConfigType::Int32,&analogCfg_[1].precision,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a1MinVar_{NVS_KEY("io_a1n"),"a1_min","io",ConfigType::Float,&analogCfg_[1].minValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a1MaxVar_{NVS_KEY("io_a1x"),"a1_max","io",ConfigType::Float,&analogCfg_[1].maxValid,ConfigPersistence::Persistent,0};
 
-    ConfigVariable<uint8_t,0> psiSourceVar_{NVS_KEY("io_pss"),"psi_source","io",ConfigType::UInt8,&psiCfg_.source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> psiChannelVar_{NVS_KEY("io_psc"),"psi_channel","io",ConfigType::UInt8,&psiCfg_.channel,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> psiC0Var_{NVS_KEY("io_ps0"),"psi_c0","io",ConfigType::Float,&psiCfg_.c0,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> psiC1Var_{NVS_KEY("io_ps1"),"psi_c1","io",ConfigType::Float,&psiCfg_.c1,ConfigPersistence::Persistent,0};
-    ConfigVariable<int32_t,0> psiPrecVar_{NVS_KEY("io_psp"),"psi_prec","io",ConfigType::Int32,&psiCfg_.precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> psiMinVar_{NVS_KEY("io_psn"),"psi_min","io",ConfigType::Float,&psiCfg_.minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> psiMaxVar_{NVS_KEY("io_psx"),"psi_max","io",ConfigType::Float,&psiCfg_.maxValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a2SourceVar_{NVS_KEY("io_a2s"),"a2_source","io",ConfigType::UInt8,&analogCfg_[2].source,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a2ChannelVar_{NVS_KEY("io_a2c"),"a2_channel","io",ConfigType::UInt8,&analogCfg_[2].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a2C0Var_{NVS_KEY("io_a20"),"a2_c0","io",ConfigType::Float,&analogCfg_[2].c0,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a2C1Var_{NVS_KEY("io_a21"),"a2_c1","io",ConfigType::Float,&analogCfg_[2].c1,ConfigPersistence::Persistent,0};
+    ConfigVariable<int32_t,0> a2PrecVar_{NVS_KEY("io_a2p"),"a2_prec","io",ConfigType::Int32,&analogCfg_[2].precision,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a2MinVar_{NVS_KEY("io_a2n"),"a2_min","io",ConfigType::Float,&analogCfg_[2].minValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a2MaxVar_{NVS_KEY("io_a2x"),"a2_max","io",ConfigType::Float,&analogCfg_[2].maxValid,ConfigPersistence::Persistent,0};
 
-    ConfigVariable<uint8_t,0> waterSourceVar_{NVS_KEY("io_tws"),"water_source","io",ConfigType::UInt8,&waterCfg_.source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> waterChannelVar_{NVS_KEY("io_twc"),"water_channel","io",ConfigType::UInt8,&waterCfg_.channel,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> waterC0Var_{NVS_KEY("io_tw0"),"water_c0","io",ConfigType::Float,&waterCfg_.c0,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> waterC1Var_{NVS_KEY("io_tw1"),"water_c1","io",ConfigType::Float,&waterCfg_.c1,ConfigPersistence::Persistent,0};
-    ConfigVariable<int32_t,0> waterPrecVar_{NVS_KEY("io_twp"),"water_prec","io",ConfigType::Int32,&waterCfg_.precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> waterMinVar_{NVS_KEY("io_twn"),"water_min","io",ConfigType::Float,&waterCfg_.minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> waterMaxVar_{NVS_KEY("io_twx"),"water_max","io",ConfigType::Float,&waterCfg_.maxValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a3SourceVar_{NVS_KEY("io_a3s"),"a3_source","io",ConfigType::UInt8,&analogCfg_[3].source,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a3ChannelVar_{NVS_KEY("io_a3c"),"a3_channel","io",ConfigType::UInt8,&analogCfg_[3].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a3C0Var_{NVS_KEY("io_a30"),"a3_c0","io",ConfigType::Float,&analogCfg_[3].c0,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a3C1Var_{NVS_KEY("io_a31"),"a3_c1","io",ConfigType::Float,&analogCfg_[3].c1,ConfigPersistence::Persistent,0};
+    ConfigVariable<int32_t,0> a3PrecVar_{NVS_KEY("io_a3p"),"a3_prec","io",ConfigType::Int32,&analogCfg_[3].precision,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a3MinVar_{NVS_KEY("io_a3n"),"a3_min","io",ConfigType::Float,&analogCfg_[3].minValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a3MaxVar_{NVS_KEY("io_a3x"),"a3_max","io",ConfigType::Float,&analogCfg_[3].maxValid,ConfigPersistence::Persistent,0};
 
-    ConfigVariable<uint8_t,0> airSourceVar_{NVS_KEY("io_tas"),"air_source","io",ConfigType::UInt8,&airCfg_.source,ConfigPersistence::Persistent,0};
-    ConfigVariable<uint8_t,0> airChannelVar_{NVS_KEY("io_tac"),"air_channel","io",ConfigType::UInt8,&airCfg_.channel,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> airC0Var_{NVS_KEY("io_ta0"),"air_c0","io",ConfigType::Float,&airCfg_.c0,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> airC1Var_{NVS_KEY("io_ta1"),"air_c1","io",ConfigType::Float,&airCfg_.c1,ConfigPersistence::Persistent,0};
-    ConfigVariable<int32_t,0> airPrecVar_{NVS_KEY("io_tap"),"air_prec","io",ConfigType::Int32,&airCfg_.precision,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> airMinVar_{NVS_KEY("io_tan"),"air_min","io",ConfigType::Float,&airCfg_.minValid,ConfigPersistence::Persistent,0};
-    ConfigVariable<float,0> airMaxVar_{NVS_KEY("io_tax"),"air_max","io",ConfigType::Float,&airCfg_.maxValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a4SourceVar_{NVS_KEY("io_a4s"),"a4_source","io",ConfigType::UInt8,&analogCfg_[4].source,ConfigPersistence::Persistent,0};
+    ConfigVariable<uint8_t,0> a4ChannelVar_{NVS_KEY("io_a4c"),"a4_channel","io",ConfigType::UInt8,&analogCfg_[4].channel,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a4C0Var_{NVS_KEY("io_a40"),"a4_c0","io",ConfigType::Float,&analogCfg_[4].c0,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a4C1Var_{NVS_KEY("io_a41"),"a4_c1","io",ConfigType::Float,&analogCfg_[4].c1,ConfigPersistence::Persistent,0};
+    ConfigVariable<int32_t,0> a4PrecVar_{NVS_KEY("io_a4p"),"a4_prec","io",ConfigType::Int32,&analogCfg_[4].precision,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a4MinVar_{NVS_KEY("io_a4n"),"a4_min","io",ConfigType::Float,&analogCfg_[4].minValid,ConfigPersistence::Persistent,0};
+    ConfigVariable<float,0> a4MaxVar_{NVS_KEY("io_a4x"),"a4_max","io",ConfigType::Float,&analogCfg_[4].maxValid,ConfigPersistence::Persistent,0};
 };

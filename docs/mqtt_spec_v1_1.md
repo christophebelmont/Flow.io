@@ -100,7 +100,7 @@ flowio/<deviceId>/cfg/<module>
 Exemples :
 ```
 flowio/<deviceId>/cfg/mqtt
-flowio/<deviceId>/cfg/sensors
+flowio/<deviceId>/cfg/io
 ```
 
 ### 6.2 Appliquer une config

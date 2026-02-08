@@ -25,11 +25,6 @@ struct IOEndpointRuntime {
 
 struct IORuntimeData {
     IOEndpointRuntime endpoints[IO_MAX_ENDPOINTS];
-    float ph = 0.0f;
-    float orp = 0.0f;
-    float psi = 0.0f;
-    float waterTemp = 0.0f;
-    float airTemp = 0.0f;
 };
 
 // MODULE_DATA_MODEL: IORuntimeData io

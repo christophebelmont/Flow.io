@@ -34,7 +34,7 @@ src/
     Stores/ (ConfigStoreModule, DataStoreModule)
     System/ (SystemModule, SystemMonitorModule)
     Network/ (WifiModule, NTPModule, MQTTModule)
-    Sensors/ (buses, drivers, engine, filters)
+    IOModule/ (IOBus, IODrivers, IOEndpoints, IORegistry, IOScheduler)
 platformio.ini
 ```
 
@@ -43,7 +43,7 @@ platformio.ini
 - **Core**: `EventBusModule`, `CommandModule`, `ConfigStoreModule`, `DataStoreModule`
 - **System**: `SystemModule`, `SystemMonitorModule`
 - **Network**: `WifiModule`, `NTPModule`, `MQTTModule`
-- **Sensors**: `SensorsModule`
+- **I/O**: `IOModule`
 
 ## MQTT (résumé)
 Topics racine: `flowio/<deviceId>/...`
@@ -59,7 +59,7 @@ Spécification détaillée: `docs/mqtt_spec_v1_1.md`
 - `docs/mqtt_spec_v1_1.md`
 - `docs/mqtt-spec-v1-fr.md`
 - `docs/dev_guide.md`
-- `docs/sensors.md`
+- `docs/IOModule.md`
 
 ## Développement
 - Génération modèle runtime: `scripts/generate_datamodel.py`

@@ -12,11 +12,6 @@
 // RUNTIME_PUBLIC
 
 constexpr DataKey DATAKEY_IO_BASE = 40;
-constexpr DataKey DATAKEY_IO_PH = 5;
-constexpr DataKey DATAKEY_IO_ORP = 6;
-constexpr DataKey DATAKEY_IO_PSI = 7;
-constexpr DataKey DATAKEY_IO_WATER_TEMP = 8;
-constexpr DataKey DATAKEY_IO_AIR_TEMP = 9;
 
 static inline float ioRoundToPrecision(float value, int32_t decimals)
 {
@@ -31,48 +26,36 @@ static inline bool ioChangedAtPrecision(float a, float b, int32_t decimals)
     return ioRoundToPrecision(a, decimals) != ioRoundToPrecision(b, decimals);
 }
 
-static inline float ioPh(const DataStore& ds) { return ds.data().io.ph; }
-static inline float ioOrp(const DataStore& ds) { return ds.data().io.orp; }
-static inline float ioPsi(const DataStore& ds) { return ds.data().io.psi; }
-static inline float ioWaterTemp(const DataStore& ds) { return ds.data().io.waterTemp; }
-static inline float ioAirTemp(const DataStore& ds) { return ds.data().io.airTemp; }
-
-static inline void setIoPh(DataStore& ds, float value)
+static inline bool ioEndpointFloat(const DataStore& ds, uint8_t idx, float& out)
 {
-    RuntimeData& rt = ds.dataMutable();
-    if (rt.io.ph == value) return;
-    rt.io.ph = value;
-    ds.notifyChanged(DATAKEY_IO_PH, DIRTY_SENSORS);
+    if (idx >= IO_MAX_ENDPOINTS) return false;
+    const IOEndpointRuntime& ep = ds.data().io.endpoints[idx];
+    if (!ep.valid) return false;
+    if (ep.valueType != IO_VALUE_FLOAT) return false;
+    out = ep.floatValue;
+    return true;
 }
 
-static inline void setIoOrp(DataStore& ds, float value)
+static inline bool setIoEndpointFloat(DataStore& ds, uint8_t idx, float value, uint32_t tsMs,
+                                      uint32_t dirtyMask = DIRTY_SENSORS)
 {
-    RuntimeData& rt = ds.dataMutable();
-    if (rt.io.orp == value) return;
-    rt.io.orp = value;
-    ds.notifyChanged(DATAKEY_IO_ORP, DIRTY_SENSORS);
-}
+    if (idx >= IO_MAX_ENDPOINTS) return false;
 
-static inline void setIoPsi(DataStore& ds, float value)
-{
     RuntimeData& rt = ds.dataMutable();
-    if (rt.io.psi == value) return;
-    rt.io.psi = value;
-    ds.notifyChanged(DATAKEY_IO_PSI, DIRTY_SENSORS);
-}
+    IOEndpointRuntime& ep = rt.io.endpoints[idx];
 
-static inline void setIoWaterTemp(DataStore& ds, float value)
-{
-    RuntimeData& rt = ds.dataMutable();
-    if (rt.io.waterTemp == value) return;
-    rt.io.waterTemp = value;
-    ds.notifyChanged(DATAKEY_IO_WATER_TEMP, DIRTY_SENSORS);
-}
+    if (ep.valid &&
+        ep.valueType == IO_VALUE_FLOAT &&
+        ep.floatValue == value &&
+        ep.timestampMs == tsMs) {
+        return false;
+    }
 
-static inline void setIoAirTemp(DataStore& ds, float value)
-{
-    RuntimeData& rt = ds.dataMutable();
-    if (rt.io.airTemp == value) return;
-    rt.io.airTemp = value;
-    ds.notifyChanged(DATAKEY_IO_AIR_TEMP, DIRTY_SENSORS);
+    ep.valid = true;
+    ep.valueType = IO_VALUE_FLOAT;
+    ep.floatValue = value;
+    ep.timestampMs = tsMs;
+
+    ds.notifyChanged((DataKey)(DATAKEY_IO_BASE + idx), dirtyMask);
+    return true;
 }
