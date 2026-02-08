@@ -35,7 +35,7 @@ bool SystemModule::cmdFactoryReset(void* userCtx, const CommandRequest&, char* r
     return true;
 }
 
-void SystemModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) {
+void SystemModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
 
     logHub = services.get<LogHubService>("loghub");

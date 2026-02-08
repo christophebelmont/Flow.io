@@ -33,7 +33,7 @@ public:
     }
 
     /** @brief Initialize NTP config/services. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief NTP task loop. */
     void loop() override;
 

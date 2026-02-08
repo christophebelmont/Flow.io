@@ -24,5 +24,5 @@ public:
     }
 
     /** @brief Register the serial log sink. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 };

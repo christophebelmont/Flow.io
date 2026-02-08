@@ -19,7 +19,7 @@ public:
     const char* dependency(uint8_t i) const override { return (i == 0) ? "loghub" : nullptr; }
 
     /** @brief Register config services. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 
 private:
     ConfigStore* registry = nullptr;

@@ -14,7 +14,6 @@
 #include "Core/DataStore/DataStore.h"
 #include "Core/ModuleManager.h"
 #include "Core/ServiceRegistry.h"
-#include "Core/I2CManager.h"
 
 /// Load Modules
 // Network modules
@@ -32,13 +31,12 @@
 #include "Modules/Logs/LogSerialSinkModule/LogSerialSinkModule.h"
 #include "Modules/Logs/LogDispatcherModule/LogDispatcherModule.h"
 
-#include "Modules/Sensors/SensorsModule.h"
-#include "Modules/Actuators/ActuatorsModule.h"
+#include "Modules/IOModule/IOModule.h"
+#include "Modules/IOModule/IOBus/OneWireBus.h"
 #include "Modules/EventBusModule/EventBusModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 
-#include "Modules/Sensors/SensorsRuntime.h"
-#include "Modules/Actuators/ActuatorsRuntime.h"
+#include "Modules/IOModule/IORuntime.h"
 #include "Core/SystemStats.h"
 #include <WiFi.h>
 
@@ -50,7 +48,6 @@ static ConfigStore registry;
 
 static ModuleManager moduleManager;
 static ServiceRegistry services;
-static I2CManager i2c;
 
 ///static LoggerModule loggerModule;
 static WifiModule           wifiModule;
@@ -65,29 +62,25 @@ static LogSerialSinkModule  logSerialSinkModule;
 static LogDispatcherModule  logDispatcherModule;
 static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
-static SensorsModule        sensorsModule;
-static ActuatorsModule      actuatorsModule;
+static IOModule             ioModule;
 
 static OneWireBus oneWireWater(19);
 static OneWireBus oneWireAir(18);
-static ADS1115 adsPrimary(0x48, &Wire);
-static ADS1115 adsSecondary(0x49, &Wire);
 
 static char topicSensorsState[128] = {0};
 static char topicNetworkState[128] = {0};
 static char topicSystemState[128] = {0};
-static char topicActuatorsState[128] = {0};
 
 static bool buildSensorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     if (!mqtt) return false;
     DataStore* ds = mqtt->dataStorePtr();
     if (!ds) return false;
 
-    float ph = sensorsPh(*ds);
-    float orp = sensorsOrp(*ds);
-    float psi = sensorsPsi(*ds);
-    float w = sensorsWaterTemp(*ds);
-    float a = sensorsAirTemp(*ds);
+    float ph = ioPh(*ds);
+    float orp = ioOrp(*ds);
+    float psi = ioPsi(*ds);
+    float w = ioWaterTemp(*ds);
+    float a = ioAirTemp(*ds);
 
     snprintf(out, len,
              "{\"ph\":%.3f,\"orp\":%.3f,\"psi\":%.3f,\"waterTemp\":%.2f,\"airTemp\":%.2f,\"ts\":%lu}",
@@ -134,34 +127,6 @@ static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     return true;
 }
 
-static bool buildActuatorsSnapshot(MQTTModule* mqtt, char* out, size_t len) {
-    if (!mqtt) return false;
-    DataStore* ds = mqtt->dataStorePtr();
-    if (!ds) return false;
-
-    size_t used = 0;
-    int wrote = snprintf(out, len, "{\"slots\":[");
-    if (wrote < 0 || (size_t)wrote >= len) return false;
-    used += (size_t)wrote;
-
-    for (uint8_t i = 0; i < ACTUATOR_MAX; ++i) {
-        ActuatorRuntime rt = actuatorRuntime(*ds, i);
-        wrote = snprintf(out + used, len - used,
-                         "%s{\"on\":%s,\"cmd\":%s,\"up\":%lu,\"tank\":%.2f}",
-                         (i == 0 ? "" : ","),
-                         rt.on ? "true" : "false",
-                         rt.commanded ? "true" : "false",
-                         (unsigned long)rt.uptimeMs,
-                         rt.tankFillPct);
-        if (wrote < 0 || (size_t)wrote >= (len - used)) return false;
-        used += (size_t)wrote;
-    }
-
-    wrote = snprintf(out + used, len - used, "],\"ts\":%lu}", (unsigned long)millis());
-    if (wrote < 0 || (size_t)wrote >= (len - used)) return false;
-    return true;
-}
-
 void setup() {
     Serial.begin(115200);
     delay(50);
@@ -181,23 +146,54 @@ void setup() {
     moduleManager.add(&ntpModule);
     moduleManager.add(&mqttModule);
     moduleManager.add(&systemModule);
-    moduleManager.add(&sensorsModule);
-    moduleManager.add(&actuatorsModule);
+    moduleManager.add(&ioModule);
 
     systemMonitorModule.setModuleManager(&moduleManager);
     moduleManager.add(&systemMonitorModule);
 
-    sensorsModule.setOneWireBuses(&oneWireWater, &oneWireAir);
-    sensorsModule.setAdsDevices(&adsPrimary, &adsSecondary);
+    ioModule.setOneWireBuses(&oneWireWater, &oneWireAir);
 
-    actuatorsModule.configureSlot(0, "filtration_pump", 32, ActuatorKind::Pump);
-    actuatorsModule.configureSlot(1, "ph_injection_pump", 25, ActuatorKind::Pump);
-    actuatorsModule.configureSlot(2, "chl_injection_pump", 26, ActuatorKind::Pump);
-    actuatorsModule.configureSlot(3, "electrolyzer_relay", 13, ActuatorKind::Relay, true, 400, 1000);
-    actuatorsModule.configureSlot(4, "pool_light", 27, ActuatorKind::Light);
+    IOAnalogDefinition phDef{};
+    snprintf(phDef.id, sizeof(phDef.id), "ph");
+    phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
+    phDef.channel = 0;
+    phDef.precision = 1;
+    ioModule.defineAnalogInput(phDef);
+
+    IOAnalogDefinition orpDef{};
+    snprintf(orpDef.id, sizeof(orpDef.id), "orp");
+    orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
+    orpDef.channel = 1;
+    orpDef.precision = 0;
+    ioModule.defineAnalogInput(orpDef);
+
+    IOAnalogDefinition psiDef{};
+    snprintf(psiDef.id, sizeof(psiDef.id), "psi");
+    psiDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
+    psiDef.channel = 2;
+    psiDef.precision = 1;
+    ioModule.defineAnalogInput(psiDef);
+
+    IOAnalogDefinition waterDef{};
+    snprintf(waterDef.id, sizeof(waterDef.id), "water_temp");
+    waterDef.source = IO_SRC_DS18_WATER;
+    waterDef.channel = 0;
+    waterDef.precision = 1;
+    waterDef.minValid = -55.0f;
+    waterDef.maxValid = 125.0f;
+    ioModule.defineAnalogInput(waterDef);
+
+    IOAnalogDefinition airDef{};
+    snprintf(airDef.id, sizeof(airDef.id), "air_temp");
+    airDef.source = IO_SRC_DS18_AIR;
+    airDef.channel = 0;
+    airDef.precision = 1;
+    airDef.minValid = -55.0f;
+    airDef.maxValid = 125.0f;
+    ioModule.defineAnalogInput(airDef);
 
     
-    bool ok = moduleManager.initAll(registry, i2c, services);
+    bool ok = moduleManager.initAll(registry, services);
     if (!ok) {
         while (true) delay(1000);
     }
@@ -205,12 +201,10 @@ void setup() {
     mqttModule.formatTopic(topicSensorsState, sizeof(topicSensorsState), "rt/sensors/state");
     mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");
     mqttModule.formatTopic(topicSystemState, sizeof(topicSystemState), "rt/system/state");
-    mqttModule.formatTopic(topicActuatorsState, sizeof(topicActuatorsState), "rt/actuators/state");
     mqttModule.setSensorsPublisher(topicSensorsState, buildSensorsSnapshot);
     mqttModule.addRuntimePublisher(topicSensorsState, 60000, 0, false, buildSensorsSnapshot);
     mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
     mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
-    mqttModule.addRuntimePublisher(topicActuatorsState, 15000, 0, false, buildActuatorsSnapshot);
 
     Serial.print(
         "\x1b[34m"

@@ -48,7 +48,7 @@ bool NTPModule::svcFormatLocalTime(void*, char* out, size_t len) {
     return true;
 }
 
-void NTPModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) {
+void NTPModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     cfg.registerVar(server1Var);
     cfg.registerVar(server2Var);
     cfg.registerVar(tzVar);

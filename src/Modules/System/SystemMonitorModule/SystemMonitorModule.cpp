@@ -21,7 +21,7 @@ const char* SystemMonitorModule::wifiStateStr(WifiState st) {
     }
 }
 
-void SystemMonitorModule::init(ConfigStore&, I2CManager&, ServiceRegistry& services) {
+void SystemMonitorModule::init(ConfigStore&, ServiceRegistry& services) {
     wifiSvc = services.get<WifiService>("wifi");
     cfgSvc  = services.get<ConfigStoreService>("config");
     logHub  = services.get<LogHubService>("loghub");

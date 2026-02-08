@@ -91,9 +91,8 @@ static void serialSinkWrite(void* ctx, const LogEntry& e) {
                   colorReset());
 }
 
-void LogSerialSinkModule::init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) {
+void LogSerialSinkModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
-    (void)i2c;
 
     Serial.begin(115200);
 

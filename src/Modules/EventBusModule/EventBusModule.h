@@ -24,7 +24,7 @@ public:
         return nullptr;
     }
     /** @brief Initialize and register EventBus service. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief Dispatch events from the queue. */
     void loop() override;
 

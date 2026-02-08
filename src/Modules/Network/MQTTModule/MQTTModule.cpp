@@ -5,7 +5,6 @@
 #include "MQTTModule.h"
 #include "Core/Runtime.h"
 #include "Core/SystemStats.h"
-#include "Modules/Sensors/SensorsRuntime.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include "Core/EventBus/EventPayloads.h"
@@ -207,7 +206,7 @@ void MQTTModule::processRx(const RxMsg& msg) {
     }
 }
 
-void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) {
+void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     cfg.registerVar(hostVar);
     cfg.registerVar(portVar);
     cfg.registerVar(userVar);

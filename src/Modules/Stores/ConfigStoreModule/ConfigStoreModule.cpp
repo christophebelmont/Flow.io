@@ -23,7 +23,7 @@ uint8_t ConfigStoreModule::svcListModules(void* ctx, const char** out, uint8_t m
     return ((ConfigStore*)ctx)->listModules(out, max);
 }
 
-void ConfigStoreModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) {
+void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     registry = &cfg;
 
     /// récupérer service loghub (log async)

@@ -23,7 +23,7 @@ public:
     }
 
     /** @brief Initialize DataStore and register service. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 
 private:
     DataStore _store;

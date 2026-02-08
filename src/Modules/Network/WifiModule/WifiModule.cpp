@@ -65,7 +65,6 @@ void WifiModule::startConnect() {
 }
 
 void WifiModule::init(ConfigStore& cfg,
-                      I2CManager&,
                       ServiceRegistry& services)
 {
     /// récupérer service loghub (log async)

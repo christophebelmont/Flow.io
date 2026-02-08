@@ -24,7 +24,7 @@ public:
     }
 
     /** @brief Start dispatcher task and wire sink registry. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 
 private:
     static void taskFn(void* pv);

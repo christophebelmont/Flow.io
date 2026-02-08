@@ -4,7 +4,6 @@
  * @brief Base interface for all runtime modules.
  */
 #include "ConfigStore.h"
-#include "I2CManager.h"
 #include "Runtime.h"
 #include "ServiceRegistry.h"
 #include "freertos/FreeRTOS.h"
@@ -29,7 +28,7 @@ public:
     virtual const char* dependency(uint8_t) const { return nullptr; }
 
     /** @brief Initialize module and register services/config. */
-    virtual void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) = 0;
+    virtual void init(ConfigStore& cfg, ServiceRegistry& services) = 0;
     /** @brief Main module loop called from the module task. */
     virtual void loop() = 0;
 

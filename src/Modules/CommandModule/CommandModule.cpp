@@ -16,7 +16,7 @@ bool CommandModule::svcExecute(void* ctx, const char* cmd, const char* json, con
     return ((CommandRegistry*)ctx)->execute(cmd, json, args, reply, replyLen);
 }
 
-void CommandModule::init(ConfigStore&, I2CManager&, ServiceRegistry& services) {
+void CommandModule::init(ConfigStore&, ServiceRegistry& services) {
     static CommandService svc{ svcRegister, svcExecute, nullptr };
     svc.ctx = &registry;
     services.add("cmd", &svc);

@@ -16,7 +16,7 @@ public:
     /** @brief Add a module to the manager. */
     void add(Module* m);
     /** @brief Initialize all modules in dependency order. */
-    bool initAll(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services);
+    bool initAll(ConfigStore& cfg, ServiceRegistry& services);
     /** @brief Wire core services into the registry. */
     void wireCoreServices(ServiceRegistry& services, ConfigStore& config);
     

@@ -43,7 +43,7 @@ struct MigrationStep {
 class ConfigStore {
 public:
     static constexpr size_t JSON_BUFFER_SIZE = 1024;
-    static constexpr size_t MAX_CONFIG_VARS = 64;
+    static constexpr size_t MAX_CONFIG_VARS = 128;
 
     //explicit ConfigStore(Preferences& prefs);
     ConfigStore() = default;

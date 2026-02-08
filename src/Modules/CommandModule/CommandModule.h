@@ -20,7 +20,7 @@ public:
     const char* dependency(uint8_t i) const override { return (i == 0) ? "loghub" : nullptr; }
 
     /** @brief Initialize registry and register service. */
-    void init(ConfigStore&, I2CManager&, ServiceRegistry& services) override;
+    void init(ConfigStore&, ServiceRegistry& services) override;
 
 private:
     CommandRegistry registry;

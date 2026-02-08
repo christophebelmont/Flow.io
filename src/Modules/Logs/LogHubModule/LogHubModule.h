@@ -18,7 +18,7 @@ public:
     const char* moduleId() const override { return "loghub"; }
 
     /** @brief Initialize log hub and register services. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 
 private:
     LogHub hub;

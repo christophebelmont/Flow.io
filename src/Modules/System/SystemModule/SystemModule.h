@@ -23,7 +23,7 @@ public:
     }
 
     /** @brief Register system commands. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
 
 private:
     const CommandService* cmdSvc = nullptr;

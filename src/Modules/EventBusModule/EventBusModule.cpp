@@ -7,7 +7,7 @@
 #include "Core/ModuleLog.h"
 
 
-void EventBusModule::init(ConfigStore&, I2CManager&, ServiceRegistry& services) {
+void EventBusModule::init(ConfigStore&, ServiceRegistry& services) {
     /// récupérer service loghub (log async)
     logHub = services.get<LogHubService>("loghub");
 

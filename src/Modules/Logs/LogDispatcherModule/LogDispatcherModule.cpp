@@ -13,9 +13,8 @@ struct DispatcherCtx {
 
 static DispatcherCtx g_ctx;
 
-void LogDispatcherModule::init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) {
+void LogDispatcherModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
-    (void)i2c;
 
     _services = &services;
 

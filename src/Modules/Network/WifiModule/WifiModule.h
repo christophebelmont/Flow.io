@@ -33,7 +33,7 @@ public:
     }
 
     /** @brief Initialize WiFi config/services. */
-    void init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief WiFi task loop. */
     void loop() override;
 

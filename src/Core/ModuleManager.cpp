@@ -115,7 +115,7 @@ bool ModuleManager::buildInitOrder() {
 }
 
 
-bool ModuleManager::initAll(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) {
+bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
     Log::debug(LOG_TAG_CORE, "initAll: moduleCount=%u", (unsigned)count);
     /*Serial.printf("[MOD] moduleCount=%d\n", count);
     for (int i=0;i<count;i++){
@@ -131,7 +131,7 @@ bool ModuleManager::initAll(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& 
     for (uint8_t i = 0; i < orderedCount; ++i) {
         ///Logger::log(LogLevel::Info, "MOD", "Init %s", ordered[i]->moduleId());
         Log::debug(LOG_TAG_CORE, "init: %s", ordered[i]->moduleId());
-        ordered[i]->init(cfg, i2c, services);
+        ordered[i]->init(cfg, services);
     }
 
     /// Load persistent config after all modules registered their variables.

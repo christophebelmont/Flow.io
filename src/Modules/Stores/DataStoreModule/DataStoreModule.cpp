@@ -4,7 +4,7 @@
  */
 #include "DataStoreModule.h"
 
-void DataStoreModule::init(ConfigStore&, I2CManager&, ServiceRegistry& services)
+void DataStoreModule::init(ConfigStore&, ServiceRegistry& services)
 {
     auto* eb = services.get<EventBusService>("eventbus");
     if (eb && eb->bus) {

@@ -42,7 +42,7 @@ public:
     }
 
     /** @brief Initialize MQTT config/services. */
-    void init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) override;
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief MQTT task loop. */
     void loop() override;
     /** @brief Extra stack for MQTT processing. */

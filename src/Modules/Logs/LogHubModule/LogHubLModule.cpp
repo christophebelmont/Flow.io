@@ -5,9 +5,8 @@
 #include "LogHubModule.h"
 #include "Core/Log.h"
 
-void LogHubModule::init(ConfigStore& cfg, I2CManager& i2c, ServiceRegistry& services) {
+void LogHubModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
-    (void)i2c;
 
     hub.init(32);
 
