@@ -76,6 +76,11 @@ void MQTTModule::onConnect(bool) {
     _retryCount = 0;
     _retryDelayMs = 2000;
     setState(MQTTState::Connected);
+
+    if (sensorsTopic && sensorsBuild) {
+        sensorsPending = true;
+        lastSensorsPublishMs = 0;
+    }
 }
 
 void MQTTModule::onDisconnect(AsyncMqttClientDisconnectReason) {
@@ -98,6 +103,19 @@ void MQTTModule::onMessage(char* topic, char* payload, AsyncMqttClientMessagePro
     xQueueSend(rxQ, &m, 0);
 }
 
+void MQTTModule::refreshConfigModules()
+{
+    if (cfgSvc && cfgSvc->listModules) {
+        cfgModuleCount = cfgSvc->listModules(cfgSvc->ctx, cfgModules, CFG_TOPIC_MAX);
+    } else {
+        cfgModuleCount = 0;
+    }
+    for (size_t i = 0; i < cfgModuleCount; ++i) {
+        snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
+                 "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
+    }
+}
+
 const char* MQTTModule::findJsonStringValue(const char* json, const char* key) {
     static char pat[48];
     snprintf(pat, sizeof(pat), "\"%s\":\"", key);
@@ -116,6 +134,7 @@ const char* MQTTModule::findJsonObjectStart(const char* json, const char* key) {
 
 void MQTTModule::publishConfigBlocks(bool retained) {
     if (!cfgSvc || !cfgSvc->toJsonModule) return;
+    refreshConfigModules();
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         bool truncated = false;
         bool any = cfgSvc->toJsonModule(cfgSvc->ctx, cfgModules[i], stateCfgBuf, sizeof(stateCfgBuf), &truncated);
@@ -195,6 +214,7 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
     cfg.registerVar(passVar);
     cfg.registerVar(baseTopicVar);
     cfg.registerVar(enabledVar);
+    cfg.registerVar(sensorMinVar);
 
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
@@ -209,6 +229,7 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
 
     if (eventBus) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::DataSnapshotAvailable, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::ConfigChanged, &MQTTModule::onEventStatic, this);
     }
 
@@ -223,11 +244,7 @@ void MQTTModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& services) 
         this->onMessage(t, p, pr, l, i, tot);
     });
 
-    if (cfgSvc && cfgSvc->listModules) {
-        cfgModuleCount = cfgSvc->listModules(cfgSvc->ctx, cfgModules, CFG_TOPIC_MAX);
-    } else {
-        cfgModuleCount = 0;
-    }
+    refreshConfigModules();
 
     LOGI("Init id=%s topic=%s cfgModules=%u", deviceId, topicCmd, (unsigned)cfgModuleCount);
 
@@ -267,6 +284,16 @@ void MQTTModule::loop() {
         while (xQueueReceive(rxQ, &m, 0) == pdTRUE) processRx(m);
         if (_pendingPublish) _pendingPublish = false;
         uint32_t now = millis();
+        if (sensorsPending && sensorsTopic && sensorsBuild) {
+            uint32_t minMs = cfgData.sensorMinPublishMs;
+            if (minMs == 0 || (uint32_t)(now - lastSensorsPublishMs) >= minMs) {
+                if (sensorsBuild(this, publishBuf, sizeof(publishBuf))) {
+                    publish(sensorsTopic, publishBuf, 0, false);
+                    lastSensorsPublishMs = now;
+                }
+                sensorsPending = false;
+            }
+        }
         for (uint8_t i = 0; i < publisherCount; ++i) {
             RuntimePublisher& p = publishers[i];
             if (!p.topic || !p.build) continue;
@@ -330,6 +357,26 @@ void MQTTModule::onEvent(const Event& e)
             LOGI("DataStore networkReady=false -> disconnect and wait");
             client.disconnect();
             setState(MQTTState::WaitingNetwork);
+        }
+        return;
+    }
+
+    if (e.id == EventId::DataSnapshotAvailable) {
+        const DataSnapshotPayload* p = (const DataSnapshotPayload*)e.payload;
+        if (!p) return;
+        if ((p->dirtyFlags & DIRTY_SENSORS) == 0) return;
+        sensorsPending = true;
+
+        if (state == MQTTState::Connected && sensorsTopic && sensorsBuild) {
+            uint32_t now = millis();
+            uint32_t minMs = cfgData.sensorMinPublishMs;
+            if (minMs == 0 || (uint32_t)(now - lastSensorsPublishMs) >= minMs) {
+                if (sensorsBuild(this, publishBuf, sizeof(publishBuf))) {
+                    publish(sensorsTopic, publishBuf, 0, false);
+                    lastSensorsPublishMs = now;
+                }
+                sensorsPending = false;
+            }
         }
         return;
     }

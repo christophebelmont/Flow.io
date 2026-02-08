@@ -84,12 +84,12 @@ void SensorsModule::init(ConfigStore& cfg, I2CManager&, ServiceRegistry& service
 
     if (!oneWireWater) {
         oneWireWater = new OneWireBus(cfgData.onewirePinWater);
-        oneWireWater->begin();
     }
     if (!oneWireAir) {
         oneWireAir = new OneWireBus(cfgData.onewirePinAir);
-        oneWireAir->begin();
     }
+    if (oneWireWater) oneWireWater->begin();
+    if (oneWireAir) oneWireAir->begin();
 
     setupDallasAddresses();
     setupSensors();

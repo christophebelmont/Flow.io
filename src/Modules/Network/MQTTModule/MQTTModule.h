@@ -15,6 +15,7 @@ struct MQTTConfig {
     char user[32] = "";
     char pass[32] = "";
     char baseTopic[64] = "flowio";
+    uint32_t sensorMinPublishMs = 10000;
     // reserved for future runtime publisher config
 };
 
@@ -60,6 +61,12 @@ public:
                              bool (*build)(MQTTModule* self, char* out, size_t outLen));
     bool publish(const char* topic, const char* payload, int qos = 0, bool retain = false);
     void formatTopic(char* out, size_t outLen, const char* suffix) const;
+    void setSensorsPublisher(const char* topic, bool (*build)(MQTTModule* self, char* out, size_t outLen)) {
+        sensorsTopic = topic;
+        sensorsBuild = build;
+        sensorsPending = true;
+        lastSensorsPublishMs = 0;
+    }
     DataStore* dataStorePtr() const { return dataStore; }
 
 private:
@@ -89,6 +96,11 @@ private:
     const char* cfgModules[CFG_TOPIC_MAX] = {nullptr};
     uint8_t cfgModuleCount = 0;
     char topicCfgBlocks[CFG_TOPIC_MAX][128] = {{0}};
+
+    const char* sensorsTopic = nullptr;
+    bool (*sensorsBuild)(MQTTModule* self, char* out, size_t outLen) = nullptr;
+    bool sensorsPending = false;
+    uint32_t lastSensorsPublishMs = 0;
 
     struct RxMsg {
         char topic[128];
@@ -124,9 +136,14 @@ private:
         NVS_KEY("mq_en"),"enabled","mqtt",ConfigType::Bool,
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
+    ConfigVariable<int32_t,0> sensorMinVar {
+        NVS_KEY("mq_smin"),"sensor_min_publish_ms","mqtt",ConfigType::Int32,
+        (int32_t*)&cfgData.sensorMinPublishMs,ConfigPersistence::Persistent,0
+    };
 
     void setState(MQTTState s);
     void buildTopics();
+    void refreshConfigModules();
     void connectMqtt();
     void processRx(const RxMsg& msg);
     void publishConfigBlocks(bool retained);

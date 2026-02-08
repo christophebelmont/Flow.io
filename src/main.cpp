@@ -206,7 +206,8 @@ void setup() {
     mqttModule.formatTopic(topicNetworkState, sizeof(topicNetworkState), "rt/network/state");
     mqttModule.formatTopic(topicSystemState, sizeof(topicSystemState), "rt/system/state");
     mqttModule.formatTopic(topicActuatorsState, sizeof(topicActuatorsState), "rt/actuators/state");
-    mqttModule.addRuntimePublisher(topicSensorsState, 15000, 0, false, buildSensorsSnapshot);
+    mqttModule.setSensorsPublisher(topicSensorsState, buildSensorsSnapshot);
+    mqttModule.addRuntimePublisher(topicSensorsState, 60000, 0, false, buildSensorsSnapshot);
     mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
     mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
     mqttModule.addRuntimePublisher(topicActuatorsState, 15000, 0, false, buildActuatorsSnapshot);
