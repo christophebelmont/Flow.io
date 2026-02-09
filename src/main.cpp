@@ -20,6 +20,7 @@
 #include "Modules/Network/WifiModule/WifiModule.h"
 #include "Modules/Network/NTPModule/NTPModule.h"
 #include "Modules/Network/MQTTModule/MQTTModule.h"
+#include "Modules/Network/HAModule/HAModule.h"
 // Stores Modules
 #include "Modules/Stores/ConfigStoreModule/ConfigStoreModule.h"
 #include "Modules/Stores/DataStoreModule/DataStoreModule.h"
@@ -57,6 +58,7 @@ static CommandModule        commandModule;
 static ConfigStoreModule    configStoreModule;
 static DataStoreModule      dataStoreModule;
 static MQTTModule           mqttModule;
+static HAModule             haModule;
 static SystemModule         systemModule;
 static SystemMonitorModule  systemMonitorModule;
 static LogSerialSinkModule  logSerialSinkModule;
@@ -262,6 +264,7 @@ void setup() {
     moduleManager.add(&wifiModule);
     moduleManager.add(&ntpModule);
     moduleManager.add(&mqttModule);
+    moduleManager.add(&haModule);
     moduleManager.add(&systemModule);
     moduleManager.add(&ioModule);
 
@@ -271,7 +274,7 @@ void setup() {
     ioModule.setOneWireBuses(&oneWireWater, &oneWireAir);
 
     IOAnalogDefinition phDef{};
-    snprintf(phDef.id, sizeof(phDef.id), "ph");
+    snprintf(phDef.id, sizeof(phDef.id), "pH");
     phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     phDef.channel = 0;
     phDef.precision = 1;
@@ -280,7 +283,7 @@ void setup() {
     ioModule.defineAnalogInput(phDef);
 
     IOAnalogDefinition orpDef{};
-    snprintf(orpDef.id, sizeof(orpDef.id), "orp");
+    snprintf(orpDef.id, sizeof(orpDef.id), "ORP");
     orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     orpDef.channel = 1;
     orpDef.precision = 0;
@@ -289,7 +292,7 @@ void setup() {
     ioModule.defineAnalogInput(orpDef);
 
     IOAnalogDefinition psiDef{};
-    snprintf(psiDef.id, sizeof(psiDef.id), "psi");
+    snprintf(psiDef.id, sizeof(psiDef.id), "PSI");
     psiDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     psiDef.channel = 2;
     psiDef.precision = 1;
@@ -298,7 +301,7 @@ void setup() {
     ioModule.defineAnalogInput(psiDef);
 
     IOAnalogDefinition waterDef{};
-    snprintf(waterDef.id, sizeof(waterDef.id), "water_temp");
+    snprintf(waterDef.id, sizeof(waterDef.id), "Water Temperature");
     waterDef.source = IO_SRC_DS18_WATER;
     waterDef.channel = 0;
     waterDef.precision = 1;
@@ -309,7 +312,7 @@ void setup() {
     ioModule.defineAnalogInput(waterDef);
 
     IOAnalogDefinition airDef{};
-    snprintf(airDef.id, sizeof(airDef.id), "air_temp");
+    snprintf(airDef.id, sizeof(airDef.id), "Air Temperature");
     airDef.source = IO_SRC_DS18_AIR;
     airDef.channel = 0;
     airDef.precision = 1;

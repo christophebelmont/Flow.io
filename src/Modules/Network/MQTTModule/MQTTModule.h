@@ -61,6 +61,7 @@ public:
                              bool (*build)(MQTTModule* self, char* out, size_t outLen));
     bool publish(const char* topic, const char* payload, int qos = 0, bool retain = false);
     void formatTopic(char* out, size_t outLen, const char* suffix) const;
+    bool isConnected() const { return state == MQTTState::Connected; }
     void setSensorsPublisher(const char* topic, bool (*build)(MQTTModule* self, char* out, size_t outLen)) {
         sensorsTopic = topic;
         sensorsBuild = build;
@@ -113,6 +114,7 @@ private:
     char replyBuf[256] = {0};
     char stateCfgBuf[768] = {0};
     char publishBuf[1536] = {0};
+    MqttService mqttSvc{ nullptr, nullptr, nullptr, nullptr };
 
     ConfigVariable<char,0> hostVar {
         NVS_KEY("mq_host"),"host","mqtt",ConfigType::CharArray,
@@ -160,6 +162,10 @@ private:
 
     static void onEventStatic(const Event& e, void* user);
     void onEvent(const Event& e);
+
+    static bool svcPublish(void* ctx, const char* topic, const char* payload, int qos, bool retain);
+    static void svcFormatTopic(void* ctx, const char* suffix, char* out, size_t outLen);
+    static bool svcIsConnected(void* ctx);
 
     // ---- network warmup ----
     bool _netReady = false;

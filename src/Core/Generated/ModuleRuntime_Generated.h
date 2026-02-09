@@ -8,6 +8,7 @@
 // Do not edit manually.
 
 #include "Modules/IOModule/IORuntime.h"
+#include "Modules/Network/HAModule/HARuntime.h"
 #include "Modules/Network/MQTTModule/MQTTRuntime.h"
 #include "Modules/Network/NTPModule/NTPRuntime.h"
 #include "Modules/Network/WifiModule/WifiRuntime.h"

@@ -1,0 +1,121 @@
+#pragma once
+/**
+ * @file HAModule.h
+ * @brief Home Assistant auto-discovery publisher.
+ */
+
+#include "Core/ModulePassive.h"
+#include "Core/EventBus/EventBus.h"
+#include "Core/Services/Services.h"
+#include "Core/Runtime.h"
+#include <stdint.h>
+#include <stddef.h>
+
+/**
+ * @brief Passive module that publishes Home Assistant MQTT discovery topics once at startup.
+ */
+class HAModule : public ModulePassive {
+public:
+    const char* moduleId() const override { return "ha"; }
+
+    uint8_t dependencyCount() const override { return 4; }
+    const char* dependency(uint8_t i) const override {
+        if (i == 0) return "eventbus";
+        if (i == 1) return "config";
+        if (i == 2) return "datastore";
+        if (i == 3) return "mqtt";
+        return nullptr;
+    }
+
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
+
+private:
+    struct HAConfig {
+        bool enabled = true;
+        char vendor[32] = "FlowIO";
+        char deviceId[32] = "";
+        char discoveryPrefix[32] = "homeassistant";
+        char model[40] = "FlowIO Controller";
+    };
+
+    enum class JsonValueType : uint8_t {
+        Unknown = 0,
+        String,
+        Number,
+        Bool
+    };
+
+    const EventBusService* eventBusSvc = nullptr;
+    const ConfigStoreService* cfgSvc = nullptr;
+    const DataStoreService* dsSvc = nullptr;
+    const MqttService* mqttSvc = nullptr;
+
+    HAConfig cfgData{};
+    bool published = false;
+    char deviceId[32] = {0};
+    char deviceIdent[96] = {0};
+    char nodeTopicId[32] = {0};
+
+    char moduleJsonBuf[1024] = {0};
+    char topicBuf[256] = {0};
+    char payloadBuf[768] = {0};
+    char stateTopicBuf[192] = {0};
+
+    ConfigVariable<bool,0> enabledVar {
+        NVS_KEY("ha_en"),"enabled","ha",ConfigType::Bool,
+        &cfgData.enabled,ConfigPersistence::Persistent,0
+    };
+    ConfigVariable<char,0> vendorVar {
+        NVS_KEY("ha_vend"),"vendor","ha",ConfigType::CharArray,
+        (char*)cfgData.vendor,ConfigPersistence::Persistent,sizeof(cfgData.vendor)
+    };
+    ConfigVariable<char,0> deviceIdVar {
+        NVS_KEY("ha_devid"),"device_id","ha",ConfigType::CharArray,
+        (char*)cfgData.deviceId,ConfigPersistence::Persistent,sizeof(cfgData.deviceId)
+    };
+    ConfigVariable<char,0> prefixVar {
+        NVS_KEY("ha_pref"),"discovery_prefix","ha",ConfigType::CharArray,
+        (char*)cfgData.discoveryPrefix,ConfigPersistence::Persistent,sizeof(cfgData.discoveryPrefix)
+    };
+    ConfigVariable<char,0> modelVar {
+        NVS_KEY("ha_model"),"model","ha",ConfigType::CharArray,
+        (char*)cfgData.model,ConfigPersistence::Persistent,sizeof(cfgData.model)
+    };
+
+    static void onEventStatic(const Event& e, void* user);
+    void onEvent(const Event& e);
+    void refreshIdentityFromConfig();
+    void tryPublishAutoconfig();
+    bool publishAutoconfig();
+
+    bool publishConfigStoreEntities();
+    bool publishDataStoreEntities();
+
+    bool publishSensor(const char* objectId, const char* name,
+                       const char* stateTopic, const char* valueTemplate,
+                       const char* entityCategory = nullptr,
+                       const char* icon = nullptr,
+                       const char* unit = nullptr);
+    bool publishBinarySensor(const char* objectId, const char* name,
+                             const char* stateTopic, const char* valueTemplate,
+                             const char* deviceClass = nullptr,
+                             const char* entityCategory = nullptr,
+                             const char* icon = nullptr);
+    bool publishSwitch(const char* objectId, const char* name,
+                       const char* stateTopic, const char* valueTemplate,
+                       const char* commandTopic,
+                       const char* payloadOn, const char* payloadOff,
+                       const char* icon = nullptr);
+    bool publishDiscovery(const char* component, const char* objectId, const char* payload);
+    const char* iconForInput(uint8_t idx, const char* label) const;
+    const char* unitForInput(uint8_t idx, const char* label) const;
+    const char* iconForOutput(const char* label) const;
+
+    bool readConfigString(const char* module, const char* key, char* out, size_t outLen);
+    bool nextModulePair(const char*& p, char* keyOut, size_t keyOutLen, JsonValueType& typeOut) const;
+
+    static void makeDeviceId(char* out, size_t len);
+    static void makeHexNodeId(char* out, size_t len);
+    static void sanitizeId(const char* in, char* out, size_t outLen);
+    static const char* skipWs(const char* p);
+};

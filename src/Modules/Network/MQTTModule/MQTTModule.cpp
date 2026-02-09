@@ -28,6 +28,24 @@ static uint32_t jitterMs(uint32_t baseMs, uint8_t pct) {
     return (uint32_t)out;
 }
 
+bool MQTTModule::svcPublish(void* ctx, const char* topic, const char* payload, int qos, bool retain)
+{
+    MQTTModule* self = static_cast<MQTTModule*>(ctx);
+    return self ? self->publish(topic, payload, qos, retain) : false;
+}
+
+void MQTTModule::svcFormatTopic(void* ctx, const char* suffix, char* out, size_t outLen)
+{
+    MQTTModule* self = static_cast<MQTTModule*>(ctx);
+    if (!self) return;
+    self->formatTopic(out, outLen, suffix);
+}
+
+bool MQTTModule::svcIsConnected(void* ctx)
+{
+    MQTTModule* self = static_cast<MQTTModule*>(ctx);
+    return self ? self->isConnected() : false;
+}
 
 void MQTTModule::setState(MQTTState s) {
     state = s;
@@ -228,6 +246,12 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
 
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore = dsSvc ? dsSvc->store : nullptr;
+
+    mqttSvc.publish = MQTTModule::svcPublish;
+    mqttSvc.formatTopic = MQTTModule::svcFormatTopic;
+    mqttSvc.isConnected = MQTTModule::svcIsConnected;
+    mqttSvc.ctx = this;
+    services.add("mqtt", &mqttSvc);
 
     if (eventBus) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
