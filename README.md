@@ -59,6 +59,7 @@ Spécification détaillée: [MQTTModule](docs/MQTTModule.md)
 - [DevGuide](docs/DevGuide.md)
 - [IOModule](docs/IOModule.md)
 - [MQTTModule](docs/MQTTModule.md)
+- [Core Services Guidelines](docs/CoreServicesGuidelines.md)
 
 ## Développement
 - Génération modèle runtime: `scripts/generate_datamodel.py`

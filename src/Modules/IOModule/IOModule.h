@@ -91,14 +91,6 @@ struct IODigitalOutputSlotConfig {
     int32_t pulseMs = 500;
 };
 
-struct IOLedMaskService {
-    bool (*setMask)(void* ctx, uint8_t mask);
-    bool (*turnOn)(void* ctx, uint8_t bit);
-    bool (*turnOff)(void* ctx, uint8_t bit);
-    bool (*getMask)(void* ctx, uint8_t* mask);
-    void* ctx;
-};
-
 class IOModule : public Module, public IRuntimeSnapshotProvider {
 public:
     const char* moduleId() const override { return "io"; }

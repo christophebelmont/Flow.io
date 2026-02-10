@@ -170,7 +170,7 @@ Sémantique:
 
 Service enregistré (si PCF actif):
 - id service: `io_leds`
-- interface: `IOLedMaskService`
+- interface: `IOLedMaskService` (définie dans `src/Core/Services/IIO.h`)
   - `setMask(mask)`
   - `turnOn(bit)`
   - `turnOff(bit)`
