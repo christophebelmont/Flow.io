@@ -1,75 +1,80 @@
-# Flow.io ESP32 Modular Framework
+# Flow.io - Gestion et regulation de piscine sur ESP32
 
-Framework C++17 pour ESP32 sous PlatformIO/Arduino + FreeRTOS. Le firmware est structuré en modules isolés, avec services typés, configuration persistante et DataStore runtime.
+Flow.io est un firmware ESP32 conçu pour piloter une piscine de façon fiable et industrialisable: mesures en continu (pH, ORP, pression, temperatures), commande d'equipements (pompes, electrolyseur, eclairage, chauffage, remplissage), supervision runtime et remontee des metriques vers MQTT/Home Assistant. L'objectif produit est simple: transformer une installation piscine en systeme connecte, pilotable et observable en temps reel, avec une architecture robuste et evolutive.
 
-## Points clés
-- C++17 + PlatformIO + FreeRTOS
-- 1 task FreeRTOS par module actif
-- Dépendances explicites et ordre d’init automatique
-- Registre de services typés (`ServiceRegistry`)
-- Configuration persistante NVS (`ConfigStore` + `Preferences`)
-- Import/Export JSON de config
-- EventBus avec payloads fixes
-- Logging centralisé (hub + sinks)
-- DataStore runtime + dirty flags + notifications
-- MQTT: commandes, config, et snapshots runtime
+## Architecture modulaire ESP32
 
-## Arborescence
-```
+Le programme est entierement modulaire:
+
+- chaque fonctionnalite est implementee dans un module autonome (`Module` ou `ModulePassive`)
+- les dependances entre modules sont explicites (`dependencyCount`, `dependency`)
+- les services inter-modules sont types et enregistres dans `ServiceRegistry`
+- l'etat runtime partage est centralise dans `DataStore` (avec dirty flags et evenements)
+- la configuration persistante est centralisee dans `ConfigStore` (NVS + import/export JSON)
+- les modules actifs tournent dans leur propre task FreeRTOS
+
+Ce design est adapte a l'ESP32: couplage faible, evolutions maitrisees et integration progressive de nouveaux capteurs/actionneurs.
+
+## Structure globale du projet
+
+```text
 src/
-  main.cpp
   Core/
-    Module.h / ModuleManager.h
-    ServiceRegistry.h
-    ConfigStore.h / ConfigTypes.h / ConfigMigrations.h
-    EventBus/
-    DataStore/
-    LogHub.h / LogSinkRegistry.h
-    SystemStats.h
-    Services/ (interfaces de services)
+    Module*.h/.cpp                 # socle module manager + services + runtime
+    Services/                      # interfaces de services (IWifi, IMqtt, ITime, ...)
+    DataStore/                     # etat runtime + notifications EventBus
+    EventBus/                      # bus d'evenements inter-modules
   Modules/
-    Logs/ (LogHub, LogDispatcher, LogSerial)
-    EventBusModule/
-    CommandModule/
-    Stores/ (ConfigStoreModule, DataStoreModule)
-    System/ (SystemModule, SystemMonitorModule)
-    Network/ (WifiModule, TimeModule, MQTTModule)
-    IOModule/ (IOBus, IODrivers, IOEndpoints, IORegistry, IOScheduler)
-platformio.ini
+    Logs/                          # hub de logs + dispatcher + sink serie
+    Stores/                        # ConfigStoreModule + DataStoreModule
+    System/                        # commandes systeme + monitoring
+    Network/                       # Wifi, Time, MQTT, Home Assistant
+    IOModule/                      # capteurs/actionneurs, bus, drivers, endpoints
+    PoolDeviceModule/              # couche metier equipements piscine
+    EventBusModule/                # service eventbus
+    CommandModule/                 # registre de commandes
+docs/
+  modules/                         # documentation detaillee module par module
+  CoreServicesGuidelines.md        # regles de design des services core
+  ModuleDevGuide.md                # guide pour creer un nouveau module
 ```
 
-## Modules (actuels)
-- **Logs**: `LogHubModule`, `LogDispatcherModule`, `LogSerialSinkModule`
-- **Core**: `EventBusModule`, `CommandModule`, `ConfigStoreModule`, `DataStoreModule`
-- **System**: `SystemModule`, `SystemMonitorModule`
-- **Network**: `WifiModule`, `TimeModule`, `MQTTModule`
-- **I/O**: `IOModule`
+## Modules disponibles
 
-## MQTT (résumé)
-Topics racine: `flowio/<deviceId>/...`
-- `cmd`, `ack`, `status`
-- `cfg/set`, `cfg/ack`, `cfg/<module>`
-- `rt/io/state` (snapshot JSON)
-- `rt/network/state` (snapshot JSON)
-- `rt/system/state` (snapshot JSON)
+- Logs: `loghub`, `log.dispatcher`, `log.sink.serial`
+- Core runtime: `eventbus`, `config`, `datastore`, `cmd`
+- Systeme: `system`, `sysmon`
+- Reseau: `wifi`, `time`, `mqtt`, `ha`
+- Metier piscine: `io`, `pooldev`
 
-Spécification détaillée: [MQTTModule](docs/MQTTModule.md)
+## Documentation complete
 
-## Documentation
-- [DevGuide](docs/DevGuide.md)
-- [IOModule](docs/IOModule.md)
-- [MQTTModule](docs/MQTTModule.md)
-- [Core Services Guidelines](docs/CoreServicesGuidelines.md)
+### Documentation module par module (meme structure)
 
-## Développement
-- Génération modèle runtime: `scripts/generate_datamodel.py`
-- Exemple complet de module: [DevGuide](docs/DevGuide.md)
+- [LogHubModule](docs/modules/LogHubModule.md)
+- [LogDispatcherModule](docs/modules/LogDispatcherModule.md)
+- [LogSerialSinkModule](docs/modules/LogSerialSinkModule.md)
+- [EventBusModule](docs/modules/EventBusModule.md)
+- [CommandModule](docs/modules/CommandModule.md)
+- [ConfigStoreModule](docs/modules/ConfigStoreModule.md)
+- [DataStoreModule](docs/modules/DataStoreModule.md)
+- [SystemModule](docs/modules/SystemModule.md)
+- [SystemMonitorModule](docs/modules/SystemMonitorModule.md)
+- [WifiModule](docs/modules/WifiModule.md)
+- [TimeModule](docs/modules/TimeModule.md)
+- [MQTTModule](docs/modules/MQTTModule.md)
+- [HAModule](docs/modules/HAModule.md)
+- [IOModule](docs/modules/IOModule.md)
+- [PoolDeviceModule](docs/modules/PoolDeviceModule.md)
+
+### Guides transverses
+
+- [CoreServicesGuidelines](docs/CoreServicesGuidelines.md)
+- [ModuleDevGuide](docs/ModuleDevGuide.md)
+- [DevGuide (historique)](docs/DevGuide.md)
 
 ## Build
-```
+
+```bash
 pio run
 ```
-
-## Notes
-- Les modèles runtime sont agrégés via `ModuleDataModel_Generated.h`.
-- Les helpers runtime sont agrégés via `ModuleRuntime_Generated.h`.

@@ -1,99 +1,66 @@
-# Guide de décision: Core Services vs EventBus vs DataStore
+# Core Services Guidelines
 
-Ce guide décrit quand créer un service dans `src/Core/Services/`, et quand préférer `EventBus` ou `DataStore`.
+Ce guide formalise quand creer un service Core dans `src/Core/Services/` et quand preferer `EventBus` ou `DataStore`.
 
-## 1) Règle simple
+## 1) Regle de decision rapide
 
-Utiliser un **Core Service** quand un module expose une **capacité appelable** (API) dont d'autres modules ont besoin.
+- Utiliser un **service Core** pour exposer une **capacite appelable** (API synchrone) a plusieurs modules.
+- Utiliser **EventBus** pour diffuser une **notification asynchrone** (fire-and-forget).
+- Utiliser **DataStore** pour partager un **etat runtime** (derniere valeur connue + dirty flags).
 
-Utiliser **EventBus** quand on diffuse une **notification asynchrone** à plusieurs consommateurs.
+## 2) Criteres pour creer un service Core
 
-Utiliser **DataStore** pour l'**état runtime partagé** (dernière valeur connue), avec dirty flags/snapshots.
+Creer un service seulement si les conditions suivantes sont reunies:
 
-## 2) Quand utiliser un Core Service
+1. Un proprietaire clair de la capacite existe (module producteur unique).
+2. Les consommateurs ont besoin d'un appel direct (pas uniquement d'un evenement).
+3. Le contrat est stable (reutilisable, pas ponctuel).
+4. Le besoin n'est pas un simple etat qui devrait vivre dans `DataStore`.
 
-Créer un service Core si les 4 conditions ci-dessous sont vraies:
+## 3) Criteres pour NE PAS creer un service Core
 
-1. Il y a un producteur unique (ou clairement propriétaire) de la fonctionnalité.
-2. Les consommateurs ont besoin d'appels directs (synchrones), pas seulement d'une notification.
-3. Le contrat est stable et réutilisable (plus d'un usage ponctuel).
-4. L'API n'est pas un simple "état courant" qui peut vivre dans `DataStore`.
+Ne pas creer de service si:
 
-Exemples existants:
-- `CommandService` pour enregistrer/exécuter des commandes.
-- `MqttService` pour publier/formatter des topics.
-- `TimeService` pour exposer l'état NTP et l'heure.
+1. Le besoin est un trigger asynchrone multi-consommateurs (`EventBus`).
+2. Le besoin est la lecture d'un etat (`DataStore`).
+3. Le contrat n'a qu'un seul usage local et temporaire.
+4. Un service equivalent existe deja.
 
-## 3) Quand NE PAS créer un Core Service
+## 4) Inventaire des services Core du projet
 
-Ne pas créer de service Core si:
+- `eventbus` -> `EventBusService` (owner: `EventBusModule`)
+- `config` -> `ConfigStoreService` (owner: `ConfigStoreModule`)
+- `datastore` -> `DataStoreService` (owner: `DataStoreModule`)
+- `cmd` -> `CommandService` (owner: `CommandModule`)
+- `wifi` -> `WifiService` (owner: `WifiModule`)
+- `mqtt` -> `MqttService` (owner: `MQTTModule`)
+- `time` -> `TimeService` (owner: `TimeModule`)
+- `time.scheduler` -> `TimeSchedulerService` (owner: `TimeModule`)
+- `io_leds` -> `IOLedMaskService` (owner: `IOModule`, seulement si PCF8574 actif)
+- `loghub` -> `LogHubService` (owner: `LogHubModule`)
+- `logsinks` -> `LogSinkRegistryService` (owner: `LogHubModule`)
 
-1. Le besoin est une notification "fire-and-forget": utiliser `EventBus`.
-2. Le besoin est de lire la dernière valeur d'un état: utiliser `DataStore`.
-3. Le contrat est local à un module et n'a pas de consommateur réel.
-4. Le service dupliquerait une capacité déjà disponible via un service existant.
+## 5) Regles d'implementation
 
-Exemple:
-- Les valeurs capteurs/actionneurs I/O ne doivent pas devenir un service "get/set global".
-  Elles doivent rester dans `DataStore` + publications runtime MQTT.
+- Ajouter l'interface dans `src/Core/Services/`.
+- Ajouter l'include dans `src/Core/Services/Services.h`.
+- Enregistrer le service dans le module producteur avec `services.add("service-id", &svc)`.
+- Declarer les dependances des consommateurs via `dependency()`.
+- Cote consommateur, verifier les pointeurs retournes par `services.get<...>()`.
 
-## 4) Exemple: créer un Core Service (producer/consumer)
+## 6) Frontiere Service vs DataStore dans Flow.io
 
-### 4.1 Interface (Core)
+- Les commandes d'action (`io.write`, `pool.write`) restent des commandes metier; l'etat resultant est publie dans `DataStore`.
+- Les etats `wifi.ready`, `mqtt.ready`, `time.ready`, `io.*`, `pool.*` appartiennent au runtime (`DataStore`).
+- Les orchestrations asynchrones (ex: scheduler -> reset compteurs pool) passent par `EventBus`.
 
-```cpp
-// src/Core/Services/IExample.h
-struct ExampleService {
-    bool (*doThing)(void* ctx, int value);
-    void* ctx;
-};
-```
+## 7) Checklist avant d'ajouter un nouveau service
 
-Puis l'ajouter à `src/Core/Services/Services.h`.
+1. Qui est proprietaire unique de la capacite?
+2. Pourquoi un appel direct est necessaire?
+3. Pourquoi `EventBus` est insuffisant?
+4. Pourquoi `DataStore` est insuffisant?
+5. Quels modules consomment reellement ce service aujourd'hui?
+6. Quel `service-id` stable sera utilise?
 
-### 4.2 Producteur (module)
-
-```cpp
-class ExampleModule : public Module {
-    static bool doThing_(void* ctx, int value);
-    ExampleService svc_{ doThing_, this };
-
-    void init(ConfigStore&, ServiceRegistry& services) override {
-        services.add("example", &svc_);
-    }
-};
-```
-
-### 4.3 Consommateur
-
-```cpp
-void ConsumerModule::init(ConfigStore&, ServiceRegistry& services) {
-    exampleSvc_ = services.get<ExampleService>("example");
-}
-```
-
-Toujours:
-- déclarer la dépendance module (`dependency()`),
-- vérifier `nullptr` côté consommateur.
-
-## 5) Exemple appliqué IOModule
-
-Le service I/O LED mask est désormais centralisé côté Core:
-- interface: `src/Core/Services/IIO.h` (`IOLedMaskService`)
-- id service: `io_leds`
-- producteur: `IOModule` (enregistre quand PCF8574 est disponible)
-
-Ce choix est correct car:
-- c'est une capacité actionnable (set/turnOn/turnOff/getMask),
-- potentiellement utilisée par plusieurs consommateurs,
-- indépendante du modèle d'état runtime.
-
-## 6) Checklist avant d'ajouter un service Core
-
-1. Qui est le propriétaire unique de la capacité?
-2. Ai-je besoin d'appels directs plutôt que d'événements?
-3. Est-ce de l'état (DataStore) ou une action/API (Service)?
-4. Le contrat sera-t-il réutilisé dans au moins 2 contextes?
-5. Puis-je nommer clairement l'id de service et gérer son absence?
-
-Si la réponse est "non" à 2 ou plus de ces questions, privilégier `EventBus` ou `DataStore`.
+Si 2 reponses ou plus sont faibles ou ambiguës, preferer `EventBus` et/ou `DataStore`.
