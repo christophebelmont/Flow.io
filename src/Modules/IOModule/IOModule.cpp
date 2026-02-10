@@ -610,11 +610,11 @@ bool IOModule::handleIoWrite_(const CommandRequest& req, char* reply, size_t rep
         uint8_t rtIdx = 0;
         if (endpointIndexFromId_(id, rtIdx)) {
             if (in.valueType == IO_EP_VALUE_BOOL) {
-                (void)setIoEndpointBool(*dataStore_, rtIdx, in.v.b, in.timestampMs, DIRTY_SENSORS);
+                (void)setIoEndpointBool(*dataStore_, rtIdx, in.v.b, in.timestampMs, DIRTY_ACTUATORS);
             } else if (in.valueType == IO_EP_VALUE_INT32) {
-                (void)setIoEndpointInt(*dataStore_, rtIdx, in.v.i, in.timestampMs, DIRTY_SENSORS);
+                (void)setIoEndpointInt(*dataStore_, rtIdx, in.v.i, in.timestampMs, DIRTY_ACTUATORS);
             } else if (in.valueType == IO_EP_VALUE_FLOAT) {
-                (void)setIoEndpointFloat(*dataStore_, rtIdx, in.v.f, in.timestampMs, DIRTY_SENSORS);
+                (void)setIoEndpointFloat(*dataStore_, rtIdx, in.v.f, in.timestampMs, DIRTY_ACTUATORS);
             }
         }
     }

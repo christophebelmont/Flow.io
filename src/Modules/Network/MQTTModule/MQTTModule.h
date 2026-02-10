@@ -103,6 +103,7 @@ private:
     const char* sensorsTopic = nullptr;
     bool (*sensorsBuild)(MQTTModule* self, char* out, size_t outLen) = nullptr;
     bool sensorsPending = false;
+    bool sensorsBypassThrottlePending = false;
     uint32_t lastSensorsPublishMs = 0;
 
     struct RxMsg {

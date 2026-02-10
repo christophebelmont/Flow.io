@@ -96,6 +96,7 @@ void MQTTModule::onConnect(bool) {
 
     if (sensorsTopic && sensorsBuild) {
         sensorsPending = true;
+        sensorsBypassThrottlePending = false;
         lastSensorsPublishMs = 0;
     }
 }
@@ -311,14 +312,16 @@ void MQTTModule::loop() {
         if (_pendingPublish) _pendingPublish = false;
         uint32_t now = millis();
         if (sensorsPending && sensorsTopic && sensorsBuild) {
+            bool bypassThrottle = sensorsBypassThrottlePending;
             uint32_t minMs = cfgData.sensorMinPublishMs;
-            if (minMs == 0 || (uint32_t)(now - lastSensorsPublishMs) >= minMs) {
+            if (bypassThrottle || minMs == 0 || (uint32_t)(now - lastSensorsPublishMs) >= minMs) {
                 if (sensorsBuild(this, publishBuf, sizeof(publishBuf))) {
                     publish(sensorsTopic, publishBuf, 0, false);
                 }
                 // Update throttle window even if callback published manually.
                 lastSensorsPublishMs = now;
                 sensorsPending = false;
+                sensorsBypassThrottlePending = false;
             }
         }
         for (uint8_t i = 0; i < publisherCount; ++i) {
@@ -393,8 +396,11 @@ void MQTTModule::onEvent(const Event& e)
     if (e.id == EventId::DataSnapshotAvailable) {
         const DataSnapshotPayload* p = (const DataSnapshotPayload*)e.payload;
         if (!p) return;
-        if ((p->dirtyFlags & DIRTY_SENSORS) == 0) return;
+        bool sensorsChanged = (p->dirtyFlags & DIRTY_SENSORS) != 0;
+        bool actuatorsChanged = (p->dirtyFlags & DIRTY_ACTUATORS) != 0;
+        if (!sensorsChanged && !actuatorsChanged) return;
         sensorsPending = true;
+        if (actuatorsChanged) sensorsBypassThrottlePending = true;
         return;
     }
 

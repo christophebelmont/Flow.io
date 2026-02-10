@@ -169,10 +169,10 @@ Payload `rt/io/output/state` :
 ```
 
 Comportement de publication sur changement :
-- publication déclenchée via événement DataStore (`DIRTY_SENSORS`)
-- les changements d'`io.write` sur sorties digitales alimentent aussi le DataStore
+- publication déclenchée via événement DataStore (`DIRTY_SENSORS` pour inputs, `DIRTY_ACTUATORS` pour outputs)
+- les changements d'`io.write` sur sorties digitales alimentent le DataStore en `DIRTY_ACTUATORS`
 - pour limiter les payloads, seul le bloc `input` ou `output` modifié est republié
-- cadence limitée par `sensor_min_publish_ms`
+- cadence `sensor_min_publish_ms` appliquée aux inputs uniquement; les outputs sont publiés immédiatement
 
 ### 7.2 Network
 
@@ -211,7 +211,8 @@ Payload :
 ## 8) Périodicité par défaut
 
 - `rt/io/input/state` et `rt/io/output/state` : publication sur changement (événement DataStore)
-- publication sur changement limitée par `sensor_min_publish_ms` (10 s par défaut)
+- `rt/io/input/state` limité par `sensor_min_publish_ms` (10 s par défaut)
+- `rt/io/output/state` non throttlé (publication immédiate sur changement)
 - `rt/network/state` : 60 s
 - `rt/system/state` : 60 s
 
