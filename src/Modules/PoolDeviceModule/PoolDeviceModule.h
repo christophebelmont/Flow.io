@@ -33,14 +33,15 @@ public:
     const char* moduleId() const override { return "pooldev"; }
     const char* taskName() const override { return "pooldev"; }
 
-    uint8_t dependencyCount() const override { return 6; }
+    uint8_t dependencyCount() const override { return 7; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "datastore";
         if (i == 2) return "cmd";
-        if (i == 3) return "ntp";
+        if (i == 3) return "time";
         if (i == 4) return "io";
         if (i == 5) return "mqtt";
+        if (i == 6) return "eventbus";
         return nullptr;
     }
 
@@ -54,6 +55,10 @@ public:
     bool buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, uint32_t& maxTsOut) const override;
 
 private:
+    static constexpr uint8_t RESET_PENDING_DAY = (1u << 0);
+    static constexpr uint8_t RESET_PENDING_WEEK = (1u << 1);
+    static constexpr uint8_t RESET_PENDING_MONTH = (1u << 2);
+
     struct PoolDeviceSlot {
         bool used = false;
         char id[8] = {0};          // stable runtime id: pdN
@@ -66,12 +71,12 @@ private:
 
         uint32_t lastTickMs = 0;
         uint64_t runningMsDay = 0;
+        uint64_t runningMsWeek = 0;
         uint64_t runningMsMonth = 0;
-        uint64_t runningMsYear = 0;
         uint64_t runningMsTotal = 0;
         float injectedMlDay = 0.0f;
+        float injectedMlWeek = 0.0f;
         float injectedMlMonth = 0.0f;
-        float injectedMlYear = 0.0f;
         float injectedMlTotal = 0.0f;
         float tankRemainingMl = 0.0f;
         uint32_t runtimeTsMs = 0;
@@ -85,7 +90,11 @@ private:
 
     bool configureRuntime_();
     void tickDevices_(uint32_t nowMs);
-    void updatePeriodResets_();
+    static void onEventStatic_(const Event& e, void* user);
+    void onEvent_(const Event& e);
+    void resetDailyCounters_();
+    void resetWeeklyCounters_();
+    void resetMonthlyCounters_();
     bool snapshotSlotFromIndex_(uint8_t snapshotIdx, uint8_t& slotIdxOut) const;
     bool buildDeviceSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
     bool dependenciesSatisfied_(uint8_t slotIdx) const;
@@ -99,14 +108,11 @@ private:
 
     const LogHubService* logHub_ = nullptr;
     const CommandService* cmdSvc_ = nullptr;
-    const TimeService* timeSvc_ = nullptr;
+    EventBus* eventBus_ = nullptr;
     DataStore* dataStore_ = nullptr;
     bool runtimeReady_ = false;
-
-    int16_t lastYear_ = -1;
-    int8_t lastMonth_ = -1;
-    int16_t lastYearDay_ = -1;
-    bool dateInitialized_ = false;
+    portMUX_TYPE resetMux_ = portMUX_INITIALIZER_UNLOCKED;
+    uint8_t resetPendingMask_ = 0;
 
     char cfgModuleName_[POOL_DEVICE_MAX][16]{};
     char nvsEnabledKey_[POOL_DEVICE_MAX][16]{};

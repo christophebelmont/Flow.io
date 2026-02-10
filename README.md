@@ -33,7 +33,7 @@ src/
     CommandModule/
     Stores/ (ConfigStoreModule, DataStoreModule)
     System/ (SystemModule, SystemMonitorModule)
-    Network/ (WifiModule, NTPModule, MQTTModule)
+    Network/ (WifiModule, TimeModule, MQTTModule)
     IOModule/ (IOBus, IODrivers, IOEndpoints, IORegistry, IOScheduler)
 platformio.ini
 ```
@@ -42,7 +42,7 @@ platformio.ini
 - **Logs**: `LogHubModule`, `LogDispatcherModule`, `LogSerialSinkModule`
 - **Core**: `EventBusModule`, `CommandModule`, `ConfigStoreModule`, `DataStoreModule`
 - **System**: `SystemModule`, `SystemMonitorModule`
-- **Network**: `WifiModule`, `NTPModule`, `MQTTModule`
+- **Network**: `WifiModule`, `TimeModule`, `MQTTModule`
 - **I/O**: `IOModule`
 
 ## MQTT (résumé)

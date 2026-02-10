@@ -29,4 +29,5 @@ enum class EventId : uint16_t {
     PoolModeChanged = 400,
     AlarmRaised = 410,
     AlarmCleared = 411,
+    SchedulerEventTriggered = 420,
 };

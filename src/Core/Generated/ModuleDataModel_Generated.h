@@ -14,7 +14,7 @@
 #include "Modules/IOModule/IOModuleDataModel.h"
 #include "Modules/Network/HAModule/HAModuleDataModel.h"
 #include "Modules/Network/MQTTModule/MQTTModuleDataModel.h"
-#include "Modules/Network/NTPModule/NTPModuleDataModel.h"
+#include "Modules/Network/TimeModule/TimeModuleDataModel.h"
 #include "Modules/Network/WifiModule/WifiModuleDataModel.h"
 #include "Modules/PoolDeviceModule/PoolDeviceModuleDataModel.h"
 
@@ -23,7 +23,7 @@ struct RuntimeData {
     IORuntimeData io;
     HARuntimeData ha;
     MQTTRuntimeData mqtt;
-    NTPRuntimeData ntp;
+    TimeRuntimeData time;
     WifiRuntimeData wifi;
     PoolDeviceRuntimeData pool;
 };

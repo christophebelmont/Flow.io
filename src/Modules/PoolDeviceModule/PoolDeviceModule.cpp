@@ -142,8 +142,8 @@ bool PoolDeviceModule::buildDeviceSnapshot_(uint8_t slotIdx, char* out, size_t l
         out, len,
         "{\"id\":\"pd%u\",\"name\":\"%s\",\"enabled\":%s,\"desired\":%s,\"on\":%s,"
         "\"type\":\"%s\",\"block\":\"%s\","
-        "\"running\":{\"day_s\":%lu,\"month_s\":%lu,\"year_s\":%lu,\"total_s\":%lu},"
-        "\"injected\":{\"day_ml\":%.3f,\"month_ml\":%.3f,\"year_ml\":%.3f,\"total_ml\":%.3f},"
+        "\"running\":{\"day_s\":%lu,\"week_s\":%lu,\"month_s\":%lu,\"total_s\":%lu},"
+        "\"injected\":{\"day_ml\":%.3f,\"week_ml\":%.3f,\"month_ml\":%.3f,\"total_ml\":%.3f},"
         "\"tank\":{\"remaining_ml\":%.3f},\"ts\":%lu}",
         (unsigned)slotIdx,
         (label && label[0] != '\0') ? label : "pd",
@@ -153,12 +153,12 @@ bool PoolDeviceModule::buildDeviceSnapshot_(uint8_t slotIdx, char* out, size_t l
         typeStr,
         blockReason,
         (unsigned long)entry.runningSecDay,
+        (unsigned long)entry.runningSecWeek,
         (unsigned long)entry.runningSecMonth,
-        (unsigned long)entry.runningSecYear,
         (unsigned long)entry.runningSecTotal,
         (double)entry.injectedMlDay,
+        (double)entry.injectedMlWeek,
         (double)entry.injectedMlMonth,
-        (double)entry.injectedMlYear,
         (double)entry.injectedMlTotal,
         (double)entry.tankRemainingMl,
         (unsigned long)millis()
@@ -371,56 +371,77 @@ bool PoolDeviceModule::configureRuntime_()
     return true;
 }
 
-void PoolDeviceModule::updatePeriodResets_()
+void PoolDeviceModule::onEventStatic_(const Event& e, void* user)
 {
-    if (!timeSvc_ || !timeSvc_->isSynced || !timeSvc_->epoch) return;
-    if (!timeSvc_->isSynced(timeSvc_->ctx)) return;
+    if (!user) return;
+    static_cast<PoolDeviceModule*>(user)->onEvent_(e);
+}
 
-    time_t now = (time_t)timeSvc_->epoch(timeSvc_->ctx);
-    if (now <= 0) return;
+void PoolDeviceModule::onEvent_(const Event& e)
+{
+    if (e.id != EventId::SchedulerEventTriggered) return;
+    if (!e.payload || e.len < sizeof(SchedulerEventTriggeredPayload)) return;
 
-    struct tm localNow{};
-    if (!localtime_r(&now, &localNow)) return;
+    const SchedulerEventTriggeredPayload* p = (const SchedulerEventTriggeredPayload*)e.payload;
+    if ((SchedulerEdge)p->edge != SchedulerEdge::Trigger) return;
 
-    if (!dateInitialized_) {
-        lastYear_ = (int16_t)localNow.tm_year;
-        lastMonth_ = (int8_t)localNow.tm_mon;
-        lastYearDay_ = (int16_t)localNow.tm_yday;
-        dateInitialized_ = true;
+    uint8_t pending = 0;
+    if (p->eventId == TIME_EVENT_SYS_DAY_START) {
+        pending = RESET_PENDING_DAY;
+    } else if (p->eventId == TIME_EVENT_SYS_WEEK_START) {
+        pending = RESET_PENDING_WEEK;
+    } else if (p->eventId == TIME_EVENT_SYS_MONTH_START) {
+        pending = RESET_PENDING_MONTH;
+    } else {
         return;
     }
 
-    const bool yearChanged = (localNow.tm_year != lastYear_);
-    const bool monthChanged = yearChanged || (localNow.tm_mon != lastMonth_);
-    const bool dayChanged = monthChanged || (localNow.tm_yday != lastYearDay_);
+    portENTER_CRITICAL(&resetMux_);
+    resetPendingMask_ |= pending;
+    portEXIT_CRITICAL(&resetMux_);
+}
 
-    if (yearChanged || monthChanged || dayChanged) {
-        for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
-            PoolDeviceSlot& s = slots_[i];
-            if (!s.used) continue;
-            if (dayChanged) {
-                s.runningMsDay = 0;
-                s.injectedMlDay = 0.0f;
-            }
-            if (monthChanged) {
-                s.runningMsMonth = 0;
-                s.injectedMlMonth = 0.0f;
-            }
-            if (yearChanged) {
-                s.runningMsYear = 0;
-                s.injectedMlYear = 0.0f;
-            }
-        }
+void PoolDeviceModule::resetDailyCounters_()
+{
+    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
+        PoolDeviceSlot& s = slots_[i];
+        if (!s.used) continue;
+        s.runningMsDay = 0;
+        s.injectedMlDay = 0.0f;
     }
+}
 
-    lastYear_ = (int16_t)localNow.tm_year;
-    lastMonth_ = (int8_t)localNow.tm_mon;
-    lastYearDay_ = (int16_t)localNow.tm_yday;
+void PoolDeviceModule::resetWeeklyCounters_()
+{
+    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
+        PoolDeviceSlot& s = slots_[i];
+        if (!s.used) continue;
+        s.runningMsWeek = 0;
+        s.injectedMlWeek = 0.0f;
+    }
+}
+
+void PoolDeviceModule::resetMonthlyCounters_()
+{
+    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
+        PoolDeviceSlot& s = slots_[i];
+        if (!s.used) continue;
+        s.runningMsMonth = 0;
+        s.injectedMlMonth = 0.0f;
+    }
 }
 
 void PoolDeviceModule::tickDevices_(uint32_t nowMs)
 {
-    updatePeriodResets_();
+    uint8_t pending = 0;
+    portENTER_CRITICAL(&resetMux_);
+    pending = resetPendingMask_;
+    resetPendingMask_ = 0;
+    portEXIT_CRITICAL(&resetMux_);
+
+    if (pending & RESET_PENDING_DAY) resetDailyCounters_();
+    if (pending & RESET_PENDING_WEEK) resetWeeklyCounters_();
+    if (pending & RESET_PENDING_MONTH) resetMonthlyCounters_();
 
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
@@ -490,8 +511,8 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
 
         if (s.actualOn && deltaMs > 0) {
             s.runningMsDay += deltaMs;
+            s.runningMsWeek += deltaMs;
             s.runningMsMonth += deltaMs;
-            s.runningMsYear += deltaMs;
             s.runningMsTotal += deltaMs;
 
             // Convert L/h to ml/ms for injected volume accumulation.
@@ -499,8 +520,8 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
             const float injectedDelta = flowPerMs * (float)deltaMs;
             if (injectedDelta > 0.0f) {
                 s.injectedMlDay += injectedDelta;
+                s.injectedMlWeek += injectedDelta;
                 s.injectedMlMonth += injectedDelta;
-                s.injectedMlYear += injectedDelta;
                 s.injectedMlTotal += injectedDelta;
 
                 if (s.def.tankCapacityMl > 0.0f) {
@@ -527,12 +548,12 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
             rt.type = s.def.type;
             rt.blockReason = s.blockReason;
             rt.runningSecDay = toSeconds_(s.runningMsDay);
+            rt.runningSecWeek = toSeconds_(s.runningMsWeek);
             rt.runningSecMonth = toSeconds_(s.runningMsMonth);
-            rt.runningSecYear = toSeconds_(s.runningMsYear);
             rt.runningSecTotal = toSeconds_(s.runningMsTotal);
             rt.injectedMlDay = s.injectedMlDay;
+            rt.injectedMlWeek = s.injectedMlWeek;
             rt.injectedMlMonth = s.injectedMlMonth;
-            rt.injectedMlYear = s.injectedMlYear;
             rt.injectedMlTotal = s.injectedMlTotal;
             rt.tankRemainingMl = s.tankRemainingMl;
             rt.timestampMs = s.runtimeTsMs;
@@ -622,9 +643,14 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     logHub_ = services.get<LogHubService>("loghub");
     cmdSvc_ = services.get<CommandService>("cmd");
-    timeSvc_ = services.get<TimeService>("time");
+    const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
+    eventBus_ = ebSvc ? ebSvc->bus : nullptr;
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
+
+    if (eventBus_) {
+        eventBus_->subscribe(EventId::SchedulerEventTriggered, &PoolDeviceModule::onEventStatic_, this);
+    }
 
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];

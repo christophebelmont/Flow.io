@@ -29,12 +29,12 @@ struct PoolDeviceRuntimeEntry {
     uint8_t type = POOL_DEVICE_RT_RELAY_STD;
     uint8_t blockReason = POOL_DEVICE_BLOCK_NONE;
     uint32_t runningSecDay = 0;
+    uint32_t runningSecWeek = 0;
     uint32_t runningSecMonth = 0;
-    uint32_t runningSecYear = 0;
     uint32_t runningSecTotal = 0;
     float injectedMlDay = 0.0f;
+    float injectedMlWeek = 0.0f;
     float injectedMlMonth = 0.0f;
-    float injectedMlYear = 0.0f;
     float injectedMlTotal = 0.0f;
     float tankRemainingMl = 0.0f;
     uint32_t timestampMs = 0;

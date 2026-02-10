@@ -19,7 +19,7 @@
 /// Load Modules
 // Network modules
 #include "Modules/Network/WifiModule/WifiModule.h"
-#include "Modules/Network/NTPModule/NTPModule.h"
+#include "Modules/Network/TimeModule/TimeModule.h"
 #include "Modules/Network/MQTTModule/MQTTModule.h"
 #include "Modules/Network/HAModule/HAModule.h"
 // Stores Modules
@@ -56,7 +56,7 @@ static ServiceRegistry services;
 
 ///static LoggerModule loggerModule;
 static WifiModule           wifiModule;
-static NTPModule            ntpModule;
+static TimeModule           timeModule;
 static CommandModule        commandModule;
 static ConfigStoreModule    configStoreModule;
 static DataStoreModule      dataStoreModule;
@@ -217,7 +217,7 @@ void setup() {
     moduleManager.add(&dataStoreModule);
     moduleManager.add(&commandModule);
     moduleManager.add(&wifiModule);
-    moduleManager.add(&ntpModule);
+    moduleManager.add(&timeModule);
     moduleManager.add(&mqttModule);
     moduleManager.add(&haModule);
     moduleManager.add(&systemModule);

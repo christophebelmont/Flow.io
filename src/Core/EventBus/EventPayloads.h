@@ -41,6 +41,25 @@ struct AlarmPayload {
     uint16_t alarmId;
 };
 
+/** @brief Payload for scheduler event trigger notifications. */
+enum class SchedulerEdge : uint8_t {
+    Trigger = 0,
+    Start = 1,
+    Stop = 2
+};
+
+/** @brief Payload for scheduler event trigger notifications. */
+struct SchedulerEventTriggeredPayload {
+    uint8_t slot;       // scheduler slot index [0..15]
+    uint8_t edge;       // SchedulerEdge
+    uint8_t replayed;   // 1 when replayed at boot/resync
+    uint8_t reserved0 = 0;
+    uint16_t eventId;   // consumer-level id
+    uint16_t reserved1 = 0;
+    uint64_t epochSec;
+    uint16_t activeMask;
+};
+
 /** @brief Identifiers for DataStore values. */
 using DataKey = uint16_t;
 

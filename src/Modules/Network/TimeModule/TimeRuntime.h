@@ -1,7 +1,7 @@
 #pragma once
 /**
- * @file NTPRuntime.h
- * @brief NTP runtime helpers and keys.
+ * @file TimeRuntime.h
+ * @brief Time runtime helpers and keys.
  */
 
 #include "Core/DataStore/DataStore.h"
@@ -9,18 +9,18 @@
 
 // RUNTIME_PUBLIC
 
-// Data keys for NTP runtime values.
+// Data keys for time runtime values.
 constexpr DataKey DATAKEY_TIME_READY = 3;
 
 static inline bool timeReady(const DataStore& ds)
 {
-    return ds.data().ntp.timeReady;
+    return ds.data().time.timeReady;
 }
 
 static inline void setTimeReady(DataStore& ds, bool ready)
 {
     RuntimeData& rt = ds.dataMutable();
-    if (rt.ntp.timeReady == ready) return;
-    rt.ntp.timeReady = ready;
+    if (rt.time.timeReady == ready) return;
+    rt.time.timeReady = ready;
     ds.notifyChanged(DATAKEY_TIME_READY, DIRTY_TIME);
 }
