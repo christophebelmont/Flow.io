@@ -129,10 +129,38 @@ Valid IO example:
 }
 ```
 
+Trace settings example (`io/debug` module name contains `/`):
+
+```json
+{
+  "io/debug": {
+    "trace_enabled": true,
+    "trace_period_ms": 5000
+  }
+}
+```
+
+System monitor trace settings example:
+
+```json
+{
+  "sysmon": {
+    "trace_enabled": false,
+    "trace_period_ms": 10000
+  }
+}
+```
+
 ACK topic:
 
 ```text
 flowio/<deviceId>/cfg/ack
+```
+
+ACK payload:
+
+```json
+{"ok":true}
 ```
 
 ## 7) Runtime Snapshots

@@ -21,7 +21,11 @@
 
 ## ConfigStore values used
 
-- No module-owned `ConfigStore` keys.
+- `trace_enabled` (`NVS: sm_tren`, bool, default `true`)
+  Enables/disables periodic monitoring logs.
+- `trace_period_ms` (`NVS: sm_trms`, int32, default `5000`)
+  Base period in milliseconds for periodic monitoring logs.
+  Stack dump runs every `trace_period_ms * 6`, JSON health dump every `trace_period_ms * 12`.
 
 ## DataStore values used
 

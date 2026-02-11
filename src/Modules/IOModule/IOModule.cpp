@@ -347,15 +347,25 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     if (!slot.used || !slot.endpoint) return false;
 
     float raw = 0.0f;
+    int16_t rawBinary = 0;
     bool valid = false;
 
     if (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) {
         if (!adsInternal_) return false;
-        valid = adsInternal_->readMilliVoltsChannel(slot.def.channel, raw);
+        bool rawOk = adsInternal_->readRawChannel(slot.def.channel, rawBinary);
+        bool vOk = adsInternal_->readVoltsChannel(slot.def.channel, raw);
+        valid = rawOk && vOk;
     } else if (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF) {
         if (!adsExternal_) return false;
-        if (slot.def.channel == 0) valid = adsExternal_->readMilliVoltsDifferential01(raw);
-        else valid = adsExternal_->readMilliVoltsDifferential23(raw);
+        if (slot.def.channel == 0) {
+            bool rawOk = adsExternal_->readRawDifferential01(rawBinary);
+            bool vOk = adsExternal_->readVoltsDifferential01(raw);
+            valid = rawOk && vOk;
+        } else {
+            bool rawOk = adsExternal_->readRawDifferential23(rawBinary);
+            bool vOk = adsExternal_->readVoltsDifferential23(raw);
+            valid = rawOk && vOk;
+        }
     } else if (slot.def.source == IO_SRC_DS18_WATER) {
         if (!dsWater_) return false;
         valid = dsWater_->readCelsius(raw);
@@ -375,6 +385,27 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     float calibrated = (slot.def.c0 * filtered) + slot.def.c1;
     float rounded = ioRoundToPrecision(calibrated, slot.def.precision);
 
+    // Trace pH/ORP/PSI calculation chain with configurable periodic ticker.
+    bool isAdsSource = (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) ||
+                       (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF);
+    if (cfgData_.traceEnabled && isAdsSource && idx < 3) {
+        uint32_t periodMs = (cfgData_.tracePeriodMs > 0) ? (uint32_t)cfgData_.tracePeriodMs : 5000U;
+        uint32_t& lastMs = analogCalcLogLastMs_[idx];
+        if (lastMs == 0U || (uint32_t)(nowMs - lastMs) >= periodMs) {
+            const char* sensor = (idx == 0) ? "pH" : ((idx == 1) ? "ORP" : "PSI");
+            const char sourceMark = (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) ? 'I' : 'E';
+            LOGI("Calc %c %-3s raw_bin=%7d raw_V=%10.6f median_V=%10.6f coeff=%9.3f rounded=%9.3f",
+                 sourceMark,
+                 sensor,
+                 (int)rawBinary,
+                 (double)raw,
+                 (double)filtered,
+                 (double)calibrated,
+                 (double)rounded);
+            lastMs = nowMs;
+        }
+    }
+
     slot.endpoint->update(rounded, true, nowMs);
 
     if (!slot.lastRoundedValid || rounded != slot.lastRounded) {
@@ -386,6 +417,99 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     }
 
     return true;
+}
+
+int32_t IOModule::clampPrecisionForHa_(int32_t precision) const
+{
+    if (precision < 0) return 0;
+    if (precision > 6) return 6;
+    return precision;
+}
+
+void IOModule::buildHaValueTemplate_(uint8_t analogIdx, char* out, size_t outLen) const
+{
+    if (!out || outLen == 0 || analogIdx >= ANALOG_CFG_SLOTS) return;
+    int32_t p = clampPrecisionForHa_(analogCfg_[analogIdx].precision);
+    snprintf(out, outLen, "{{ value_json.value | float(none) | round(%ld) }}", (long)p);
+}
+
+void IOModule::registerHaAnalogSensors_()
+{
+    if (!haSvc_ || !haSvc_->addSensor) return;
+
+    buildHaValueTemplate_(0, haValueTpl_[0], sizeof(haValueTpl_[0]));
+    buildHaValueTemplate_(1, haValueTpl_[1], sizeof(haValueTpl_[1]));
+    buildHaValueTemplate_(2, haValueTpl_[2], sizeof(haValueTpl_[2]));
+    buildHaValueTemplate_(3, haValueTpl_[3], sizeof(haValueTpl_[3]));
+    buildHaValueTemplate_(4, haValueTpl_[4], sizeof(haValueTpl_[4]));
+
+    const HASensorEntry s0{"io", "ph", "pH", "rt/io/input/a0", haValueTpl_[0], nullptr, "mdi:ph", nullptr};
+    const HASensorEntry s1{"io", "orp", "ORP", "rt/io/input/a1", haValueTpl_[1], nullptr, "mdi:flash", "mV"};
+    const HASensorEntry s2{"io", "psi", "PSI", "rt/io/input/a2", haValueTpl_[2], nullptr, "mdi:gauge", "PSI"};
+    const HASensorEntry s3{"io", "water_temperature", "Water Temperature", "rt/io/input/a3", haValueTpl_[3], nullptr, "mdi:water-thermometer", "\xC2\xB0""C"};
+    const HASensorEntry s4{"io", "air_temperature", "Air Temperature", "rt/io/input/a4", haValueTpl_[4], nullptr, "mdi:thermometer", "\xC2\xB0""C"};
+    (void)haSvc_->addSensor(haSvc_->ctx, &s0);
+    (void)haSvc_->addSensor(haSvc_->ctx, &s1);
+    (void)haSvc_->addSensor(haSvc_->ctx, &s2);
+    (void)haSvc_->addSensor(haSvc_->ctx, &s3);
+    (void)haSvc_->addSensor(haSvc_->ctx, &s4);
+}
+
+void IOModule::forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs)
+{
+    if (analogIdx >= MAX_ANALOG_ENDPOINTS) return;
+    AnalogSlot& slot = analogSlots_[analogIdx];
+    if (!slot.used || !slot.endpoint) return;
+
+    IOEndpointValue v{};
+    if (!slot.endpoint->read(v) || !v.valid || v.valueType != IO_EP_VALUE_FLOAT) return;
+
+    float republished = ioRoundToPrecision(v.v.f, slot.def.precision);
+    slot.endpoint->update(republished, true, nowMs);
+    if (dataStore_) {
+        (void)setIoEndpointFloat(*dataStore_, analogIdx, republished, nowMs, DIRTY_SENSORS);
+    }
+}
+
+void IOModule::maybeRefreshHaOnPrecisionChange_()
+{
+    if (!haPrecisionLastInit_) {
+        for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+            int32_t p = clampPrecisionForHa_(analogCfg_[i].precision);
+            haPrecisionLast_[i] = p;
+        }
+        haPrecisionLastInit_ = true;
+        return;
+    }
+
+    bool changed = false;
+    uint8_t changedMask = 0;
+    for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+        int32_t p = clampPrecisionForHa_(analogCfg_[i].precision);
+        if (haPrecisionLast_[i] == p) continue;
+        haPrecisionLast_[i] = p;
+        if (runtimeReady_ && i < MAX_ANALOG_ENDPOINTS && analogSlots_[i].used) {
+            analogSlots_[i].def.precision = p;
+        }
+        changedMask |= (uint8_t)(1u << i);
+        changed = true;
+    }
+
+    if (changed) {
+        LOGI("Input precision changed -> publish runtime snapshot");
+        const uint32_t nowMs = millis();
+        for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+            if ((changedMask & (uint8_t)(1u << i)) == 0) continue;
+            forceAnalogSnapshotPublish_(i, nowMs);
+        }
+        if (haSvc_ && haSvc_->addSensor) {
+            LOGI("Input precision changed -> request HA discovery refresh");
+            registerHaAnalogSensors_();
+            if (haSvc_->requestRefresh) {
+                (void)haSvc_->requestRefresh(haSvc_->ctx);
+            }
+        }
+    }
 }
 
 bool IOModule::svcSetMask_(void* ctx, uint8_t mask)
@@ -494,6 +618,12 @@ bool IOModule::configureRuntime_()
             analogSlots_[i].def.precision = analogCfg_[i].precision;
             analogSlots_[i].def.minValid = analogCfg_[i].minValid;
             analogSlots_[i].def.maxValid = analogCfg_[i].maxValid;
+
+            if (i < 3) {
+                LOGI("Analog map %s source=%u channel=%u", analogSlots_[i].def.id,
+                     (unsigned)analogSlots_[i].def.source,
+                     (unsigned)analogSlots_[i].def.channel);
+            }
         }
 
         if (analogSlots_[i].def.source == IO_SRC_ADS_INTERNAL_SINGLE) needAdsInternal = true;
@@ -843,6 +973,8 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(pcfAddressVar_);
     cfg.registerVar(pcfMaskDefaultVar_);
     cfg.registerVar(pcfActiveLowVar_);
+    cfg.registerVar(traceEnabledVar_);
+    cfg.registerVar(tracePeriodVar_);
 
     cfg.registerVar(a0NameVar_); cfg.registerVar(a0SourceVar_); cfg.registerVar(a0ChannelVar_); cfg.registerVar(a0C0Var_);
     cfg.registerVar(a0C1Var_); cfg.registerVar(a0PrecVar_); cfg.registerVar(a0MinVar_); cfg.registerVar(a0MaxVar_);
@@ -873,18 +1005,8 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cmdSvc_->registerHandler(cmdSvc_->ctx, "io.write", cmdIoWrite_, this);
         LOGI("Command registered: io.write");
     }
-    if (haSvc_ && haSvc_->addSensor && haSvc_->addSwitch) {
-        const HASensorEntry s0{"io", "ph", "pH", "rt/io/input/a0", "{{ value_json.value }}", nullptr, "mdi:ph", nullptr};
-        const HASensorEntry s1{"io", "orp", "ORP", "rt/io/input/a1", "{{ value_json.value }}", nullptr, "mdi:flash", "mV"};
-        const HASensorEntry s2{"io", "psi", "PSI", "rt/io/input/a2", "{{ value_json.value }}", nullptr, "mdi:gauge", "PSI"};
-        const HASensorEntry s3{"io", "water_temperature", "Water Temperature", "rt/io/input/a3", "{{ value_json.value }}", nullptr, "mdi:water-thermometer", "\xC2\xB0""C"};
-        const HASensorEntry s4{"io", "air_temperature", "Air Temperature", "rt/io/input/a4", "{{ value_json.value }}", nullptr, "mdi:thermometer", "\xC2\xB0""C"};
-        (void)haSvc_->addSensor(haSvc_->ctx, &s0);
-        (void)haSvc_->addSensor(haSvc_->ctx, &s1);
-        (void)haSvc_->addSensor(haSvc_->ctx, &s2);
-        (void)haSvc_->addSensor(haSvc_->ctx, &s3);
-        (void)haSvc_->addSensor(haSvc_->ctx, &s4);
-
+    if (haSvc_ && haSvc_->addSwitch) {
+        registerHaAnalogSensors_();
         const HASwitchEntry sw0{
             "io", "filtration_pump", "Filtration Pump", "rt/io/output/d0",
             "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
@@ -950,11 +1072,17 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
         (void)haSvc_->addSwitch(haSvc_->ctx, &sw6);
         (void)haSvc_->addSwitch(haSvc_->ctx, &sw7);
     }
+    for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+        haPrecisionLast_[i] = clampPrecisionForHa_(analogCfg_[i].precision);
+    }
+    haPrecisionLastInit_ = true;
     (void)logHub_;
 }
 
 void IOModule::loop()
 {
+    maybeRefreshHaOnPrecisionChange_();
+
     if (!cfgData_.enabled) {
         vTaskDelay(pdMS_TO_TICKS(500));
         return;

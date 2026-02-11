@@ -15,7 +15,7 @@ struct Ads1115DriverConfig {
     uint8_t dataRate = 1;
     uint32_t pollMs = 125;
     bool differentialPairs = false;
-    float mvLsb = 0.1875f;
+    float voltLsb = 0.0001875f;
 };
 
 class Ads1115Driver : public IODriver {
@@ -26,13 +26,17 @@ public:
     bool begin() override;
     void tick(uint32_t nowMs) override;
 
-    bool readMilliVoltsChannel(uint8_t ch, float& outMv) const;
-    bool readMilliVoltsDifferential01(float& outMv) const;
-    bool readMilliVoltsDifferential23(float& outMv) const;
+    bool readRawChannel(uint8_t ch, int16_t& outRaw) const;
+    bool readRawDifferential01(int16_t& outRaw) const;
+    bool readRawDifferential23(int16_t& outRaw) const;
+
+    bool readVoltsChannel(uint8_t ch, float& outV) const;
+    bool readVoltsDifferential01(float& outV) const;
+    bool readVoltsDifferential23(float& outV) const;
 
 private:
     void requestNext_();
-    float toMilliVolts_(int16_t raw);
+    float toVolts_(int16_t raw);
 
     const char* driverId_ = nullptr;
     I2CBus* bus_ = nullptr;
@@ -47,9 +51,12 @@ private:
     uint8_t nextDiffPair_ = 0;
 
     bool validSingle_[4] = {false, false, false, false};
-    float mvSingle_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    int16_t rawSingle_[4] = {0, 0, 0, 0};
+    float vSingle_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     bool validDiff01_ = false;
     bool validDiff23_ = false;
-    float mvDiff01_ = 0.0f;
-    float mvDiff23_ = 0.0f;
+    int16_t rawDiff01_ = 0;
+    int16_t rawDiff23_ = 0;
+    float vDiff01_ = 0.0f;
+    float vDiff23_ = 0.0f;
 };

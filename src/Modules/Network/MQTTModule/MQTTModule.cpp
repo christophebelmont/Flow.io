@@ -173,23 +173,49 @@ void MQTTModule::publishConfigBlocks(bool retained) {
     if (!cfgSvc || !cfgSvc->toJsonModule) return;
     refreshConfigModules();
     for (size_t i = 0; i < cfgModuleCount; ++i) {
-        if (strcmp(cfgModules[i], "time/scheduler") == 0) {
-            publishTimeSchedulerSlots(retained, topicCfgBlocks[i]);
-            continue;
-        }
-
-        bool truncated = false;
-        bool any = cfgSvc->toJsonModule(cfgSvc->ctx, cfgModules[i], stateCfgBuf, sizeof(stateCfgBuf), &truncated);
-        if (truncated) {
-            LOGW("cfg/%s truncated (buffer=%u)", cfgModules[i], (unsigned)sizeof(stateCfgBuf));
-            // Avoid publishing malformed partial JSON when truncation happens.
-            const char* truncPayload = "{\"ok\":false,\"err\":\"cfg_truncated\"}";
-            client.publish(topicCfgBlocks[i], 1, retained, truncPayload);
-            continue;
-        }
-        if (!any) continue;
-        client.publish(topicCfgBlocks[i], 1, retained, stateCfgBuf);
+        (void)publishConfigModuleAt(i, retained);
     }
+}
+
+bool MQTTModule::publishConfigModuleAt(size_t idx, bool retained)
+{
+    if (!cfgSvc || !cfgSvc->toJsonModule) return false;
+    if (idx >= cfgModuleCount) return false;
+    if (!cfgModules[idx] || cfgModules[idx][0] == '\0') return false;
+
+    if (strcmp(cfgModules[idx], "time/scheduler") == 0) {
+        publishTimeSchedulerSlots(retained, topicCfgBlocks[idx]);
+        return true;
+    }
+
+    bool truncated = false;
+    bool any = cfgSvc->toJsonModule(cfgSvc->ctx, cfgModules[idx], stateCfgBuf, sizeof(stateCfgBuf), &truncated);
+    if (truncated) {
+        LOGW("cfg/%s truncated (buffer=%u)", cfgModules[idx], (unsigned)sizeof(stateCfgBuf));
+        // Avoid publishing malformed partial JSON when truncation happens.
+        const char* truncPayload = "{\"ok\":false,\"err\":\"cfg_truncated\"}";
+        client.publish(topicCfgBlocks[idx], 1, retained, truncPayload);
+        return true;
+    }
+    if (!any) return false;
+    client.publish(topicCfgBlocks[idx], 1, retained, stateCfgBuf);
+    return true;
+}
+
+bool MQTTModule::publishConfigBlocksFromPatch(const char* patchJson, bool retained)
+{
+    if (!patchJson || patchJson[0] == '\0') return false;
+    if (!cfgSvc || !cfgSvc->toJsonModule) return false;
+
+    refreshConfigModules();
+    bool publishedAny = false;
+    for (size_t i = 0; i < cfgModuleCount; ++i) {
+        const char* module = cfgModules[i];
+        if (!module || module[0] == '\0') continue;
+        if (!findJsonObjectStart(patchJson, module)) continue;
+        publishedAny = publishConfigModuleAt(i, retained) || publishedAny;
+    }
+    return publishedAny;
 }
 
 void MQTTModule::publishTimeSchedulerSlots(bool retained, const char* rootTopic)
@@ -308,7 +334,13 @@ void MQTTModule::processRx(const RxMsg& msg) {
         snprintf(ackBuf, sizeof(ackBuf), "{\"ok\":%s}", ok ? "true" : "false");
         client.publish(topicCfgAck, 1, false, ackBuf);
 
-        if (ok) publishConfigBlocks(true);
+        if (ok) {
+            // Publish only touched cfg modules for immediate state echo.
+            // Fallback to full publish if patch shape cannot be resolved.
+            if (!publishConfigBlocksFromPatch(msg.payload, true)) {
+                publishConfigBlocks(true);
+            }
+        }
         return;
     }
 }

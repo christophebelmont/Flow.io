@@ -21,7 +21,10 @@ const char* SystemMonitorModule::wifiStateStr(WifiState st) {
     }
 }
 
-void SystemMonitorModule::init(ConfigStore&, ServiceRegistry& services) {
+void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
+    cfg.registerVar(traceEnabledVar_);
+    cfg.registerVar(tracePeriodVar_);
+
     wifiSvc = services.get<WifiService>("wifi");
     cfgSvc  = services.get<ConfigStoreService>("config");
     logHub  = services.get<LogHubService>("loghub");
@@ -39,7 +42,7 @@ void SystemMonitorModule::logHeapAndWifi() {
     SystemStatsSnapshot snap{};
     SystemStats::collect(snap);
 
-    LOGI("free=%lu min=%lu largest=%lu frag=%u%%",
+    LOGI("Heap free=%lu min=%lu largest=%lu frag=%u%%",
                 (unsigned long)snap.heap.freeBytes,
                 (unsigned long)snap.heap.minFreeBytes,
                 (unsigned long)snap.heap.largestFreeBlock,
@@ -69,12 +72,13 @@ void SystemMonitorModule::logTaskStacks() {
         return;
     }
 
-    /// Dump every 30s
-    uint32_t now = millis();
-    if (now - lastStackDumpMs < 30000) return;
-    lastStackDumpMs = now;
-
-    LOGI("Stack High Water Marks:");
+    char line[512];
+    size_t off = 0;
+    int w = snprintf(line, sizeof(line), "Stack");
+    if (w < 0) return;
+    off = (size_t)w;
+    bool hasTask = false;
+    bool hasLow = false;
 
     const uint8_t n = moduleManager->getCount();
     for (uint8_t i = 0; i < n; ++i) {
@@ -85,13 +89,32 @@ void SystemMonitorModule::logTaskStacks() {
         if (!h) continue;
 
         UBaseType_t hw = uxTaskGetStackHighWaterMark(h);
+        hasTask = true;
+        const bool isLow = (hw < 300);
+        if (isLow) hasLow = true;
 
-        /// Warn if stack is too low
-        if (hw < 300) {
-            LOGW("%s stackHW=%u (LOW!)", m->moduleId(), (unsigned)hw);
-        } else {
-            LOGI("%s stackHW=%u", m->moduleId(), (unsigned)hw);
+        if (off < sizeof(line)) {
+            w = snprintf(line + off, sizeof(line) - off, " %s=%u%s",
+                         m->moduleId(), (unsigned)hw, isLow ? "!" : "");
+            if (w < 0) break;
+            if ((size_t)w >= (sizeof(line) - off)) {
+                off = sizeof(line) - 1;
+                line[off] = '\0';
+                break;
+            }
+            off += (size_t)w;
         }
+    }
+
+    if (!hasTask) {
+        LOGI("Stack none");
+        return;
+    }
+
+    if (hasLow) {
+        LOGW("%s", line);
+    } else {
+        LOGI("%s", line);
     }
 }
 
@@ -131,20 +154,24 @@ void SystemMonitorModule::buildHealthJson(char* out, size_t outLen) {
 }
 
 void SystemMonitorModule::loop() {
-    /// Every 10s basic health log
-    logHeapAndWifi();
+    const uint32_t now = millis();
+    uint32_t periodMs = (cfgData_.tracePeriodMs > 0) ? (uint32_t)cfgData_.tracePeriodMs : 5000U;
+    uint32_t stackPeriodMs = periodMs * 6U;
 
-    /// Every 30s: stacks
-    logTaskStacks();
-
-    /// Every 60s: JSON health dump
-    uint32_t now = millis();
-    if (now - lastJsonDumpMs > 60000) {
-        lastJsonDumpMs = now;
-        char json[512];
-        buildHealthJson(json, sizeof(json));
-        LOGI("health=%s", json);
+    if (!cfgData_.traceEnabled) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+        return;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    if (lastTraceLogMs == 0U || (uint32_t)(now - lastTraceLogMs) >= periodMs) {
+        lastTraceLogMs = now;
+        logHeapAndWifi();
+    }
+
+    if (lastStackDumpMs == 0U || (uint32_t)(now - lastStackDumpMs) >= stackPeriodMs) {
+        lastStackDumpMs = now;
+        logTaskStacks();
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(200));
 }

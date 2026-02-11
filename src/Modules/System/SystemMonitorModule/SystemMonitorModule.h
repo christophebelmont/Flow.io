@@ -38,6 +38,11 @@ public:
     void setModuleManager(ModuleManager* mm) { moduleManager = mm; }
 
 private:
+    struct SystemMonitorConfig {
+        bool traceEnabled = true;
+        int32_t tracePeriodMs = 5000;
+    };
+
     ModuleManager* moduleManager = nullptr;
 
     const WifiService* wifiSvc = nullptr;
@@ -46,6 +51,7 @@ private:
 
     uint32_t lastStackDumpMs = 0;
     uint32_t lastJsonDumpMs = 0;
+    uint32_t lastTraceLogMs = 0;
 
     void logBootInfo();
     void logHeapAndWifi();
@@ -53,4 +59,14 @@ private:
     void buildHealthJson(char* out, size_t outLen);
 
     static const char* wifiStateStr(WifiState st);
+
+    SystemMonitorConfig cfgData_{};
+    ConfigVariable<bool,0> traceEnabledVar_{
+        NVS_KEY("sm_tren"), "trace_enabled", "sysmon", ConfigType::Bool,
+        &cfgData_.traceEnabled, ConfigPersistence::Persistent, 0
+    };
+    ConfigVariable<int32_t,0> tracePeriodVar_{
+        NVS_KEY("sm_trms"), "trace_period_ms", "sysmon", ConfigType::Int32,
+        &cfgData_.tracePeriodMs, ConfigPersistence::Persistent, 0
+    };
 };

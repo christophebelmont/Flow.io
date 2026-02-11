@@ -38,6 +38,8 @@ struct IOModuleConfig {
     uint8_t pcfAddress = 0x20;
     uint8_t pcfMaskDefault = 0;
     bool pcfActiveLow = true;
+    bool traceEnabled = true;
+    int32_t tracePeriodMs = 5000;
 };
 
 enum IOAnalogSource : uint8_t {
@@ -143,6 +145,11 @@ private:
     bool buildEndpointSnapshot_(IOEndpoint* ep, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildGroupSnapshot_(char* out, size_t len, bool inputGroup, uint32_t& maxTsOut) const;
     bool processAnalogDefinition_(uint8_t idx, uint32_t nowMs);
+    int32_t clampPrecisionForHa_(int32_t precision) const;
+    void buildHaValueTemplate_(uint8_t analogIdx, char* out, size_t outLen) const;
+    void registerHaAnalogSensors_();
+    void forceAnalogSnapshotPublish_(uint8_t analogIdx, uint32_t nowMs);
+    void maybeRefreshHaOnPrecisionChange_();
     bool endpointIndexFromId_(const char* id, uint8_t& idxOut) const;
     static bool writeDigitalOut_(void* ctx, bool on);
     static void digitalPulseTimerCb_(TimerHandle_t timer);
@@ -204,6 +211,10 @@ private:
     AnalogSlot analogSlots_[MAX_ANALOG_ENDPOINTS]{};
     DigitalOutputSlot digitalOutSlots_[MAX_DIGITAL_OUTPUTS]{};
     bool runtimeReady_ = false;
+    uint32_t analogCalcLogLastMs_[3]{0, 0, 0};
+    int32_t haPrecisionLast_[ANALOG_CFG_SLOTS]{0, 0, 0, 0, 0};
+    bool haPrecisionLastInit_ = false;
+    char haValueTpl_[ANALOG_CFG_SLOTS][64]{};
 
     ConfigVariable<bool,0> enabledVar_ { NVS_KEY("io_en"),"enabled","io",ConfigType::Bool,&cfgData_.enabled,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> i2cSdaVar_ { NVS_KEY("io_sda"),"i2c_sda","io",ConfigType::Int32,&cfgData_.i2cSda,ConfigPersistence::Persistent,0 };
@@ -218,6 +229,8 @@ private:
     ConfigVariable<uint8_t,0> pcfAddressVar_ { NVS_KEY("io_pcfad"),"pcf_address","io",ConfigType::UInt8,&cfgData_.pcfAddress,ConfigPersistence::Persistent,0 };
     ConfigVariable<uint8_t,0> pcfMaskDefaultVar_ { NVS_KEY("io_pcfmk"),"pcf_mask_default","io",ConfigType::UInt8,&cfgData_.pcfMaskDefault,ConfigPersistence::Persistent,0 };
     ConfigVariable<bool,0> pcfActiveLowVar_ { NVS_KEY("io_pcfal"),"pcf_active_low","io",ConfigType::Bool,&cfgData_.pcfActiveLow,ConfigPersistence::Persistent,0 };
+    ConfigVariable<bool,0> traceEnabledVar_ { NVS_KEY("io_tren"),"trace_enabled","io/debug",ConfigType::Bool,&cfgData_.traceEnabled,ConfigPersistence::Persistent,0 };
+    ConfigVariable<int32_t,0> tracePeriodVar_ { NVS_KEY("io_trms"),"trace_period_ms","io/debug",ConfigType::Int32,&cfgData_.tracePeriodMs,ConfigPersistence::Persistent,0 };
 
     ConfigVariable<char,0> a0NameVar_{NVS_KEY("io_a0nm"),"a0_name","io/input/a0",ConfigType::CharArray,(char*)analogCfg_[0].name,ConfigPersistence::Persistent,sizeof(analogCfg_[0].name)};
     ConfigVariable<uint8_t,0> a0SourceVar_{NVS_KEY("io_a0s"),"a0_source","io/input/a0",ConfigType::UInt8,&analogCfg_[0].source,ConfigPersistence::Persistent,0};

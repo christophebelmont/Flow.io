@@ -260,25 +260,25 @@ void setup() {
 
     ioModule.setOneWireBuses(&oneWireWater, &oneWireAir);
 
-    IOAnalogDefinition phDef{};
-    snprintf(phDef.id, sizeof(phDef.id), "pH");
-    phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
-    phDef.channel = 0;
-    setAdcDefaultCalib(phDef, PH_INTERNAL_C0, PH_INTERNAL_C1, PH_EXTERNAL_C0, PH_EXTERNAL_C1);
-    phDef.precision = 1;
-    phDef.onValueChanged = onIoFloatValue;
-    phDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PH;
-    ioModule.defineAnalogInput(phDef);
-
     IOAnalogDefinition orpDef{};
     snprintf(orpDef.id, sizeof(orpDef.id), "ORP");
     orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
-    orpDef.channel = 1;
+    orpDef.channel = 0;
     setAdcDefaultCalib(orpDef, ORP_INTERNAL_C0, ORP_INTERNAL_C1, ORP_EXTERNAL_C0, ORP_EXTERNAL_C1);
     orpDef.precision = 0;
     orpDef.onValueChanged = onIoFloatValue;
     orpDef.onValueCtx = (void*)(uintptr_t)IO_IDX_ORP;
     ioModule.defineAnalogInput(orpDef);
+
+    IOAnalogDefinition phDef{};
+    snprintf(phDef.id, sizeof(phDef.id), "pH");
+    phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
+    phDef.channel = 1;
+    setAdcDefaultCalib(phDef, PH_INTERNAL_C0, PH_INTERNAL_C1, PH_EXTERNAL_C0, PH_EXTERNAL_C1);
+    phDef.precision = 1;
+    phDef.onValueChanged = onIoFloatValue;
+    phDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PH;
+    ioModule.defineAnalogInput(phDef);
 
     IOAnalogDefinition psiDef{};
     snprintf(psiDef.id, sizeof(psiDef.id), "PSI");

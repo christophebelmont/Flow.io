@@ -47,3 +47,29 @@
 - Reads:
   - `wifi.ready` for warmup/connect behavior
   - global runtime state through `DataStore*` for snapshot publishers
+
+## MQTT `cfg/set` format
+
+- Topic:
+  - `<baseTopic>/<deviceId>/cfg/set`
+  - default example: `flowio/<deviceId>/cfg/set`
+- Payload shape:
+  - JSON object: `"<moduleName>": { "<jsonName>": <value> }`
+  - module names can include `/` (example: `io/debug`)
+- ACK:
+  - topic: `<baseTopic>/<deviceId>/cfg/ack`
+  - payload: `{"ok":true}` or `{"ok":false}`
+
+Examples for trace settings:
+
+```json
+{"io/debug":{"trace_enabled":true,"trace_period_ms":5000}}
+```
+
+```json
+{"sysmon":{"trace_enabled":false}}
+```
+
+```json
+{"sysmon":{"trace_period_ms":10000}}
+```

@@ -37,20 +37,23 @@ void Ads1115Driver::tick(uint32_t nowMs)
 
     if (requested_ && ads_.isReady()) {
         int16_t raw = ads_.getValue();
-        float mv = toMilliVolts_(raw);
+        float v = toVolts_(raw);
 
         if (cfg_.differentialPairs) {
             if (nextDiffPair_ == 0) {
                 validDiff23_ = true;
-                mvDiff23_ = mv;
+                rawDiff23_ = raw;
+                vDiff23_ = v;
             } else {
                 validDiff01_ = true;
-                mvDiff01_ = mv;
+                rawDiff01_ = raw;
+                vDiff01_ = v;
             }
         } else {
             uint8_t prevCh = (uint8_t)((nextSingleCh_ + 3) % 4);
             validSingle_[prevCh] = true;
-            mvSingle_[prevCh] = mv;
+            rawSingle_[prevCh] = raw;
+            vSingle_[prevCh] = v;
         }
 
         requestNext_();
@@ -59,24 +62,45 @@ void Ads1115Driver::tick(uint32_t nowMs)
     bus_->unlock();
 }
 
-bool Ads1115Driver::readMilliVoltsChannel(uint8_t ch, float& outMv) const
+bool Ads1115Driver::readVoltsChannel(uint8_t ch, float& outV) const
 {
     if (ch > 3 || !validSingle_[ch]) return false;
-    outMv = mvSingle_[ch];
+    outV = vSingle_[ch];
     return true;
 }
 
-bool Ads1115Driver::readMilliVoltsDifferential01(float& outMv) const
+bool Ads1115Driver::readRawChannel(uint8_t ch, int16_t& outRaw) const
+{
+    if (ch > 3 || !validSingle_[ch]) return false;
+    outRaw = rawSingle_[ch];
+    return true;
+}
+
+bool Ads1115Driver::readVoltsDifferential01(float& outV) const
 {
     if (!validDiff01_) return false;
-    outMv = mvDiff01_;
+    outV = vDiff01_;
     return true;
 }
 
-bool Ads1115Driver::readMilliVoltsDifferential23(float& outMv) const
+bool Ads1115Driver::readRawDifferential01(int16_t& outRaw) const
+{
+    if (!validDiff01_) return false;
+    outRaw = rawDiff01_;
+    return true;
+}
+
+bool Ads1115Driver::readVoltsDifferential23(float& outV) const
 {
     if (!validDiff23_) return false;
-    outMv = mvDiff23_;
+    outV = vDiff23_;
+    return true;
+}
+
+bool Ads1115Driver::readRawDifferential23(int16_t& outRaw) const
+{
+    if (!validDiff23_) return false;
+    outRaw = rawDiff23_;
     return true;
 }
 
@@ -98,11 +122,11 @@ void Ads1115Driver::requestNext_()
     requested_ = true;
 }
 
-float Ads1115Driver::toMilliVolts_(int16_t raw)
+float Ads1115Driver::toVolts_(int16_t raw)
 {
     float v = ads_.toVoltage(raw);
     if (v <= ADS1X15_INVALID_VOLTAGE) {
-        return (float)raw * cfg_.mvLsb;
+        return (float)raw * cfg_.voltLsb;
     }
-    return v * 1000.0f;
+    return v;
 }

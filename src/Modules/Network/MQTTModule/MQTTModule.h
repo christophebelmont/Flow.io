@@ -157,6 +157,8 @@ private:
     void connectMqtt();
     void processRx(const RxMsg& msg);
     void publishConfigBlocks(bool retained);
+    bool publishConfigModuleAt(size_t idx, bool retained);
+    bool publishConfigBlocksFromPatch(const char* patchJson, bool retained);
     void publishTimeSchedulerSlots(bool retained, const char* rootTopic);
 
     const char* findJsonStringValue(const char* json, const char* key);
