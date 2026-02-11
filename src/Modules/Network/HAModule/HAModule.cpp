@@ -29,12 +29,6 @@ void HAModule::makeHexNodeId(char* out, size_t len)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-const char* HAModule::skipWs(const char* p)
-{
-    while (p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
-    return p;
-}
-
 void HAModule::sanitizeId(const char* in, char* out, size_t outLen)
 {
     if (!out || outLen == 0) return;
@@ -54,56 +48,135 @@ void HAModule::sanitizeId(const char* in, char* out, size_t outLen)
     out[w] = '\0';
 }
 
-bool HAModule::nextModulePair(const char*& p, char* keyOut, size_t keyOutLen, JsonValueType& typeOut) const
+bool HAModule::svcAddSensor(void* ctx, const HASensorEntry* entry)
 {
-    typeOut = JsonValueType::Unknown;
-    if (!p || !keyOut || keyOutLen == 0) return false;
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self || !entry) return false;
+    return self->addSensorEntry(*entry);
+}
 
-    p = skipWs(p);
-    if (*p == '{') p = skipWs(p + 1);
-    if (*p == ',') p = skipWs(p + 1);
-    if (*p == '}' || *p == '\0') return false;
-    if (*p != '"') return false;
-    ++p;
+bool HAModule::svcAddBinarySensor(void* ctx, const HABinarySensorEntry* entry)
+{
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self || !entry) return false;
+    return self->addBinarySensorEntry(*entry);
+}
 
-    size_t k = 0;
-    while (*p && *p != '"' && k + 1 < keyOutLen) {
-        keyOut[k++] = *p++;
-    }
-    keyOut[k] = '\0';
-    while (*p && *p != '"') ++p;
-    if (*p != '"') return false;
-    ++p;
+bool HAModule::svcAddSwitch(void* ctx, const HASwitchEntry* entry)
+{
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self || !entry) return false;
+    return self->addSwitchEntry(*entry);
+}
 
-    p = skipWs(p);
-    if (*p != ':') return false;
-    p = skipWs(p + 1);
+bool HAModule::svcAddNumber(void* ctx, const HANumberEntry* entry)
+{
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self || !entry) return false;
+    return self->addNumberEntry(*entry);
+}
 
-    if (*p == '"') {
-        typeOut = JsonValueType::String;
-        ++p;
-        while (*p) {
-            if (*p == '\\' && *(p + 1)) {
-                p += 2;
-                continue;
-            }
-            if (*p == '"') {
-                ++p;
-                break;
-            }
-            ++p;
-        }
-    } else if (strncmp(p, "true", 4) == 0) {
-        typeOut = JsonValueType::Bool;
-        p += 4;
-    } else if (strncmp(p, "false", 5) == 0) {
-        typeOut = JsonValueType::Bool;
-        p += 5;
-    } else {
-        typeOut = JsonValueType::Number;
-        while (*p && *p != ',' && *p != '}') ++p;
-    }
+bool HAModule::svcRequestRefresh(void* ctx)
+{
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self) return false;
+    self->requestAutoconfigRefresh();
     return true;
+}
+
+bool HAModule::addSensorEntry(const HASensorEntry& entry)
+{
+    if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix || !entry.valueTemplate) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < sensorCount_; ++i) {
+        if (strcmp(sensors_[i].ownerId, entry.ownerId) == 0 &&
+            strcmp(sensors_[i].objectSuffix, entry.objectSuffix) == 0) {
+            sensors_[i] = entry;
+            requestAutoconfigRefresh();
+            return true;
+        }
+    }
+
+    if (sensorCount_ >= MAX_HA_SENSORS) return false;
+    sensors_[sensorCount_++] = entry;
+    requestAutoconfigRefresh();
+    return true;
+}
+
+bool HAModule::addBinarySensorEntry(const HABinarySensorEntry& entry)
+{
+    if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix || !entry.valueTemplate) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < binarySensorCount_; ++i) {
+        if (strcmp(binarySensors_[i].ownerId, entry.ownerId) == 0 &&
+            strcmp(binarySensors_[i].objectSuffix, entry.objectSuffix) == 0) {
+            binarySensors_[i] = entry;
+            requestAutoconfigRefresh();
+            return true;
+        }
+    }
+
+    if (binarySensorCount_ >= MAX_HA_BINARY_SENSORS) return false;
+    binarySensors_[binarySensorCount_++] = entry;
+    requestAutoconfigRefresh();
+    return true;
+}
+
+bool HAModule::addSwitchEntry(const HASwitchEntry& entry)
+{
+    if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix ||
+        !entry.valueTemplate || !entry.commandTopicSuffix || !entry.payloadOn || !entry.payloadOff) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < switchCount_; ++i) {
+        if (strcmp(switches_[i].ownerId, entry.ownerId) == 0 &&
+            strcmp(switches_[i].objectSuffix, entry.objectSuffix) == 0) {
+            switches_[i] = entry;
+            requestAutoconfigRefresh();
+            return true;
+        }
+    }
+
+    if (switchCount_ >= MAX_HA_SWITCHES) return false;
+    switches_[switchCount_++] = entry;
+    requestAutoconfigRefresh();
+    return true;
+}
+
+bool HAModule::addNumberEntry(const HANumberEntry& entry)
+{
+    if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.stateTopicSuffix ||
+        !entry.valueTemplate || !entry.commandTopicSuffix || !entry.commandTemplate) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < numberCount_; ++i) {
+        if (strcmp(numbers_[i].ownerId, entry.ownerId) == 0 &&
+            strcmp(numbers_[i].objectSuffix, entry.objectSuffix) == 0) {
+            numbers_[i] = entry;
+            requestAutoconfigRefresh();
+            return true;
+        }
+    }
+
+    if (numberCount_ >= MAX_HA_NUMBERS) return false;
+    numbers_[numberCount_++] = entry;
+    requestAutoconfigRefresh();
+    return true;
+}
+
+bool HAModule::buildObjectId(const char* suffix, char* out, size_t outLen) const
+{
+    if (!suffix || !out || outLen == 0) return false;
+    char raw[256] = {0};
+    snprintf(raw, sizeof(raw), "flowio_%s_%s", deviceId, suffix);
+    sanitizeId(raw, out, outLen);
+    return out[0] != '\0';
 }
 
 bool HAModule::publishDiscovery(const char* component, const char* objectId, const char* payload)
@@ -318,228 +391,72 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
     return publishDiscovery("number", objectId, payloadBuf);
 }
 
-const char* HAModule::iconForInput(uint8_t idx, const char* label) const
-{
-    if (idx == 0) return "mdi:ph";
-    if (idx == 1) return "mdi:flash";
-    if (idx == 2) return "mdi:gauge";
-    if (idx == 3) return "mdi:water-thermometer";
-    if (idx == 4) return "mdi:thermometer";
-    if (!label) return "mdi:chart-line";
-    if (strstr(label, "temp") || strstr(label, "Temp")) return "mdi:thermometer";
-    return "mdi:chart-line";
-}
-
-const char* HAModule::unitForInput(uint8_t idx, const char* label) const
-{
-    if (idx == 1) return "mV";
-    if (idx == 2) return "PSI";
-    if (idx == 3 || idx == 4) return "°C";
-    if (!label) return nullptr;
-    if (strstr(label, "Temperature") || strstr(label, "Temp")) return "°C";
-    if (strstr(label, "ORP")) return "mV";
-    if (strstr(label, "PSI")) return "PSI";
-    return nullptr;
-}
-
-const char* HAModule::iconForOutput(const char* label) const
-{
-    if (!label) return "mdi:toggle-switch-outline";
-    if (strstr(label, "Filtration")) return "mdi:pool";
-    if (strstr(label, "pH")) return "mdi:beaker-outline";
-    if (strstr(label, "Chlorine Pump")) return "mdi:water-outline";
-    if (strstr(label, "Generator")) return "mdi:flash";
-    if (strstr(label, "Robot")) return "mdi:robot-vacuum";
-    if (strstr(label, "Lights")) return "mdi:lightbulb";
-    if (strstr(label, "Fill")) return "mdi:water-plus";
-    if (strstr(label, "Heater")) return "mdi:water-boiler";
-    return "mdi:toggle-switch-outline";
-}
-
-bool HAModule::readConfigString(const char* module, const char* key, char* out, size_t outLen)
-{
-    if (!module || !key || !out || outLen == 0 || !cfgSvc || !cfgSvc->toJsonModule) return false;
-    bool truncated = false;
-    if (!cfgSvc->toJsonModule(cfgSvc->ctx, module, moduleJsonBuf, sizeof(moduleJsonBuf), &truncated)) return false;
-
-    char pattern[96];
-    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
-    const char* p = strstr(moduleJsonBuf, pattern);
-    if (!p) return false;
-    p += strlen(pattern);
-
-    size_t w = 0;
-    while (*p && *p != '"' && w + 1 < outLen) {
-        out[w++] = *p++;
-    }
-    out[w] = '\0';
-    (void)truncated;
-    return w > 0;
-}
-
-bool HAModule::publishConfigStoreEntities()
-{
-    if (!cfgSvc || !cfgSvc->listModules || !cfgSvc->toJsonModule || !mqttSvc || !mqttSvc->formatTopic) return false;
-
-    const char* modules[64] = {nullptr};
-    uint8_t count = cfgSvc->listModules(cfgSvc->ctx, modules, 64);
-    bool any = false;
-
-    for (uint8_t i = 0; i < count; ++i) {
-        const char* module = modules[i];
-        if (!module || module[0] == '\0') continue;
-
-        bool truncated = false;
-        bool exists = cfgSvc->toJsonModule(cfgSvc->ctx, module, moduleJsonBuf, sizeof(moduleJsonBuf), &truncated);
-        if (!exists) continue;
-
-        snprintf(topicBuf, sizeof(topicBuf), "cfg/%s", module);
-        mqttSvc->formatTopic(mqttSvc->ctx, topicBuf, stateTopicBuf, sizeof(stateTopicBuf));
-
-        const char* p = moduleJsonBuf;
-        char key[64];
-        JsonValueType type = JsonValueType::Unknown;
-        while (nextModulePair(p, key, sizeof(key), type)) {
-            char idRaw[160];
-            char objectId[160];
-            char name[128];
-            char valueTpl[128];
-            snprintf(idRaw, sizeof(idRaw), "flowio_%s_cfg_%s_%s", deviceId, module, key);
-            sanitizeId(idRaw, objectId, sizeof(objectId));
-            snprintf(name, sizeof(name), "Cfg %s %s", module, key);
-            snprintf(valueTpl, sizeof(valueTpl), "{{ value_json.%s }}", key);
-
-            bool ok = false;
-            if (type == JsonValueType::Bool) {
-                ok = publishBinarySensor(objectId, name, stateTopicBuf, valueTpl, nullptr, "config");
-            } else {
-                ok = publishSensor(objectId, name, stateTopicBuf, valueTpl, "config");
-            }
-            any = any || ok;
-
-            p = skipWs(p);
-            if (*p == ',') ++p;
-        }
-
-        if (truncated) {
-            LOGW("Config module JSON truncated for HA discovery (%s)", module);
-        }
-    }
-
-    return any;
-}
-
-bool HAModule::publishDataStoreEntities()
-{
-    if (!mqttSvc || !mqttSvc->formatTopic || !cfgSvc || !cfgSvc->toJsonModule) return false;
-    bool any = false;
-
-    char objectId[160];
-    char idRaw[160];
-
-    for (uint8_t i = 0; i < 10; ++i) {
-        char moduleName[32];
-        char keyName[16];
-        char label[24];
-        snprintf(moduleName, sizeof(moduleName), "io/input/a%u", (unsigned)i);
-        snprintf(keyName, sizeof(keyName), "a%u_name", (unsigned)i);
-        if (!readConfigString(moduleName, keyName, label, sizeof(label))) continue;
-
-        char stateSuffix[32];
-        snprintf(stateSuffix, sizeof(stateSuffix), "rt/io/input/a%u", (unsigned)i);
-        mqttSvc->formatTopic(mqttSvc->ctx, stateSuffix, stateTopicBuf, sizeof(stateTopicBuf));
-
-        char tpl[64];
-        snprintf(tpl, sizeof(tpl), "{{ value_json.value }}");
-
-        snprintf(idRaw, sizeof(idRaw), "flowio_%s", label);
-        sanitizeId(idRaw, objectId, sizeof(objectId));
-        any = publishSensor(objectId, label, stateTopicBuf, tpl, nullptr, iconForInput(i, label), unitForInput(i, label)) || any;
-    }
-
-    char commandTopic[192];
-    mqttSvc->formatTopic(mqttSvc->ctx, "cmd", commandTopic, sizeof(commandTopic));
-    for (uint8_t i = 0; i < 10; ++i) {
-        char moduleName[32];
-        char keyName[16];
-        char label[24];
-        snprintf(moduleName, sizeof(moduleName), "io/output/d%u", (unsigned)i);
-        snprintf(keyName, sizeof(keyName), "d%u_name", (unsigned)i);
-        if (!readConfigString(moduleName, keyName, label, sizeof(label))) continue;
-
-        char stateSuffix[32];
-        snprintf(stateSuffix, sizeof(stateSuffix), "rt/io/output/d%u", (unsigned)i);
-        mqttSvc->formatTopic(mqttSvc->ctx, stateSuffix, stateTopicBuf, sizeof(stateTopicBuf));
-
-        char tpl[96];
-        snprintf(tpl, sizeof(tpl), "{%% if value_json.value %%}ON{%% else %%}OFF{%% endif %%}");
-        char payloadOn[96];
-        char payloadOff[96];
-
-        bool usePoolWrite = false;
-        if (dsSvc && dsSvc->store && i < POOL_DEVICE_MAX) {
-            const PoolDeviceRuntimeEntry& pd = dsSvc->store->data().pool.devices[i];
-            usePoolWrite = pd.valid;
-        }
-
-        if (usePoolWrite) {
-            snprintf(payloadOn, sizeof(payloadOn), "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd%u\\\",\\\"value\\\":true}}", (unsigned)i);
-            snprintf(payloadOff, sizeof(payloadOff), "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd%u\\\",\\\"value\\\":false}}", (unsigned)i);
-        } else {
-            snprintf(payloadOn, sizeof(payloadOn), "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d%u\\\",\\\"value\\\":true}}", (unsigned)i);
-            snprintf(payloadOff, sizeof(payloadOff), "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d%u\\\",\\\"value\\\":false}}", (unsigned)i);
-        }
-
-        snprintf(idRaw, sizeof(idRaw), "flowio_%s", label);
-        sanitizeId(idRaw, objectId, sizeof(objectId));
-        any = publishSwitch(objectId, label, stateTopicBuf, tpl, commandTopic, payloadOn, payloadOff, iconForOutput(label)) || any;
-    }
-
-    char cfgSetTopic[192];
-    mqttSvc->formatTopic(mqttSvc->ctx, "cfg/set", cfgSetTopic, sizeof(cfgSetTopic));
-    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
-        char pdModule[24];
-        snprintf(pdModule, sizeof(pdModule), "pdm/pd%u", (unsigned)i);
-        bool truncated = false;
-        bool pdExists = cfgSvc->toJsonModule(cfgSvc->ctx, pdModule, moduleJsonBuf, sizeof(moduleJsonBuf), &truncated);
-        if (!pdExists) continue;
-
-        char label[24];
-        char ioModule[24];
-        char ioKey[16];
-        snprintf(ioModule, sizeof(ioModule), "io/output/d%u", (unsigned)i);
-        snprintf(ioKey, sizeof(ioKey), "d%u_name", (unsigned)i);
-        if (!readConfigString(ioModule, ioKey, label, sizeof(label))) {
-            snprintf(label, sizeof(label), "Pool Device %u", (unsigned)i);
-        }
-
-        char cfgStateSuffix[32];
-        snprintf(cfgStateSuffix, sizeof(cfgStateSuffix), "cfg/pdm/pd%u", (unsigned)i);
-        mqttSvc->formatTopic(mqttSvc->ctx, cfgStateSuffix, stateTopicBuf, sizeof(stateTopicBuf));
-
-        char idFlowRaw[160];
-        char nameFlow[96];
-        char valueTplFlow[64];
-        char cmdTplFlow[128];
-        snprintf(idFlowRaw, sizeof(idFlowRaw), "flowio_%s_flow_l_h", label);
-        sanitizeId(idFlowRaw, objectId, sizeof(objectId));
-        snprintf(nameFlow, sizeof(nameFlow), "%s Flowrate", label);
-        snprintf(valueTplFlow, sizeof(valueTplFlow), "{{ value_json.flow_l_h }}");
-        snprintf(cmdTplFlow, sizeof(cmdTplFlow), "{\\\"pdm/pd%u\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}", (unsigned)i);
-        any = publishNumber(objectId, nameFlow,
-                            stateTopicBuf, valueTplFlow,
-                            cfgSetTopic, cmdTplFlow,
-                            0.0f, 3.0f, 0.1f,
-                            "slider", "config", "mdi:water-sync", "L/h") || any;
-
-    }
-
-    return any;
-}
-
 bool HAModule::publishAutoconfig()
 {
-    return publishDataStoreEntities();
+    return publishRegisteredEntities();
+}
+
+bool HAModule::publishRegisteredEntities()
+{
+    if (!mqttSvc || !mqttSvc->formatTopic) return false;
+
+    bool okAll = true;
+
+    for (uint8_t i = 0; i < sensorCount_; ++i) {
+        const HASensorEntry& e = sensors_[i];
+        if (!buildObjectId(e.objectSuffix, objectIdBuf, sizeof(objectIdBuf))) {
+            okAll = false;
+            continue;
+        }
+        mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
+        if (!publishSensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate, e.entityCategory, e.icon, e.unit)) {
+            okAll = false;
+        }
+    }
+
+    for (uint8_t i = 0; i < binarySensorCount_; ++i) {
+        const HABinarySensorEntry& e = binarySensors_[i];
+        if (!buildObjectId(e.objectSuffix, objectIdBuf, sizeof(objectIdBuf))) {
+            okAll = false;
+            continue;
+        }
+        mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
+        if (!publishBinarySensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate, e.deviceClass, e.entityCategory, e.icon)) {
+            okAll = false;
+        }
+    }
+
+    for (uint8_t i = 0; i < switchCount_; ++i) {
+        const HASwitchEntry& e = switches_[i];
+        if (!buildObjectId(e.objectSuffix, objectIdBuf, sizeof(objectIdBuf))) {
+            okAll = false;
+            continue;
+        }
+        mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
+        mqttSvc->formatTopic(mqttSvc->ctx, e.commandTopicSuffix, commandTopicBuf, sizeof(commandTopicBuf));
+        if (!publishSwitch(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate,
+                           commandTopicBuf, e.payloadOn, e.payloadOff, e.icon)) {
+            okAll = false;
+        }
+    }
+
+    for (uint8_t i = 0; i < numberCount_; ++i) {
+        const HANumberEntry& e = numbers_[i];
+        if (!buildObjectId(e.objectSuffix, objectIdBuf, sizeof(objectIdBuf))) {
+            okAll = false;
+            continue;
+        }
+        mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
+        mqttSvc->formatTopic(mqttSvc->ctx, e.commandTopicSuffix, commandTopicBuf, sizeof(commandTopicBuf));
+        if (!publishNumber(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate,
+                           commandTopicBuf, e.commandTemplate,
+                           e.minValue, e.maxValue, e.step,
+                           e.mode, e.entityCategory, e.icon, e.unit)) {
+            okAll = false;
+        }
+    }
+
+    return okAll;
 }
 
 void HAModule::refreshIdentityFromConfig()
@@ -559,7 +476,7 @@ void HAModule::refreshIdentityFromConfig()
 
 void HAModule::tryPublishAutoconfig()
 {
-    if (published) return;
+    if (published && !refreshRequested) return;
     refreshIdentityFromConfig();
     if (!cfgData.enabled) return;
     if (!mqttSvc || !mqttSvc->isConnected || !dsSvc || !dsSvc->store) return;
@@ -571,8 +488,10 @@ void HAModule::tryPublishAutoconfig()
 
     if (publishAutoconfig()) {
         published = true;
+        refreshRequested = false;
         setHaAutoconfigPublished(*dsSvc->store, true);
-        LOGI("Home Assistant auto-discovery published");
+        LOGI("Home Assistant auto-discovery published (sensor=%u switch=%u number=%u)",
+             (unsigned)sensorCount_, (unsigned)switchCount_, (unsigned)numberCount_);
     } else {
         setHaAutoconfigPublished(*dsSvc->store, false);
         LOGW("Home Assistant auto-discovery publish failed");
@@ -616,6 +535,16 @@ void HAModule::signalAutoconfigCheck()
     }
 }
 
+void HAModule::requestAutoconfigRefresh()
+{
+    published = false;
+    refreshRequested = true;
+    if (dsSvc && dsSvc->store) {
+        setHaAutoconfigPublished(*dsSvc->store, false);
+    }
+    signalAutoconfigCheck();
+}
+
 void HAModule::loop()
 {
     if (!autoconfigPending) {
@@ -635,9 +564,16 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(modelVar);
 
     eventBusSvc = services.get<EventBusService>("eventbus");
-    cfgSvc = services.get<ConfigStoreService>("config");
     dsSvc = services.get<DataStoreService>("datastore");
     mqttSvc = services.get<MqttService>("mqtt");
+
+    haSvc.addSensor = HAModule::svcAddSensor;
+    haSvc.addBinarySensor = HAModule::svcAddBinarySensor;
+    haSvc.addSwitch = HAModule::svcAddSwitch;
+    haSvc.addNumber = HAModule::svcAddNumber;
+    haSvc.requestRefresh = HAModule::svcRequestRefresh;
+    haSvc.ctx = this;
+    services.add("ha", &haSvc);
 
     if (dsSvc && dsSvc->store) {
         setHaAutoconfigPublished(*dsSvc->store, false);

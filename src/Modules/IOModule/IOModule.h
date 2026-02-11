@@ -96,12 +96,13 @@ public:
     const char* moduleId() const override { return "io"; }
     const char* taskName() const override { return "io"; }
 
-    uint8_t dependencyCount() const override { return 4; }
+    uint8_t dependencyCount() const override { return 5; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "datastore";
         if (i == 2) return "cmd";
         if (i == 3) return "mqtt";
+        if (i == 4) return "ha";
         return nullptr;
     }
 
@@ -176,6 +177,7 @@ private:
     const LogHubService* logHub_ = nullptr;
     ServiceRegistry* services_ = nullptr;
     const CommandService* cmdSvc_ = nullptr;
+    const HAService* haSvc_ = nullptr;
     DataStore* dataStore_ = nullptr;
 
     IORegistry registry_{};

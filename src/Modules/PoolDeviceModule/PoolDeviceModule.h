@@ -33,7 +33,7 @@ public:
     const char* moduleId() const override { return "pooldev"; }
     const char* taskName() const override { return "pooldev"; }
 
-    uint8_t dependencyCount() const override { return 7; }
+    uint8_t dependencyCount() const override { return 8; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "datastore";
@@ -42,6 +42,7 @@ public:
         if (i == 4) return "io";
         if (i == 5) return "mqtt";
         if (i == 6) return "eventbus";
+        if (i == 7) return "ha";
         return nullptr;
     }
 
@@ -108,6 +109,7 @@ private:
 
     const LogHubService* logHub_ = nullptr;
     const CommandService* cmdSvc_ = nullptr;
+    const HAService* haSvc_ = nullptr;
     EventBus* eventBus_ = nullptr;
     DataStore* dataStore_ = nullptr;
     bool runtimeReady_ = false;

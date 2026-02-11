@@ -643,6 +643,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     logHub_ = services.get<LogHubService>("loghub");
     cmdSvc_ = services.get<CommandService>("cmd");
+    haSvc_ = services.get<HAService>("ha");
     const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
@@ -722,6 +723,35 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "pool.write", cmdPoolWrite_, this);
         cmdSvc_->registerHandler(cmdSvc_->ctx, "pool.refill", cmdPoolRefill_, this);
+    }
+    if (haSvc_ && haSvc_->addNumber) {
+        if (slots_[0].used) {
+            const HANumberEntry n0{
+                "pooldev", "pd0_flow_l_h", "Filtration Pump Flowrate",
+                "cfg/pdm/pd0", "{{ value_json.flow_l_h }}",
+                "cfg/set", "{\\\"pdm/pd0\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n0);
+        }
+        if (slots_[1].used) {
+            const HANumberEntry n1{
+                "pooldev", "pd1_flow_l_h", "pH Pump Flowrate",
+                "cfg/pdm/pd1", "{{ value_json.flow_l_h }}",
+                "cfg/set", "{\\\"pdm/pd1\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n1);
+        }
+        if (slots_[2].used) {
+            const HANumberEntry n2{
+                "pooldev", "pd2_flow_l_h", "Chlorine Pump Flowrate",
+                "cfg/pdm/pd2", "{{ value_json.flow_l_h }}",
+                "cfg/set", "{\\\"pdm/pd2\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n2);
+        }
     }
 
     uint8_t count = 0;

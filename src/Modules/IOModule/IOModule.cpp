@@ -816,6 +816,7 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     services_ = &services;
     logHub_ = services.get<LogHubService>("loghub");
     cmdSvc_ = services.get<CommandService>("cmd");
+    haSvc_ = services.get<HAService>("ha");
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
 
@@ -871,6 +872,83 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "io.write", cmdIoWrite_, this);
         LOGI("Command registered: io.write");
+    }
+    if (haSvc_ && haSvc_->addSensor && haSvc_->addSwitch) {
+        const HASensorEntry s0{"io", "ph", "pH", "rt/io/input/a0", "{{ value_json.value }}", nullptr, "mdi:ph", nullptr};
+        const HASensorEntry s1{"io", "orp", "ORP", "rt/io/input/a1", "{{ value_json.value }}", nullptr, "mdi:flash", "mV"};
+        const HASensorEntry s2{"io", "psi", "PSI", "rt/io/input/a2", "{{ value_json.value }}", nullptr, "mdi:gauge", "PSI"};
+        const HASensorEntry s3{"io", "water_temperature", "Water Temperature", "rt/io/input/a3", "{{ value_json.value }}", nullptr, "mdi:water-thermometer", "\xC2\xB0""C"};
+        const HASensorEntry s4{"io", "air_temperature", "Air Temperature", "rt/io/input/a4", "{{ value_json.value }}", nullptr, "mdi:thermometer", "\xC2\xB0""C"};
+        (void)haSvc_->addSensor(haSvc_->ctx, &s0);
+        (void)haSvc_->addSensor(haSvc_->ctx, &s1);
+        (void)haSvc_->addSensor(haSvc_->ctx, &s2);
+        (void)haSvc_->addSensor(haSvc_->ctx, &s3);
+        (void)haSvc_->addSensor(haSvc_->ctx, &s4);
+
+        const HASwitchEntry sw0{
+            "io", "filtration_pump", "Filtration Pump", "rt/io/output/d0",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd0\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd0\\\",\\\"value\\\":false}}",
+            "mdi:pool"
+        };
+        const HASwitchEntry sw1{
+            "io", "ph_pump", "pH Pump", "rt/io/output/d1",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd1\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd1\\\",\\\"value\\\":false}}",
+            "mdi:beaker-outline"
+        };
+        const HASwitchEntry sw2{
+            "io", "chlorine_pump", "Chlorine Pump", "rt/io/output/d2",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd2\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"id\\\":\\\"pd2\\\",\\\"value\\\":false}}",
+            "mdi:water-outline"
+        };
+        const HASwitchEntry sw3{
+            "io", "chlorine_generator", "Chlorine Generator", "rt/io/output/d3",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d3\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d3\\\",\\\"value\\\":false}}",
+            "mdi:flash"
+        };
+        const HASwitchEntry sw4{
+            "io", "robot", "Robot", "rt/io/output/d4",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d4\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d4\\\",\\\"value\\\":false}}",
+            "mdi:robot-vacuum"
+        };
+        const HASwitchEntry sw5{
+            "io", "lights", "Lights", "rt/io/output/d5",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d5\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d5\\\",\\\"value\\\":false}}",
+            "mdi:lightbulb"
+        };
+        const HASwitchEntry sw6{
+            "io", "fill_pump", "Fill Pump", "rt/io/output/d6",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d6\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d6\\\",\\\"value\\\":false}}",
+            "mdi:water-plus"
+        };
+        const HASwitchEntry sw7{
+            "io", "water_heater", "Water Heater", "rt/io/output/d7",
+            "{% if value_json.value %}ON{% else %}OFF{% endif %}", "cmd",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d7\\\",\\\"value\\\":true}}",
+            "{\\\"cmd\\\":\\\"io.write\\\",\\\"args\\\":{\\\"id\\\":\\\"d7\\\",\\\"value\\\":false}}",
+            "mdi:water-boiler"
+        };
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw0);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw1);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw2);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw3);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw4);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw5);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw6);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &sw7);
     }
     (void)logHub_;
 }

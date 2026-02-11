@@ -7,6 +7,7 @@
 #include "IConfig.h"
 #include "IDataStore.h"
 #include "IEventBus.h"
+#include "IHA.h"
 #include "ILogger.h"
 #include "IIO.h"
 #include "IMqtt.h"

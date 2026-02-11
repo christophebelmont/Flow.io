@@ -11,7 +11,9 @@
 
 ## Provided services
 
-- None.
+- `ha` (`HAService`)
+  - `addSensor(...)`, `addBinarySensor(...)`, `addSwitch(...)`, `addNumber(...)`: allows modules to register static Home Assistant discovery entries.
+  - `requestRefresh(...)`: requests a full HA discovery refresh/republication.
 
 ## Consumed services
 
