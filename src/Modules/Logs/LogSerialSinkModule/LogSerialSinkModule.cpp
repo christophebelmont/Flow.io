@@ -5,6 +5,13 @@
 #include "LogSerialSinkModule.h"
 #include <Arduino.h>
 
+struct SerialSinkCtx {
+    ServiceRegistry* services = nullptr;
+    const TimeService* timeSvc = nullptr;
+};
+
+static SerialSinkCtx gSerialSinkCtx{};
+
 static const char* lvlStr(LogLevel lvl) {
     switch (lvl) {
         case LogLevel::Debug: return "D";
@@ -27,9 +34,9 @@ static const char* lvlColor(LogLevel lvl) {
 
 static const char* colorReset() { return "\x1b[0m"; }
 
-static bool isTimeValid()
+static bool isSystemTimeValid()
 {
-    /// Méthode classique ESP32 : tant que NTP pas synchro, l'année reste ~1970
+    // Classic ESP32 behavior: before real sync, epoch is near 1970.
     time_t now = time(nullptr);
     return (now > 1609459200); ///< 2021-01-01 00:00:00
 }
@@ -53,18 +60,35 @@ static void formatUptime(char *out, size_t outSize, uint32_t ms)
 }
 
 static void serialSinkWrite(void* ctx, const LogEntry& e) {
-    (void)ctx;
+    SerialSinkCtx* sinkCtx = static_cast<SerialSinkCtx*>(ctx);
 
     char ts[48];
+    bool timeFromService = false;
 
-    if (isTimeValid()) {
-        /// Heure réelle (NTP OK)
+    if (sinkCtx) {
+        if (!sinkCtx->timeSvc && sinkCtx->services) {
+            sinkCtx->timeSvc = sinkCtx->services->get<TimeService>("time");
+        }
+
+        if (sinkCtx->timeSvc &&
+            sinkCtx->timeSvc->isSynced &&
+            sinkCtx->timeSvc->formatLocalTime &&
+            sinkCtx->timeSvc->isSynced(sinkCtx->timeSvc->ctx)) {
+            char localTs[32] = {0};
+            if (sinkCtx->timeSvc->formatLocalTime(sinkCtx->timeSvc->ctx, localTs, sizeof(localTs))) {
+                unsigned ms = e.ts_ms % 1000;
+                snprintf(ts, sizeof(ts), "%s.%03u", localTs, ms);
+                timeFromService = true;
+            }
+        }
+    }
+
+    if (!timeFromService && isSystemTimeValid()) {
+        // Real system time (NTP synced)
         time_t now = time(nullptr);
         struct tm t;
         localtime_r(&now, &t);
 
-        /// Si tu veux inclure les millisecondes dans l'heure réelle:
-        /// on utilise e.ts_ms % 1000 comme fraction (supposé venir de millis/horloge interne)
         unsigned ms = e.ts_ms % 1000;
 
         snprintf(ts, sizeof(ts),
@@ -76,8 +100,8 @@ static void serialSinkWrite(void* ctx, const LogEntry& e) {
                  t.tm_min,
                  t.tm_sec,
                  ms);
-    } else {
-        /// Fallback uptime
+    } else if (!timeFromService) {
+        // Fallback uptime
         formatUptime(ts, sizeof(ts), e.ts_ms);
     }
 
@@ -99,9 +123,12 @@ void LogSerialSinkModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     auto sinks = services.get<LogSinkRegistryService>("logsinks");
     if (!sinks) return;
 
+    gSerialSinkCtx.services = &services;
+    gSerialSinkCtx.timeSvc = nullptr;
+
     LogSinkService sink{};
     sink.write = serialSinkWrite;
-    sink.ctx = nullptr;
+    sink.ctx = &gSerialSinkCtx;
 
     sinks->add(sinks->ctx, sink);
 }

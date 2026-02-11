@@ -41,8 +41,7 @@ src/
 docs/
   en/                              # English documentation
   fr/                              # French documentation
-  modules/                         # legacy module docs (backward compatibility)
-  CoreServicesGuidelines.md        # legacy root docs (backward compatibility)
+  modules/                         # module documentation
 ```
 
 ## Available Modules
@@ -77,4 +76,3 @@ docs/
 
 - [CoreServicesGuidelines](docs/en/CoreServicesGuidelines.md)
 - [ModuleDevGuide](docs/en/ModuleDevGuide.md)
-- [DevGuide (legacy)](docs/en/DevGuide.md)

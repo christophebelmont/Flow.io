@@ -36,6 +36,7 @@
 #include "Modules/IOModule/IOModule.h"
 #include "Modules/IOModule/IOBus/OneWireBus.h"
 #include "Modules/PoolDeviceModule/PoolDeviceModule.h"
+#include "Modules/PoolLogicModule/PoolLogicModule.h"
 #include "Modules/EventBusModule/EventBusModule.h"
 #include "Modules/CommandModule/CommandModule.h"
 
@@ -70,6 +71,7 @@ static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
 static IOModule             ioModule;
 static PoolDeviceModule     poolDeviceModule;
+static PoolLogicModule      poolLogicModule;
 static DataStore*           gIoDataStore = nullptr;
 
 static OneWireBus oneWireWater(19);
@@ -96,6 +98,34 @@ static constexpr uint8_t IO_IDX_ORP = 1;
 static constexpr uint8_t IO_IDX_PSI = 2;
 static constexpr uint8_t IO_IDX_WATER_TEMP = 3;
 static constexpr uint8_t IO_IDX_AIR_TEMP = 4;
+
+static constexpr float PH_INTERNAL_C0 = 0.9583f;
+static constexpr float PH_INTERNAL_C1 = 4.834f;
+static constexpr float PH_EXTERNAL_C0 = -2.50133333f;
+static constexpr float PH_EXTERNAL_C1 = 6.9f;
+
+static constexpr float ORP_INTERNAL_C0 = 129.2f;
+static constexpr float ORP_INTERNAL_C1 = 384.1f;
+static constexpr float ORP_EXTERNAL_C0 = 431.03f;
+static constexpr float ORP_EXTERNAL_C1 = 0.0f;
+
+static constexpr float PSI_DEFAULT_C0 = 0.377923399f;
+static constexpr float PSI_DEFAULT_C1 = -0.17634473f;
+
+static void setAdcDefaultCalib(IOAnalogDefinition& def,
+                               float internalC0,
+                               float internalC1,
+                               float externalC0,
+                               float externalC1)
+{
+    if (def.source == IO_SRC_ADS_EXTERNAL_DIFF) {
+        def.c0 = externalC0;
+        def.c1 = externalC1;
+    } else {
+        def.c0 = internalC0;
+        def.c1 = internalC1;
+    }
+}
 
 static void onIoFloatValue(void* ctx, float value) {
     if (!gIoDataStore) return;
@@ -222,6 +252,7 @@ void setup() {
     moduleManager.add(&haModule);
     moduleManager.add(&systemModule);
     moduleManager.add(&ioModule);
+    moduleManager.add(&poolLogicModule);
     moduleManager.add(&poolDeviceModule);
 
     systemMonitorModule.setModuleManager(&moduleManager);
@@ -233,6 +264,7 @@ void setup() {
     snprintf(phDef.id, sizeof(phDef.id), "pH");
     phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     phDef.channel = 0;
+    setAdcDefaultCalib(phDef, PH_INTERNAL_C0, PH_INTERNAL_C1, PH_EXTERNAL_C0, PH_EXTERNAL_C1);
     phDef.precision = 1;
     phDef.onValueChanged = onIoFloatValue;
     phDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PH;
@@ -242,6 +274,7 @@ void setup() {
     snprintf(orpDef.id, sizeof(orpDef.id), "ORP");
     orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     orpDef.channel = 1;
+    setAdcDefaultCalib(orpDef, ORP_INTERNAL_C0, ORP_INTERNAL_C1, ORP_EXTERNAL_C0, ORP_EXTERNAL_C1);
     orpDef.precision = 0;
     orpDef.onValueChanged = onIoFloatValue;
     orpDef.onValueCtx = (void*)(uintptr_t)IO_IDX_ORP;
@@ -251,6 +284,8 @@ void setup() {
     snprintf(psiDef.id, sizeof(psiDef.id), "PSI");
     psiDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     psiDef.channel = 2;
+    psiDef.c0 = PSI_DEFAULT_C0;
+    psiDef.c1 = PSI_DEFAULT_C1;
     psiDef.precision = 1;
     psiDef.onValueChanged = onIoFloatValue;
     psiDef.onValueCtx = (void*)(uintptr_t)IO_IDX_PSI;
@@ -400,7 +435,6 @@ void setup() {
         "|_|    |_| \\___/  \\_/\\_/(_)|___|\\___/         \n"
         "\x1b[0m"
     );
-
 }
 
 void loop() {

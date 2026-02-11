@@ -170,4 +170,5 @@ private:
     bool schedInitialized_ = false;
     uint16_t activeMaskValue_ = 0;
     uint32_t simBootMs_ = 0;
+    uint64_t lastSchedulerEvalEpochSec_ = 0;
 };

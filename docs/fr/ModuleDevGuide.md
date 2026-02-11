@@ -1,75 +1,204 @@
 # ModuleDevGuide
 
-Practical guide to add a new module to Flow.IO (ESP32 + FreeRTOS), including conventions and required documentation.
+Practical guide to create a new module in Flow.IO with real patterns already used in the repository.
 
-## 1) Choose the Module Type
+## 1) Pick the right module type
 
-- `Module` (active): has runtime logic in `loop()` and runs in its own FreeRTOS task.
-- `ModulePassive` (passive): wiring-only module (services/config), no task.
+Use `Module` when you need runtime behavior in a task loop.
 
-## 2) Create Module Files
+Real example (`WifiModule`):
 
-At minimum:
+```cpp
+class WifiModule : public Module {
+public:
+    const char* moduleId() const override { return "wifi"; }
+    const char* taskName() const override { return "wifi"; }
+    void init(ConfigStore& cfg, ServiceRegistry& services) override;
+    void loop() override;
+};
+```
 
-- `src/Modules/<Name>/<Name>Module.h`
-- `src/Modules/<Name>/<Name>Module.cpp`
-- Optional runtime model: `src/Modules/<Name>/<Name>ModuleDataModel.h`
-- Optional runtime helpers: `src/Modules/<Name>/<Name>Runtime.h`
+Use `ModulePassive` when the module only wires services/commands/config and does not need its own task.
 
-## 3) Define the Module Contract
+Real example: `CommandModule`, `ConfigStoreModule`, `DataStoreModule`, `SystemModule`.
 
-In the module header:
+## 2) Define module identity and dependencies
 
-- define a stable `moduleId()`
-- define `taskName()` for active modules
-- declare `dependencyCount()` and `dependency(i)`
-- implement `init(ConfigStore&, ServiceRegistry&)`
-- implement `loop()` for active modules
+Every module must expose:
 
-## 4) ConfigStore Integration
+- a stable `moduleId()`
+- a `taskName()` (for active modules)
+- explicit dependencies through `dependencyCount()` and `dependency(i)`
 
-- declare `ConfigVariable<...>` fields in the module
-- register them in `init()` with `cfg.registerVar(...)`
-- keep coherent `moduleName` groups (for example `mqtt`, `io/input/a0`, `pdm/pd0`)
-- do not bypass `ConfigStore` for NVS writes
+Real example (`TimeModule`):
 
-## 5) DataStore Integration
+```cpp
+uint8_t dependencyCount() const override { return 4; }
+const char* dependency(uint8_t i) const override {
+    if (i == 0) return "loghub";
+    if (i == 1) return "datastore";
+    if (i == 2) return "cmd";
+    if (i == 3) return "eventbus";
+    return nullptr;
+}
+```
 
-If your module publishes shared runtime state:
+## 3) Register ConfigStore variables
 
-1. Add a struct in `<Name>ModuleDataModel.h`.
-2. Add the `MODULE_DATA_MODEL` marker.
-3. Add typed set/get helpers in `<Name>Runtime.h`.
-4. Notify updates via `ds.notifyChanged(dataKey, dirtyMask)`.
-5. Regenerate aggregated runtime headers:
+Define `ConfigVariable` members in the module and register them in `init()`.
+
+Real example (`MQTTModule`):
+
+```cpp
+ConfigVariable<char,0> hostVar {
+    NVS_KEY("mq_host"),"host","mqtt",ConfigType::CharArray,
+    (char*)cfgData.host,ConfigPersistence::Persistent,sizeof(cfgData.host)
+};
+
+void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
+    cfg.registerVar(hostVar);
+    cfg.registerVar(portVar);
+    cfg.registerVar(userVar);
+    cfg.registerVar(passVar);
+    cfg.registerVar(baseTopicVar);
+    cfg.registerVar(enabledVar);
+    cfg.registerVar(sensorMinVar);
+    ...
+}
+```
+
+Guidelines:
+
+- keep `moduleName` consistent (`mqtt`, `time/scheduler`, `io/input/a0`, `pdm/pd0`)
+- never write NVS directly from module logic
+
+## 4) Provide and consume services
+
+### 4.1 Provide a service
+
+Real example (`MQTTModule` provides `mqtt`):
+
+```cpp
+mqttSvc.publish = MQTTModule::svcPublish;
+mqttSvc.formatTopic = MQTTModule::svcFormatTopic;
+mqttSvc.isConnected = MQTTModule::svcIsConnected;
+mqttSvc.ctx = this;
+services.add("mqtt", &mqttSvc);
+```
+
+### 4.2 Consume services
+
+Real example (`HAModule`):
+
+```cpp
+eventBusSvc = services.get<EventBusService>("eventbus");
+cfgSvc = services.get<ConfigStoreService>("config");
+dsSvc = services.get<DataStoreService>("datastore");
+mqttSvc = services.get<MqttService>("mqtt");
+```
+
+Always handle `nullptr` before use.
+
+## 5) Use EventBus for async orchestration
+
+Subscribe in `init()`, keep callbacks lightweight, defer heavy work to `loop()`.
+
+Real example (`PoolDeviceModule`):
+
+```cpp
+if (eventBus_) {
+    eventBus_->subscribe(EventId::SchedulerEventTriggered, &PoolDeviceModule::onEventStatic_, this);
+}
+```
+
+The callback only updates a pending mask; resets are applied later in `tickDevices_()`.
+
+## 6) Publish runtime state in DataStore
+
+When a module owns shared runtime state, add:
+
+1. `<Name>ModuleDataModel.h` with `MODULE_DATA_MODEL`
+2. `<Name>Runtime.h` with typed helpers and DataKeys
+3. notifications through `ds.notifyChanged(...)`
+
+Real helper example (`WifiRuntime.h`):
+
+```cpp
+constexpr DataKey DATAKEY_WIFI_READY = 1;
+
+static inline void setWifiReady(DataStore& ds, bool ready)
+{
+    RuntimeData& rt = ds.dataMutable();
+    if (rt.wifi.ready == ready) return;
+    rt.wifi.ready = ready;
+    ds.notifyChanged(DATAKEY_WIFI_READY, DIRTY_NETWORK);
+}
+```
+
+Real usage example (`WifiModule.cpp`):
+
+```cpp
+if (dataStore) {
+    setWifiIp(*dataStore, ip4);
+    setWifiReady(*dataStore, true);
+}
+```
+
+After adding new runtime model files, regenerate aggregated headers:
 
 ```bash
 python3 scripts/generate_datamodel.py
 ```
 
-## 6) Service Design
+## 7) Expose runtime snapshots when needed
 
-- expose a service only for reusable callable capabilities
-- register in the producer with `services.add("id", &service)`
-- consume with `services.get<T>("id")` and always check for `nullptr`
-- see also `docs/CoreServicesGuidelines.md`
+If your module publishes structured runtime payloads through MQTT routing, implement `IRuntimeSnapshotProvider`.
 
-## 7) EventBus Design
+Real examples:
 
-- publish events for asynchronous transitions
-- keep payloads small and trivially copyable
-- avoid heavy logic inside EventBus callbacks
+- `IOModule` exposes snapshots like `rt/io/input/aN` and `rt/io/output/dN`
+- `PoolDeviceModule` exposes snapshots like `rt/pdm/pdN`
 
-## 8) Wiring in `main.cpp`
+## 8) Register commands (if needed)
 
-- instantiate the module
-- add it to `ModuleManager`
-- wire runtime definitions for domain modules (for example I/O and pool devices)
-- keep initialization intent clear; actual ordering is enforced by dependency resolution
+Use `CommandService` for external control surface.
 
-## 9) Mandatory Module Documentation
+Real examples:
 
-For each new module, add `docs/modules/<Name>Module.md` with exactly this structure:
+- `SystemModule`: `system.ping`, `system.reboot`, `system.factory_reset`
+- `IOModule`: `io.write`
+- `PoolDeviceModule`: `pool.write`, `pool.refill`
+- `TimeModule`: `time.resync`, `time.scheduler.*`
+
+Pattern:
+
+```cpp
+cmdSvc->registerHandler(cmdSvc->ctx, "time.scheduler.set", cmdSchedSet, this);
+```
+
+## 9) Wire the module in `main.cpp`
+
+Add instance and register it in `ModuleManager`.
+
+Real example:
+
+```cpp
+moduleManager.add(&wifiModule);
+moduleManager.add(&timeModule);
+moduleManager.add(&mqttModule);
+moduleManager.add(&ioModule);
+moduleManager.add(&poolDeviceModule);
+```
+
+For domain modules, wire concrete definitions in `main.cpp` (real project pattern):
+
+- `ioModule.defineAnalogInput(...)`
+- `ioModule.defineDigitalOutput(...)`
+- `poolDeviceModule.defineDevice(...)`
+
+## 10) Mandatory module documentation
+
+For each new module, add `docs/en/modules/<Name>Module.md` and `docs/fr/modules/<Name>Module.md` with the same structure:
 
 1. `General description`
 2. `Module dependencies`
@@ -78,14 +207,12 @@ For each new module, add `docs/modules/<Name>Module.md` with exactly this struct
 5. `ConfigStore values used`
 6. `DataStore values used`
 
-Use the same structure for every module to keep reviews and maintenance consistent.
+## 11) Merge checklist
 
-## 10) Pre-Merge Checklist
-
-- module compiles
-- dependencies are correct
-- services are registered/consumed correctly
+- module compiles (`pio run`)
+- dependencies are accurate
+- service registration/consumption is validated
 - ConfigStore keys are documented
-- DataStore fields/keys are documented
-- `docs/modules/` entry exists for the module
-- README contains the documentation link
+- DataStore keys/fields are documented
+- module docs are added in EN and FR indexes
+- README links are updated

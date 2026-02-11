@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 #include "Core/EventBus/EventPayloads.h"
+#include <cctype>
 #define LOG_TAG "MqttModu"
 #include "Core/ModuleLog.h"
 
@@ -139,32 +140,105 @@ void MQTTModule::refreshConfigModules()
 }
 
 const char* MQTTModule::findJsonStringValue(const char* json, const char* key) {
+    if (!json || !key) return nullptr;
     static char pat[48];
-    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
     const char* p = strstr(json, pat);
     if (!p) return nullptr;
-    return p + strlen(pat);
+    p += strlen(pat);
+    while (*p && isspace((unsigned char)*p)) ++p;
+    if (*p != ':') return nullptr;
+    ++p;
+    while (*p && isspace((unsigned char)*p)) ++p;
+    if (*p != '"') return nullptr;
+    return p + 1;
 }
 
 const char* MQTTModule::findJsonObjectStart(const char* json, const char* key) {
+    if (!json || !key) return nullptr;
     static char pat[48];
-    snprintf(pat, sizeof(pat), "\"%s\":{", key);
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
     const char* p = strstr(json, pat);
     if (!p) return nullptr;
-    return p + strlen(pat) - 1;
+    p += strlen(pat);
+    while (*p && isspace((unsigned char)*p)) ++p;
+    if (*p != ':') return nullptr;
+    ++p;
+    while (*p && isspace((unsigned char)*p)) ++p;
+    if (*p != '{') return nullptr;
+    return p;
 }
 
 void MQTTModule::publishConfigBlocks(bool retained) {
     if (!cfgSvc || !cfgSvc->toJsonModule) return;
     refreshConfigModules();
     for (size_t i = 0; i < cfgModuleCount; ++i) {
+        if (strcmp(cfgModules[i], "time/scheduler") == 0) {
+            publishTimeSchedulerSlots(retained, topicCfgBlocks[i]);
+            continue;
+        }
+
         bool truncated = false;
         bool any = cfgSvc->toJsonModule(cfgSvc->ctx, cfgModules[i], stateCfgBuf, sizeof(stateCfgBuf), &truncated);
-        if (!any) continue;
         if (truncated) {
             LOGW("cfg/%s truncated (buffer=%u)", cfgModules[i], (unsigned)sizeof(stateCfgBuf));
+            // Avoid publishing malformed partial JSON when truncation happens.
+            const char* truncPayload = "{\"ok\":false,\"err\":\"cfg_truncated\"}";
+            client.publish(topicCfgBlocks[i], 1, retained, truncPayload);
+            continue;
         }
+        if (!any) continue;
         client.publish(topicCfgBlocks[i], 1, retained, stateCfgBuf);
+    }
+}
+
+void MQTTModule::publishTimeSchedulerSlots(bool retained, const char* rootTopic)
+{
+    if (!rootTopic || rootTopic[0] == '\0') return;
+
+    // Root topic stays small and indicates that details are split by slot.
+    client.publish(rootTopic, 1, retained, "{\"mode\":\"per_slot\",\"slots\":16}");
+
+    if (!timeSchedSvc || !timeSchedSvc->getSlot) {
+        LOGW("time.scheduler service unavailable for cfg publication");
+        return;
+    }
+
+    char slotTopic[160] = {0};
+    for (uint8_t slot = 0; slot < TIME_SCHED_MAX_SLOTS; ++slot) {
+        snprintf(slotTopic, sizeof(slotTopic), "%s/slot%u", rootTopic, (unsigned)slot);
+
+        TimeSchedulerSlot def{};
+        if (!timeSchedSvc->getSlot(timeSchedSvc->ctx, slot, &def)) {
+            snprintf(stateCfgBuf, sizeof(stateCfgBuf),
+                     "{\"slot\":%u,\"used\":false}",
+                     (unsigned)slot);
+            client.publish(slotTopic, 1, retained, stateCfgBuf);
+            continue;
+        }
+
+        const char* mode = (def.mode == TimeSchedulerMode::OneShotEpoch) ? "one_shot_epoch" : "recurring_clock";
+        snprintf(stateCfgBuf, sizeof(stateCfgBuf),
+                 "{\"slot\":%u,\"used\":true,\"event_id\":%u,\"label\":\"%s\",\"enabled\":%s,"
+                 "\"mode\":\"%s\",\"has_end\":%s,\"replay_start_on_boot\":%s,"
+                 "\"weekday_mask\":%u,"
+                 "\"start\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu},"
+                 "\"end\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu}}",
+                 (unsigned)def.slot,
+                 (unsigned)def.eventId,
+                 def.label,
+                 def.enabled ? "true" : "false",
+                 mode,
+                 def.hasEnd ? "true" : "false",
+                 def.replayStartOnBoot ? "true" : "false",
+                 (unsigned)def.weekdayMask,
+                 (unsigned)def.startHour,
+                 (unsigned)def.startMinute,
+                 (unsigned long long)def.startEpochSec,
+                 (unsigned)def.endHour,
+                 (unsigned)def.endMinute,
+                 (unsigned long long)def.endEpochSec);
+        client.publish(slotTopic, 1, retained, stateCfgBuf);
     }
 }
 
@@ -199,10 +273,20 @@ bool MQTTModule::addRuntimePublisher(const char* topic, uint32_t periodMs, int q
 void MQTTModule::processRx(const RxMsg& msg) {
     if (strcmp(msg.topic, topicCmd) == 0) {
         const char* cmdVal = findJsonStringValue(msg.payload, "cmd");
-        if (!cmdVal || !cmdSvc) return;
+        if (!cmdVal) {
+            client.publish(topicAck, 0, false, "{\"ok\":false,\"err\":\"missing_cmd\"}");
+            return;
+        }
+        if (!cmdSvc) {
+            client.publish(topicAck, 0, false, "{\"ok\":false,\"err\":\"cmd_service_unavailable\"}");
+            return;
+        }
 
         const char* cmdEnd = strchr(cmdVal, '"');
-        if (!cmdEnd) return;
+        if (!cmdEnd) {
+            client.publish(topicAck, 0, false, "{\"ok\":false,\"err\":\"bad_cmd_json\"}");
+            return;
+        }
 
         char cmd[64];
         size_t clen = (size_t)(cmdEnd - cmdVal);
@@ -241,6 +325,7 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
     cfgSvc = services.get<ConfigStoreService>("config");
+    timeSchedSvc = services.get<TimeSchedulerService>("time.scheduler");
     logHub = services.get<LogHubService>("loghub");
 
     auto* ebSvc = services.get<EventBusService>("eventbus");
@@ -275,6 +360,9 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     refreshConfigModules();
 
     LOGI("Init id=%s topic=%s cfgModules=%u", deviceId, topicCmd, (unsigned)cfgModuleCount);
+    if (timeSchedSvc) {
+        LOGI("Time scheduler config will be published per-slot on cfg/time/scheduler/slotN");
+    }
 
     _netReady = dataStore ? wifiReady(*dataStore) : false;
     _netReadyTs = millis();
@@ -310,7 +398,10 @@ void MQTTModule::loop() {
     case MQTTState::Connected: {
         RxMsg m;
         while (xQueueReceive(rxQ, &m, 0) == pdTRUE) processRx(m);
-        if (_pendingPublish) _pendingPublish = false;
+        if (_pendingPublish) {
+            _pendingPublish = false;
+            publishConfigBlocks(true);
+        }
         uint32_t now = millis();
         if (sensorsPending && sensorsTopic && sensorsBuild) {
             const uint32_t relevantMask = (DIRTY_SENSORS | DIRTY_ACTUATORS);
@@ -442,6 +533,9 @@ void MQTTModule::onEvent(const Event& e)
             client.disconnect();
             _netReadyTs = millis();
             setState(MQTTState::WaitingNetwork);
+        } else if (strcmp(key, "tm_sched") == 0 ||
+                   strcmp(key, "tm_wkmon") == 0) {
+            _pendingPublish = true;
         }
         return;
     }

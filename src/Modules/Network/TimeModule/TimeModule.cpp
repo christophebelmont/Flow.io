@@ -14,9 +14,9 @@
 #include "Core/ModuleLog.h"
 
 // Fast-clock test mode:
-// Uncomment the line below to simulate time from 2020-01-01 00:00:00.
+// Uncomment the line below to simulate time from 2026-01-01 00:00:00.
 // In this mode, 5 minutes of real time == 1 simulated month.
-// #define TIME_TEST_FAST_CLOCK
+//#define TIME_TEST_FAST_CLOCK
 
 static uint32_t clampU32(uint32_t v, uint32_t minV, uint32_t maxV) {
     if (v < minV) return minV;
@@ -112,6 +112,8 @@ static bool parseStringValueLocal(const char* json, const char* key, char* out, 
 
 #ifdef TIME_TEST_FAST_CLOCK
 static constexpr uint32_t FASTCLK_REAL_MS_PER_MONTH = 5UL * 60UL * 1000UL;
+static constexpr int FASTCLK_START_YEAR = 2026;
+static constexpr time_t FASTCLK_START_EPOCH_FALLBACK = (time_t)1767225600; // 2026-01-01T00:00:00Z
 
 static bool isLeapYearFastClock(int year)
 {
@@ -141,6 +143,7 @@ void TimeModule::setState(TimeSyncState s) {
     if (prev != TimeSyncState::Synced && s == TimeSyncState::Synced) {
         // Re-evaluate and replay active slots when time becomes valid.
         schedInitialized_ = false;
+        lastSchedulerEvalEpochSec_ = 0;
     } else if (prev == TimeSyncState::Synced && s != TimeSyncState::Synced) {
         // Invalidate runtime active states until next sync.
         portENTER_CRITICAL(&schedMux_);
@@ -151,6 +154,7 @@ void TimeModule::setState(TimeSyncState s) {
         activeMaskValue_ = 0;
         schedInitialized_ = false;
         portEXIT_CRITICAL(&schedMux_);
+        lastSchedulerEvalEpochSec_ = 0;
     }
 }
 
@@ -368,7 +372,7 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     simBootMs_ = millis();
     setenv("TZ", cfgData.tz, 1);
     tzset();
-    LOGW("FAST CLOCK test mode enabled: start=2020-01-01, 1 month=5 minutes");
+    LOGW("FAST CLOCK test mode enabled: start=2026-01-01, 1 month=5 minutes");
 #endif
 
     resetScheduleRuntime_();
@@ -842,7 +846,7 @@ time_t TimeModule::nowEpoch_() const
     const uint64_t monthIndex = elapsedMs / FASTCLK_REAL_MS_PER_MONTH;
     const uint64_t remMs = elapsedMs % FASTCLK_REAL_MS_PER_MONTH;
 
-    const int year = 2020 + (int)(monthIndex / 12ULL);
+    const int year = FASTCLK_START_YEAR + (int)(monthIndex / 12ULL);
     const int month1 = 1 + (int)(monthIndex % 12ULL);
     const uint32_t secInMonth = (uint32_t)daysInMonthFastClock(year, month1) * 86400UL;
     const uint64_t secIntoMonth = (remMs * (uint64_t)secInMonth) / (uint64_t)FASTCLK_REAL_MS_PER_MONTH;
@@ -855,7 +859,7 @@ time_t TimeModule::nowEpoch_() const
     start.tm_min = 0;
     start.tm_sec = 0;
     time_t startEpoch = mktime(&start);
-    if (startEpoch <= 0) return (time_t)1577836800; // 2020-01-01T00:00:00Z fallback
+    if (startEpoch <= 0) return FASTCLK_START_EPOCH_FALLBACK;
     return startEpoch + (time_t)secIntoMonth;
 #else
     time_t now;
@@ -1167,7 +1171,8 @@ void TimeModule::tickScheduler_()
     if (state != TimeSyncState::Synced) return;
 
     time_t now = nowEpoch_();
-    if (now < (time_t)1609459200) return;
+    static constexpr time_t SCHED_MIN_VALID_EPOCH = (time_t)1609459200; // 2021-01-01
+    if (now < SCHED_MIN_VALID_EPOCH) return;
 
     struct tm localNow;
     if (!localtime_r(&now, &localNow)) return;
@@ -1176,6 +1181,25 @@ void TimeModule::tickScheduler_()
     const uint8_t weekBit = weekBitFromTm_(localNow);
     const uint8_t prevWeekBit = (weekBit == 0) ? 6u : (uint8_t)(weekBit - 1u);
     const uint32_t dayMinute = minuteOfDay_(localNow);
+
+    bool crossedDayBoundary = false;
+    bool crossedWeekBoundary = false;
+    bool crossedMonthBoundary = false;
+#ifdef TIME_TEST_FAST_CLOCK
+    if (lastSchedulerEvalEpochSec_ != 0ULL && (uint64_t)now > lastSchedulerEvalEpochSec_) {
+        const time_t prevNow = (time_t)lastSchedulerEvalEpochSec_;
+        struct tm prevLocal{};
+        if (localtime_r(&prevNow, &prevLocal)) {
+            crossedDayBoundary =
+                (prevLocal.tm_year != localNow.tm_year) || (prevLocal.tm_yday != localNow.tm_yday);
+            crossedMonthBoundary =
+                (prevLocal.tm_year != localNow.tm_year) || (prevLocal.tm_mon != localNow.tm_mon);
+            const uint8_t weekStartBit = cfgData.weekStartMonday ? 0u : 6u;
+            crossedWeekBoundary = crossedDayBoundary && (weekBit == weekStartBit);
+        }
+    }
+    lastSchedulerEvalEpochSec_ = (uint64_t)now;
+#endif
 
     struct PendingEvent {
         uint8_t slot;
@@ -1249,7 +1273,22 @@ void TimeModule::tickScheduler_()
 
         // Recurring clock mode
         if (!s.def.hasEnd) {
-            if (isRecurringTriggerNow_(s.def, weekBit, dayMinute)) {
+            bool shouldTrigger = isRecurringTriggerNow_(s.def, weekBit, dayMinute);
+#ifdef TIME_TEST_FAST_CLOCK
+            if (!shouldTrigger && crossedDayBoundary && s.def.slot == TIME_SLOT_SYS_DAY_START) {
+                shouldTrigger = true;
+            }
+            if (!shouldTrigger && crossedWeekBoundary && s.def.slot == TIME_SLOT_SYS_WEEK_START) {
+                shouldTrigger = true;
+            }
+            if (!shouldTrigger &&
+                crossedMonthBoundary &&
+                s.def.slot == TIME_SLOT_SYS_MONTH_START &&
+                localNow.tm_mday == 1) {
+                shouldTrigger = true;
+            }
+#endif
+            if (shouldTrigger) {
                 if (s.def.slot == TIME_SLOT_SYS_MONTH_START && !isMonthStartEvent_(s, localNow)) {
                     continue;
                 }

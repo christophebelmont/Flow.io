@@ -8,7 +8,6 @@ Index de la documentation Flow.IO en français.
 
 - [Core Services Guidelines](CoreServicesGuidelines.md)
 - [Guide de développement module](ModuleDevGuide.md)
-- [Guide développeur (Legacy)](DevGuide.md)
 - [Architecture IOModule](IOModule.md)
 - [Spécification MQTT](MQTTModule.md)
 - [Vue d'ensemble TimeModule](TimeModule.md)

@@ -32,12 +32,13 @@ public:
     /** @brief Task name. */
     const char* taskName() const override { return "mqtt"; }
 
-    /** @brief MQTT depends on log hub and WiFi. */
-    uint8_t dependencyCount() const override { return 2; }
+    /** @brief MQTT depends on log hub, WiFi, command service and time service. */
+    uint8_t dependencyCount() const override { return 4; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "wifi";
-        //if (i == 2) return "cmd";
+        if (i == 2) return "cmd";
+        if (i == 3) return "time";
         return nullptr;
     }
 
@@ -82,6 +83,7 @@ private:
     const WifiService* wifiSvc = nullptr;
     const CommandService* cmdSvc = nullptr;
     const ConfigStoreService* cfgSvc = nullptr;
+    const TimeSchedulerService* timeSchedSvc = nullptr;
     const LogHubService* logHub = nullptr;
     EventBus* eventBus = nullptr;
     DataStore* dataStore = nullptr;
@@ -155,6 +157,7 @@ private:
     void connectMqtt();
     void processRx(const RxMsg& msg);
     void publishConfigBlocks(bool retained);
+    void publishTimeSchedulerSlots(bool retained, const char* rootTopic);
 
     const char* findJsonStringValue(const char* json, const char* key);
     const char* findJsonObjectStart(const char* json, const char* key);
