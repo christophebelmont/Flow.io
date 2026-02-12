@@ -98,6 +98,7 @@ static constexpr uint8_t IO_IDX_ORP = 1;
 static constexpr uint8_t IO_IDX_PSI = 2;
 static constexpr uint8_t IO_IDX_WATER_TEMP = 3;
 static constexpr uint8_t IO_IDX_AIR_TEMP = 4;
+static constexpr uint8_t IO_IDX_POOL_LEVEL = 20;
 
 static constexpr float PH_INTERNAL_C0 = 0.9583f;
 static constexpr float PH_INTERNAL_C1 = 4.834f;
@@ -131,6 +132,12 @@ static void onIoFloatValue(void* ctx, float value) {
     if (!gIoDataStore) return;
     uint8_t idx = (uint8_t)(uintptr_t)ctx;
     setIoEndpointFloat(*gIoDataStore, idx, value, millis(), DIRTY_SENSORS);
+}
+
+static void onIoBoolValue(void* ctx, bool value) {
+    if (!gIoDataStore) return;
+    uint8_t idx = (uint8_t)(uintptr_t)ctx;
+    setIoEndpointBool(*gIoDataStore, idx, value, millis(), DIRTY_SENSORS);
 }
 
 static bool registerRuntimeProvider(MQTTModule& mqtt, const IRuntimeSnapshotProvider* provider) {
@@ -313,6 +320,15 @@ void setup() {
     airDef.onValueCtx = (void*)(uintptr_t)IO_IDX_AIR_TEMP;
     ioModule.defineAnalogInput(airDef);
 
+    IODigitalInputDefinition poolLevelDef{};
+    snprintf(poolLevelDef.id, sizeof(poolLevelDef.id), "Pool Level");
+    poolLevelDef.pin = 34;
+    poolLevelDef.activeHigh = true;
+    poolLevelDef.pullMode = IO_PULL_NONE;
+    poolLevelDef.onValueChanged = onIoBoolValue;
+    poolLevelDef.onValueCtx = (void*)(uintptr_t)IO_IDX_POOL_LEVEL;
+    ioModule.defineDigitalInput(poolLevelDef);
+
     IODigitalOutputDefinition d0{};
     snprintf(d0.id, sizeof(d0.id), "filtration_pump");
     d0.pin = 32;
@@ -397,6 +413,19 @@ void setup() {
     pd2.dependsOnMask = (uint8_t)(1u << 0);
     poolDeviceModule.defineDevice(pd2);
 
+    PoolDeviceDefinition pd3{};
+    snprintf(pd3.label, sizeof(pd3.label), "Robot");
+    snprintf(pd3.ioId, sizeof(pd3.ioId), "d4");
+    pd3.type = POOL_DEVICE_RELAY_STD;
+    pd3.dependsOnMask = (uint8_t)(1u << 0);
+    poolDeviceModule.defineDevice(pd3);
+
+    PoolDeviceDefinition pd4{};
+    snprintf(pd4.label, sizeof(pd4.label), "Fill Pump");
+    snprintf(pd4.ioId, sizeof(pd4.ioId), "d6");
+    pd4.type = POOL_DEVICE_RELAY_STD;
+    poolDeviceModule.defineDevice(pd4);
+
     
     bool ok = moduleManager.initAll(registry, services);
     if (!ok) {
@@ -428,14 +457,21 @@ void setup() {
 
     Serial.print(
         "\x1b[34m"
-        " _____  _                   ___  ___          \n"
-        "|  ___|| |  ___ __      __ |_ _|/ _ \\         \n"
-        "| |_   | | / _ \\\\ \\ /\\ / /  | || | | |  _____ \n"
-        "|  _|  | || (_) |\\ V  V /_  | || |_| | |_____|\n"
-        "|_|    |_| \\___/  \\_/\\_/(_)|___|\\___/         \n"
+        "__        __   _                               _        \n"
+        "\\ \\      / /__| | ___ ___  _ __ ___   ___     | |_ ___  \n"
+        " \\ \\ /\\ / / _ \\ |/ __/ _ \\| '_ ` _ \\ / _ \\    | __/ _ \\ \n"
+        "  \\ V  V /  __/ | (_| (_) | | | | | |  __/    | || (_) |\n"
+        "   \\_/\\_/ \\___|_|\\___\\___/|_| |_| |_|\\___|     \\__\\___/ \n"
+        "                                                        \n"
+        "         _____ _                     ___ ___            \n"
+        "        |  ___| | _____      __     |_ _/ _ \\           \n"
+        " _____  | |_  | |/ _ \\ \\ /\\ / /      | | | | |  _____   \n"
+        "|_____| |  _| | | (_) \\ V  V /   _   | | |_| | |_____|  \n"
+        "        |_|   |_|\\___/ \\_/\\_/   (_) |___\\___/           \n"
         "\x1b[0m"
-    );
+        );   
 }
+     
 
 void loop() {
 }

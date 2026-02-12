@@ -15,6 +15,8 @@
 // - post() to EventBus is thread-safe (queue-based EventBus)
 
 #include <Preferences.h>
+#include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <type_traits>
@@ -82,6 +84,8 @@ public:
     /** @brief Run config migrations using a version key in NVS. */
     bool runMigrations(uint32_t currentVersion, const MigrationStep* steps, size_t count,
                        const char* versionKey = "cfg_ver", bool clearOnFail = true);
+    /** @brief Log NVS write summary when the configured period elapsed. */
+    void logNvsWriteSummaryIfDue(uint32_t nowMs, uint32_t periodMs = 60000U);
 
 private:
     Preferences* _prefs = nullptr;
@@ -91,9 +95,21 @@ private:
 
     void notifyChanged(const char* nvsKey);
     bool writePersistent(const ConfigMeta& m);
+    void recordNvsWrite_(size_t bytesWritten);
+    void putInt_(const char* key, int32_t value);
+    void putUChar_(const char* key, uint8_t value);
+    void putBool_(const char* key, bool value);
+    void putFloat_(const char* key, float value);
+    void putBytes_(const char* key, const void* value, size_t len);
+    void putString_(const char* key, const char* value);
+    void putUInt_(const char* key, uint32_t value);
 
     const ConfigMeta* findByJsonName(const char* jsonName) const;
     ConfigMeta* findByJsonName(const char* jsonName);
+
+    std::atomic<uint32_t> _nvsWriteTotal{0};
+    std::atomic<uint32_t> _nvsWriteWindow{0};
+    std::atomic<uint32_t> _nvsLastSummaryMs{0};
 };
 
 // -------------------------
@@ -146,11 +162,11 @@ bool ConfigStore::set(ConfigVariable<T, H>& var, const T& value)
     // persist
     if (var.persistence == ConfigPersistence::Persistent && var.nvsKey && _prefs) {
         switch (var.type) {
-        case ConfigType::Int32:  _prefs->putInt(var.nvsKey, *(int32_t*)var.value); break;
-        case ConfigType::UInt8:  _prefs->putUChar(var.nvsKey, *(uint8_t*)var.value); break;
-        case ConfigType::Bool:   _prefs->putBool(var.nvsKey, *(bool*)var.value); break;
-        case ConfigType::Float:  _prefs->putFloat(var.nvsKey, *(float*)var.value); break;
-        case ConfigType::Double: _prefs->putBytes(var.nvsKey, var.value, sizeof(double)); break;
+        case ConfigType::Int32:  putInt_(var.nvsKey, *(int32_t*)var.value); break;
+        case ConfigType::UInt8:  putUChar_(var.nvsKey, *(uint8_t*)var.value); break;
+        case ConfigType::Bool:   putBool_(var.nvsKey, *(bool*)var.value); break;
+        case ConfigType::Float:  putFloat_(var.nvsKey, *(float*)var.value); break;
+        case ConfigType::Double: putBytes_(var.nvsKey, var.value, sizeof(double)); break;
         default: break;
         }
     }
@@ -181,7 +197,7 @@ bool ConfigStore::set(ConfigVariable<char, H>& var, const char* str)
     var.notify();
 
     if (var.persistence == ConfigPersistence::Persistent && var.nvsKey && _prefs) {
-        _prefs->putString(var.nvsKey, var.value);
+        putString_(var.nvsKey, var.value);
     }
 
     notifyChanged(var.nvsKey);

@@ -9,7 +9,14 @@
 
 class GpioDriver : public IODriver {
 public:
-    GpioDriver(const char* driverId, uint8_t pin, bool output, bool activeHigh);
+    enum InputPullMode : uint8_t {
+        PullNone = 0,
+        PullUp = 1,
+        PullDown = 2
+    };
+
+    GpioDriver(const char* driverId, uint8_t pin, bool output, bool activeHigh,
+               uint8_t inputPullMode = PullNone);
 
     const char* id() const override { return driverId_; }
     bool begin() override;
@@ -23,4 +30,5 @@ private:
     uint8_t pin_ = 0;
     bool output_ = false;
     bool activeHigh_ = true;
+    uint8_t inputPullMode_ = PullNone;
 };

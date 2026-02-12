@@ -22,6 +22,7 @@ const char* SystemMonitorModule::wifiStateStr(WifiState st) {
 }
 
 void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
+    cfgStore_ = &cfg;
     cfg.registerVar(traceEnabledVar_);
     cfg.registerVar(tracePeriodVar_);
 
@@ -155,6 +156,10 @@ void SystemMonitorModule::buildHealthJson(char* out, size_t outLen) {
 
 void SystemMonitorModule::loop() {
     const uint32_t now = millis();
+    if (cfgStore_) {
+        cfgStore_->logNvsWriteSummaryIfDue(now, 60000U);
+    }
+
     uint32_t periodMs = (cfgData_.tracePeriodMs > 0) ? (uint32_t)cfgData_.tracePeriodMs : 5000U;
     uint32_t stackPeriodMs = periodMs * 6U;
 

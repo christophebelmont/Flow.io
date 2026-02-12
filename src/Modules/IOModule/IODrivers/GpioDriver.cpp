@@ -6,14 +6,21 @@
 #include "GpioDriver.h"
 #include <Arduino.h>
 
-GpioDriver::GpioDriver(const char* driverId, uint8_t pin, bool output, bool activeHigh)
-    : driverId_(driverId), pin_(pin), output_(output), activeHigh_(activeHigh)
+GpioDriver::GpioDriver(const char* driverId, uint8_t pin, bool output, bool activeHigh,
+                       uint8_t inputPullMode)
+    : driverId_(driverId), pin_(pin), output_(output), activeHigh_(activeHigh), inputPullMode_(inputPullMode)
 {
 }
 
 bool GpioDriver::begin()
 {
-    pinMode(pin_, output_ ? OUTPUT : INPUT);
+    if (output_) {
+        pinMode(pin_, OUTPUT);
+    } else {
+        if (inputPullMode_ == PullUp) pinMode(pin_, INPUT_PULLUP);
+        else if (inputPullMode_ == PullDown) pinMode(pin_, INPUT_PULLDOWN);
+        else pinMode(pin_, INPUT);
+    }
     if (output_) {
         digitalWrite(pin_, activeHigh_ ? LOW : HIGH);
     }

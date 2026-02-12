@@ -54,6 +54,76 @@ void ConfigStore::notifyChanged(const char* nvsKey)
     _eventBus->post(EventId::ConfigChanged, &p, sizeof(p));
 }
 
+void ConfigStore::recordNvsWrite_(size_t bytesWritten)
+{
+    if (bytesWritten == 0) return;
+    _nvsWriteTotal.fetch_add(1U, std::memory_order_relaxed);
+    _nvsWriteWindow.fetch_add(1U, std::memory_order_relaxed);
+}
+
+void ConfigStore::putInt_(const char* key, int32_t value)
+{
+    if (!_prefs || !key) return;
+    recordNvsWrite_(_prefs->putInt(key, value));
+}
+
+void ConfigStore::putUChar_(const char* key, uint8_t value)
+{
+    if (!_prefs || !key) return;
+    recordNvsWrite_(_prefs->putUChar(key, value));
+}
+
+void ConfigStore::putBool_(const char* key, bool value)
+{
+    if (!_prefs || !key) return;
+    recordNvsWrite_(_prefs->putBool(key, value));
+}
+
+void ConfigStore::putFloat_(const char* key, float value)
+{
+    if (!_prefs || !key) return;
+    recordNvsWrite_(_prefs->putFloat(key, value));
+}
+
+void ConfigStore::putBytes_(const char* key, const void* value, size_t len)
+{
+    if (!_prefs || !key || !value || len == 0) return;
+    recordNvsWrite_(_prefs->putBytes(key, value, len));
+}
+
+void ConfigStore::putString_(const char* key, const char* value)
+{
+    if (!_prefs || !key || !value) return;
+    recordNvsWrite_(_prefs->putString(key, value));
+}
+
+void ConfigStore::putUInt_(const char* key, uint32_t value)
+{
+    if (!_prefs || !key) return;
+    recordNvsWrite_(_prefs->putUInt(key, value));
+}
+
+void ConfigStore::logNvsWriteSummaryIfDue(uint32_t nowMs, uint32_t periodMs)
+{
+    if (periodMs == 0U) return;
+
+    const uint32_t last = _nvsLastSummaryMs.load(std::memory_order_relaxed);
+    if (last == 0U) {
+        _nvsLastSummaryMs.store(nowMs, std::memory_order_relaxed);
+        return;
+    }
+    if ((uint32_t)(nowMs - last) < periodMs) return;
+
+    _nvsLastSummaryMs.store(nowMs, std::memory_order_relaxed);
+    const uint32_t windowWrites = _nvsWriteWindow.exchange(0U, std::memory_order_relaxed);
+    const uint32_t totalWrites = _nvsWriteTotal.load(std::memory_order_relaxed);
+
+    Log::info(LOG_TAG_CORE, "NVS writes: last_%lus=%lu total=%lu",
+              (unsigned long)(periodMs / 1000U),
+              (unsigned long)windowWrites,
+              (unsigned long)totalWrites);
+}
+
 bool ConfigStore::writePersistent(const ConfigMeta& m)
 {
     if (!_prefs) return false;
@@ -62,22 +132,22 @@ bool ConfigStore::writePersistent(const ConfigMeta& m)
 
     switch (m.type) {
         case ConfigType::Int32:
-            _prefs->putInt(m.nvsKey, *(int32_t*)m.valuePtr);
+            putInt_(m.nvsKey, *(int32_t*)m.valuePtr);
             return true;
         case ConfigType::UInt8:
-            _prefs->putUChar(m.nvsKey, *(uint8_t*)m.valuePtr);
+            putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr);
             return true;
         case ConfigType::Bool:
-            _prefs->putBool(m.nvsKey, *(bool*)m.valuePtr);
+            putBool_(m.nvsKey, *(bool*)m.valuePtr);
             return true;
         case ConfigType::Float:
-            _prefs->putFloat(m.nvsKey, *(float*)m.valuePtr);
+            putFloat_(m.nvsKey, *(float*)m.valuePtr);
             return true;
         case ConfigType::Double:
-            _prefs->putBytes(m.nvsKey, m.valuePtr, sizeof(double));
+            putBytes_(m.nvsKey, m.valuePtr, sizeof(double));
             return true;
         case ConfigType::CharArray:
-            _prefs->putString(m.nvsKey, (const char*)m.valuePtr);
+            putString_(m.nvsKey, (const char*)m.valuePtr);
             return true;
         default:
             return false;
@@ -369,12 +439,12 @@ bool ConfigStore::applyJson(const char* json)
             /// Save to NVS if needed
             if (m.persistence == ConfigPersistence::Persistent && m.nvsKey && _prefs) {
                 switch (m.type) {
-                case ConfigType::Int32:     _prefs->putInt(m.nvsKey, *(int32_t*)m.valuePtr); break;
-                case ConfigType::UInt8:     _prefs->putUChar(m.nvsKey, *(uint8_t*)m.valuePtr); break;
-                case ConfigType::Bool:      _prefs->putBool(m.nvsKey, *(bool*)m.valuePtr); break;
-                case ConfigType::Float:     _prefs->putFloat(m.nvsKey, *(float*)m.valuePtr); break;
-                case ConfigType::Double:    _prefs->putBytes(m.nvsKey, m.valuePtr, sizeof(double)); break;
-                case ConfigType::CharArray: _prefs->putString(m.nvsKey, (char*)m.valuePtr); break;
+                case ConfigType::Int32:     putInt_(m.nvsKey, *(int32_t*)m.valuePtr); break;
+                case ConfigType::UInt8:     putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr); break;
+                case ConfigType::Bool:      putBool_(m.nvsKey, *(bool*)m.valuePtr); break;
+                case ConfigType::Float:     putFloat_(m.nvsKey, *(float*)m.valuePtr); break;
+                case ConfigType::Double:    putBytes_(m.nvsKey, m.valuePtr, sizeof(double)); break;
+                case ConfigType::CharArray: putString_(m.nvsKey, (char*)m.valuePtr); break;
                 }
             }
 
@@ -426,13 +496,13 @@ bool ConfigStore::runMigrations(uint32_t currentVersion,
                               (unsigned long)s.fromVersion, (unsigned long)s.toVersion);
                     if (clearOnFail) {
                         _prefs->clear();
-                        _prefs->putUInt(versionKey, 0);
+                        putUInt_(versionKey, 0);
                     }
                     return false;
                 }
 
                 storedVersion = s.toVersion;
-                _prefs->putUInt(versionKey, storedVersion);
+                putUInt_(versionKey, storedVersion);
                 Log::debug(LOG_TAG_CORE, "migration applied: now=%lu", (unsigned long)storedVersion);
                 break;
             }
@@ -441,14 +511,14 @@ bool ConfigStore::runMigrations(uint32_t currentVersion,
         if (!stepFound) {
             if (clearOnFail) {
                 _prefs->clear();
-                _prefs->putUInt(versionKey, 0);
+                putUInt_(versionKey, 0);
             }
             return false;
         }
     }
 
     /// On garantit qu'on est bien à la version courante
-    _prefs->putUInt(versionKey, currentVersion);
+    putUInt_(versionKey, currentVersion);
     Log::debug(LOG_TAG_CORE, "migrations: completed at %lu", (unsigned long)currentVersion);
     return true;
 }

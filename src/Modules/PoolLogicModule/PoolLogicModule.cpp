@@ -2,22 +2,60 @@
  * @file PoolLogicModule.cpp
  * @brief Implementation file.
  */
+
 #include "PoolLogicModule.h"
-#include "Modules/IOModule/IORuntime.h"
+
+#include <Arduino.h>
 #include <math.h>
 #include <cstring>
+
 #define LOG_TAG "PoolLogc"
 #include "Core/ModuleLog.h"
+#include "Modules/IOModule/IORuntime.h"
+#include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
 
 void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     cfgStore_ = &cfg;
+
     cfg.registerVar(enabledVar_);
+
+    cfg.registerVar(autoModeVar_);
+    cfg.registerVar(winterModeVar_);
+    cfg.registerVar(phAutoModeVar_);
+    cfg.registerVar(orpAutoModeVar_);
+    cfg.registerVar(electrolyseModeVar_);
+    cfg.registerVar(electroRunModeVar_);
+
     cfg.registerVar(tempLowVar_);
     cfg.registerVar(tempSetpointVar_);
     cfg.registerVar(startMinVar_);
     cfg.registerVar(stopMaxVar_);
+
+    cfg.registerVar(orpIdxVar_);
+    cfg.registerVar(psiIdxVar_);
     cfg.registerVar(waterTempIdxVar_);
+    cfg.registerVar(airTempIdxVar_);
+    cfg.registerVar(levelIdxVar_);
+
+    cfg.registerVar(psiLowVar_);
+    cfg.registerVar(psiHighVar_);
+    cfg.registerVar(winterStartVar_);
+    cfg.registerVar(freezeHoldVar_);
+    cfg.registerVar(secureElectroVar_);
+    cfg.registerVar(orpSetpointVar_);
+
+    cfg.registerVar(psiDelayVar_);
+    cfg.registerVar(delayPidsVar_);
+    cfg.registerVar(delayElectroVar_);
+    cfg.registerVar(robotDelayVar_);
+    cfg.registerVar(robotDurationVar_);
+    cfg.registerVar(fillingMinOnVar_);
+
+    cfg.registerVar(filtrationDeviceVar_);
+    cfg.registerVar(swgDeviceVar_);
+    cfg.registerVar(robotDeviceVar_);
+    cfg.registerVar(fillingDeviceVar_);
 
     logHub_ = services.get<LogHubService>("loghub");
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
@@ -25,6 +63,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
     schedSvc_ = services.get<TimeSchedulerService>("time.scheduler");
+    cmdSvc_ = services.get<CommandService>("cmd");
 
     if (eventBus_) {
         eventBus_->subscribe(EventId::SchedulerEventTriggered, &PoolLogicModule::onEventStatic_, this);
@@ -36,7 +75,44 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     }
 
     ensureDailySlot_();
-    LOGI("PoolLogic ready: daily recalc slot=%u at 15:00", (unsigned)SLOT_DAILY_RECALC);
+    pendingDailyRecalc_ = true;
+
+    if (schedSvc_ && schedSvc_->isActive) {
+        filtrationWindowActive_ = schedSvc_->isActive(schedSvc_->ctx, SLOT_FILTR_WINDOW);
+    }
+
+    LOGI("PoolLogic ready");
+    (void)cfgStore_;
+    (void)logHub_;
+}
+
+void PoolLogicModule::loop()
+{
+    if (!enabled_) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        return;
+    }
+
+    bool doRecalc = false;
+    bool doDayReset = false;
+    portENTER_CRITICAL(&pendingMux_);
+    doRecalc = pendingDailyRecalc_;
+    pendingDailyRecalc_ = false;
+    doDayReset = pendingDayReset_;
+    pendingDayReset_ = false;
+    portEXIT_CRITICAL(&pendingMux_);
+
+    if (doRecalc) {
+        recalcAndApplyFiltrationWindow_();
+    }
+
+    if (doDayReset) {
+        cleaningDone_ = false;
+        LOGI("Daily reset: cleaning_done=false");
+    }
+
+    runControlLoop_(millis());
+    vTaskDelay(pdMS_TO_TICKS(200));
 }
 
 void PoolLogicModule::onEventStatic_(const Event& e, void* user)
@@ -52,10 +128,33 @@ void PoolLogicModule::onEvent_(const Event& e)
     if (!e.payload || e.len < sizeof(SchedulerEventTriggeredPayload)) return;
 
     const SchedulerEventTriggeredPayload* p = (const SchedulerEventTriggeredPayload*)e.payload;
-    if ((SchedulerEdge)p->edge != SchedulerEdge::Trigger) return;
-    if (p->eventId != POOLLOGIC_EVENT_DAILY_RECALC) return;
+    const SchedulerEdge edge = (SchedulerEdge)p->edge;
 
-    recalcAndApplyFiltrationWindow_();
+    if (p->eventId == POOLLOGIC_EVENT_DAILY_RECALC && edge == SchedulerEdge::Trigger) {
+        portENTER_CRITICAL(&pendingMux_);
+        pendingDailyRecalc_ = true;
+        portEXIT_CRITICAL(&pendingMux_);
+        return;
+    }
+
+    if (p->eventId == TIME_EVENT_SYS_DAY_START && edge == SchedulerEdge::Trigger) {
+        portENTER_CRITICAL(&pendingMux_);
+        pendingDayReset_ = true;
+        portEXIT_CRITICAL(&pendingMux_);
+        return;
+    }
+
+    if (p->eventId == POOLLOGIC_EVENT_FILTRATION_WINDOW) {
+        if (edge == SchedulerEdge::Start) {
+            portENTER_CRITICAL(&pendingMux_);
+            filtrationWindowActive_ = true;
+            portEXIT_CRITICAL(&pendingMux_);
+        } else if (edge == SchedulerEdge::Stop) {
+            portENTER_CRITICAL(&pendingMux_);
+            filtrationWindowActive_ = false;
+            portEXIT_CRITICAL(&pendingMux_);
+        }
+    }
 }
 
 void PoolLogicModule::ensureDailySlot_()
@@ -176,6 +275,252 @@ void PoolLogicModule::recalcAndApplyFiltrationWindow_()
         return;
     }
 
-    LOGI("Filtration duration: %uh (water=%.2fC)", (unsigned)duration, (double)waterTemp);
-    LOGI("Start: %uh - Stop: %uh", (unsigned)startHour, (unsigned)stopHour);
+    LOGI("Filtration duration=%uh water=%.2fC start=%uh stop=%uh",
+         (unsigned)duration,
+         (double)waterTemp,
+         (unsigned)startHour,
+         (unsigned)stopHour);
+}
+
+bool PoolLogicModule::parsePoolDeviceIndex_(const char* deviceId, uint8_t& idxOut) const
+{
+    if (!deviceId || deviceId[0] == '\0') return false;
+    if (deviceId[0] != 'p' || deviceId[1] != 'd') return false;
+
+    uint16_t v = 0;
+    const char* p = deviceId + 2;
+    if (*p == '\0') return false;
+    while (*p) {
+        if (*p < '0' || *p > '9') return false;
+        v = (uint16_t)(v * 10u + (uint16_t)(*p - '0'));
+        if (v >= POOL_DEVICE_MAX) return false;
+        ++p;
+    }
+
+    idxOut = (uint8_t)v;
+    return true;
+}
+
+bool PoolLogicModule::readDeviceActualOn_(const char* deviceId, bool& onOut) const
+{
+    if (!dataStore_) return false;
+
+    uint8_t idx = 0xFF;
+    if (!parsePoolDeviceIndex_(deviceId, idx)) return false;
+
+    PoolDeviceRuntimeEntry rt{};
+    if (!poolDeviceRuntime(*dataStore_, idx, rt)) return false;
+    onOut = rt.actualOn;
+    return true;
+}
+
+bool PoolLogicModule::writeDeviceDesired_(const char* deviceId, bool on)
+{
+    if (!cmdSvc_ || !cmdSvc_->execute || !deviceId || deviceId[0] == '\0') return false;
+
+    char args[96];
+    char reply[128];
+    snprintf(args, sizeof(args), "{\"id\":\"%s\",\"value\":%s}", deviceId, on ? "true" : "false");
+    bool ok = cmdSvc_->execute(cmdSvc_->ctx, "pool.write", nullptr, args, reply, sizeof(reply));
+    if (!ok) {
+        LOGW("pool.write failed id=%s desired=%u reply=%s", deviceId, on ? 1u : 0u, reply);
+    }
+    return ok;
+}
+
+void PoolLogicModule::syncDeviceState_(const char* deviceId, DeviceFsm& fsm, uint32_t nowMs, bool& turnedOnOut, bool& turnedOffOut)
+{
+    turnedOnOut = false;
+    turnedOffOut = false;
+
+    bool actualOn = false;
+    if (!readDeviceActualOn_(deviceId, actualOn)) {
+        return;
+    }
+
+    if (!fsm.known) {
+        fsm.known = true;
+        fsm.on = actualOn;
+        fsm.stateSinceMs = nowMs;
+        return;
+    }
+
+    if (fsm.on != actualOn) {
+        turnedOnOut = (!fsm.on && actualOn);
+        turnedOffOut = (fsm.on && !actualOn);
+        fsm.on = actualOn;
+        fsm.stateSinceMs = nowMs;
+    }
+}
+
+uint32_t PoolLogicModule::stateUptimeSec_(const DeviceFsm& fsm, uint32_t nowMs) const
+{
+    if (!fsm.known || !fsm.on) return 0;
+    return (uint32_t)((nowMs - fsm.stateSinceMs) / 1000UL);
+}
+
+bool PoolLogicModule::loadFloatSensor_(uint8_t idx, float& out) const
+{
+    if (!dataStore_) return false;
+    return ioEndpointFloat(*dataStore_, idx, out);
+}
+
+bool PoolLogicModule::loadBoolSensor_(uint8_t idx, bool& out) const
+{
+    if (!dataStore_) return false;
+    return ioEndpointBool(*dataStore_, idx, out);
+}
+
+void PoolLogicModule::applyDeviceControl_(const char* deviceId,
+                                          const char* label,
+                                          DeviceFsm& fsm,
+                                          bool desired,
+                                          uint32_t nowMs)
+{
+    const bool desiredChanged = (desired != fsm.lastDesired);
+    const bool needRetry = (fsm.known && (fsm.on != desired) && (uint32_t)(nowMs - fsm.lastCmdMs) >= 5000U);
+
+    if (desiredChanged || needRetry) {
+        if (writeDeviceDesired_(deviceId, desired)) {
+            LOGI("%s %s", desired ? "Start" : "Stop", label ? label : deviceId);
+        }
+        fsm.lastCmdMs = nowMs;
+    }
+
+    fsm.lastDesired = desired;
+}
+
+void PoolLogicModule::runControlLoop_(uint32_t nowMs)
+{
+    bool filtrationStarted = false;
+    bool filtrationStopped = false;
+    bool robotStopped = false;
+    bool unusedStart = false;
+    bool unusedStop = false;
+
+    syncDeviceState_(filtrationDeviceId_, filtrationFsm_, nowMs, filtrationStarted, filtrationStopped);
+    syncDeviceState_(robotDeviceId_, robotFsm_, nowMs, unusedStart, robotStopped);
+    syncDeviceState_(swgDeviceId_, swgFsm_, nowMs, unusedStart, unusedStop);
+    syncDeviceState_(fillingDeviceId_, fillingFsm_, nowMs, unusedStart, unusedStop);
+
+    if (filtrationStarted) {
+        phPidEnabled_ = false;
+        orpPidEnabled_ = false;
+    }
+    if (filtrationStopped) {
+        phPidEnabled_ = false;
+        orpPidEnabled_ = false;
+    }
+    if (robotStopped) {
+        cleaningDone_ = true;
+    }
+
+    float psi = 0.0f;
+    float waterTemp = 0.0f;
+    float airTemp = 0.0f;
+    float orp = 0.0f;
+    bool levelOk = true;
+
+    const bool havePsi = loadFloatSensor_(psiIoIndex_, psi);
+    const bool haveWaterTemp = loadFloatSensor_(waterTempIoIndex_, waterTemp);
+    const bool haveAirTemp = loadFloatSensor_(airTempIoIndex_, airTemp);
+    const bool haveOrp = loadFloatSensor_(orpIoIndex_, orp);
+    const bool haveLevel = loadBoolSensor_(levelIoIndex_, levelOk);
+
+    if (filtrationFsm_.on && havePsi) {
+        const uint32_t runSec = stateUptimeSec_(filtrationFsm_, nowMs);
+        const bool underPressure = (runSec > psiStartupDelaySec_) && (psi < psiLowThreshold_);
+        const bool overPressure = (psi > psiHighThreshold_);
+        if ((underPressure || overPressure) && !psiError_) {
+            psiError_ = true;
+            LOGW("PSI error latched (psi=%.3f low=%.3f high=%.3f)",
+                 (double)psi,
+                 (double)psiLowThreshold_,
+                 (double)psiHighThreshold_);
+        }
+    }
+
+    if (filtrationFsm_.on && !winterMode_) {
+        const uint32_t runMin = stateUptimeSec_(filtrationFsm_, nowMs) / 60U;
+
+        if (phAutoMode_ && !phPidEnabled_ && runMin >= delayPidsMin_) {
+            phPidEnabled_ = true;
+            LOGI("Activate pH regulation (delay=%umin)", (unsigned)runMin);
+        }
+        if (orpAutoMode_ && !orpPidEnabled_ && runMin >= delayPidsMin_) {
+            orpPidEnabled_ = true;
+            LOGI("Activate ORP regulation (delay=%umin)", (unsigned)runMin);
+        }
+    } else {
+        phPidEnabled_ = false;
+        orpPidEnabled_ = false;
+    }
+
+    bool windowActive = false;
+    portENTER_CRITICAL(&pendingMux_);
+    windowActive = filtrationWindowActive_;
+    portEXIT_CRITICAL(&pendingMux_);
+
+    bool filtrationDesired = false;
+    if (filtrationFsm_.on && haveAirTemp && airTemp <= freezeHoldTempC_) {
+        // Freeze hold: once running, never stop under freeze-hold threshold.
+        filtrationDesired = true;
+    } else if (psiError_) {
+        filtrationDesired = false;
+    } else {
+        const bool scheduleDemand = autoMode_ && windowActive;
+        const bool winterDemand = winterMode_ && haveAirTemp && (airTemp < winterStartTempC_);
+        filtrationDesired = (scheduleDemand || winterDemand);
+    }
+
+    bool robotDesired = false;
+    if (autoMode_ && filtrationFsm_.on && !cleaningDone_) {
+        const uint32_t filtrationRunMin = stateUptimeSec_(filtrationFsm_, nowMs) / 60U;
+        if (filtrationRunMin >= robotDelayMin_) robotDesired = true;
+    }
+    if (robotFsm_.on) {
+        const uint32_t robotRunMin = stateUptimeSec_(robotFsm_, nowMs) / 60U;
+        if (robotRunMin >= robotDurationMin_) robotDesired = false;
+    }
+    if (!filtrationFsm_.on) robotDesired = false;
+
+    bool swgDesired = false;
+    if (electrolyseMode_ && filtrationFsm_.on) {
+        if (electroRunMode_) {
+            if (swgFsm_.on) {
+                swgDesired = haveOrp && (orp <= orpSetpoint_);
+            } else {
+                const bool startReady =
+                    haveWaterTemp &&
+                    (waterTemp >= secureElectroTempC_) &&
+                    ((stateUptimeSec_(filtrationFsm_, nowMs) / 60U) >= delayElectroMin_);
+                swgDesired = startReady && haveOrp && (orp <= (orpSetpoint_ * 0.9f));
+            }
+        } else {
+            if (swgFsm_.on) {
+                swgDesired = true;
+            } else {
+                const bool startReady =
+                    haveWaterTemp &&
+                    (waterTemp >= secureElectroTempC_) &&
+                    ((stateUptimeSec_(filtrationFsm_, nowMs) / 60U) >= delayElectroMin_);
+                swgDesired = startReady;
+            }
+        }
+    }
+
+    bool fillingDesired = false;
+    if (haveLevel) {
+        if (!fillingFsm_.on) {
+            fillingDesired = !levelOk;
+        } else {
+            const bool minUpReached = stateUptimeSec_(fillingFsm_, nowMs) >= fillingMinOnSec_;
+            fillingDesired = !(levelOk && minUpReached);
+        }
+    }
+
+    applyDeviceControl_(filtrationDeviceId_, "Filtration Pump", filtrationFsm_, filtrationDesired, nowMs);
+    applyDeviceControl_(robotDeviceId_, "Robot Pump", robotFsm_, robotDesired, nowMs);
+    applyDeviceControl_(swgDeviceId_, "SWG Pump", swgFsm_, swgDesired, nowMs);
+    applyDeviceControl_(fillingDeviceId_, "Filling Pump", fillingFsm_, fillingDesired, nowMs);
 }

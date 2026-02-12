@@ -44,6 +44,7 @@ private:
     };
 
     ModuleManager* moduleManager = nullptr;
+    ConfigStore* cfgStore_ = nullptr;
 
     const WifiService* wifiSvc = nullptr;
     const ConfigStoreService* cfgSvc = nullptr;
