@@ -8,6 +8,7 @@
 #include "Core/ConfigTypes.h"
 #include "Core/Layout/PoolSensorMap.h"
 #include "Core/Services/Services.h"
+#include "Domain/PoolLogicDefaults.h"
 
 /** @brief Event ids owned by PoolLogicModule. */
 constexpr uint16_t POOLLOGIC_EVENT_DAILY_RECALC = 0x2101;
@@ -65,10 +66,10 @@ private:
     bool electroRunMode_ = false;
 
     // Schedule / filtration window from water temperature
-    float waterTempLowThreshold_ = 12.0f;
-    float waterTempSetpoint_ = 24.0f;
-    uint8_t filtrationStartMin_ = 8;
-    uint8_t filtrationStopMax_ = 23;
+    float waterTempLowThreshold_ = PoolDefaults::TempLow;
+    float waterTempSetpoint_ = PoolDefaults::TempHigh;
+    uint8_t filtrationStartMin_ = PoolDefaults::FiltrationStartMinHour;
+    uint8_t filtrationStopMax_ = PoolDefaults::FiltrationStopMaxHour;
 
     // Sensor IO ids for IOServiceV2 reads.
     // Stored as uint8_t because current static id map stays <= 255.

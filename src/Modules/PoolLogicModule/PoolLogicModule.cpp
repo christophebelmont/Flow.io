@@ -175,7 +175,7 @@ void PoolLogicModule::ensureDailySlot_()
     recalc.replayStartOnBoot = false;
     recalc.mode = TimeSchedulerMode::RecurringClock;
     recalc.weekdayMask = TIME_WEEKDAY_ALL;
-    recalc.startHour = 15;
+    recalc.startHour = PoolDefaults::FiltrationPivotHour;
     recalc.startMinute = 0;
     recalc.endHour = 0;
     recalc.endMinute = 0;
@@ -193,35 +193,35 @@ bool PoolLogicModule::computeFiltrationWindow_(float waterTemp, uint8_t& startHo
 {
     if (!isfinite(waterTemp)) return false;
 
-    int duration = 2;
+    int duration = PoolDefaults::MinDurationHours;
     if (waterTemp < waterTempLowThreshold_) {
-        duration = 2;
+        duration = PoolDefaults::MinDurationHours;
     } else if (waterTemp < waterTempSetpoint_) {
-        duration = (int)lroundf(waterTemp / 3.0f);
+        duration = (int)lroundf(waterTemp * PoolDefaults::FactorLow);
     } else {
-        duration = (int)lroundf(waterTemp / 2.0f);
+        duration = (int)lroundf(waterTemp * PoolDefaults::FactorHigh);
     }
 
-    if (duration < 2) duration = 2;
-    if (duration > 24) duration = 24;
+    if (duration < PoolDefaults::MinDurationHours) duration = PoolDefaults::MinDurationHours;
+    if (duration > PoolDefaults::MaxDurationHours) duration = PoolDefaults::MaxDurationHours;
 
     const int startMin = (int)filtrationStartMin_;
     int stopMax = (int)filtrationStopMax_;
-    if (stopMax > 23) stopMax = 23;
+    if (stopMax > PoolDefaults::MaxClockHour) stopMax = PoolDefaults::MaxClockHour;
     if (stopMax < 0) stopMax = 0;
 
-    int start = 15 - (int)lroundf((float)duration / 2.0f);
+    int start = PoolDefaults::FiltrationPivotHour - (int)lroundf((float)duration * PoolDefaults::FactorHigh);
     if (start < startMin) start = startMin;
 
     int stop = start + duration;
     if (stop > stopMax) stop = stopMax;
 
     if (stop <= start) {
-        if (start < 23) {
-            stop = start + 1;
+        if (start < PoolDefaults::MaxClockHour) {
+            stop = start + PoolDefaults::MinEmergencyDurationHours;
         } else {
-            start = 22;
-            stop = 23;
+            start = PoolDefaults::FallbackStartHour;
+            stop = PoolDefaults::MaxClockHour;
         }
     }
 

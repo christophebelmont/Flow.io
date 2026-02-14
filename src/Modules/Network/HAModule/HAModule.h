@@ -37,6 +37,8 @@ private:
     static constexpr uint8_t MAX_HA_BINARY_SENSORS = 8;
     static constexpr uint8_t MAX_HA_SWITCHES = 16;
     static constexpr uint8_t MAX_HA_NUMBERS = 16;
+    static constexpr size_t TOPIC_BUF_SIZE = 256;
+    static constexpr size_t PAYLOAD_BUF_SIZE = 1536;
 
     struct HAConfig {
         bool enabled = true;
@@ -59,8 +61,8 @@ private:
     char nodeTopicId[32] = {0};
     uint16_t entityHash3_ = 0;
 
-    char topicBuf[256] = {0};
-    char payloadBuf[768] = {0};
+    char topicBuf[TOPIC_BUF_SIZE] = {0};
+    char payloadBuf[PAYLOAD_BUF_SIZE] = {0};
     char stateTopicBuf[192] = {0};
     char objectIdBuf[192] = {0};
     char commandTopicBuf[192] = {0};

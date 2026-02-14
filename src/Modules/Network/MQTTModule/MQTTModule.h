@@ -46,8 +46,8 @@ public:
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief MQTT task loop. */
     void loop() override;
-    /** @brief Extra stack for MQTT processing. */
-    uint16_t taskStackSize() const override { return 4096; }
+    /** @brief Extra stack for MQTT processing (JSON + snprintf heavy path). */
+    uint16_t taskStackSize() const override { return 6144; }
 
     struct RuntimePublisher {
         const char* topic = nullptr;

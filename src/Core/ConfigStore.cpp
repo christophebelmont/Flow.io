@@ -275,10 +275,20 @@ bool ConfigStore::toJsonModule(const char* module, char* out, size_t outLen, boo
             out[pos++] = ',';
         }
 
-        int n = snprintf(out + pos, outLen - pos, "\"%s\":", m.name ? m.name : "");
-        if (n <= 0) break;
-        pos += (size_t)n;
-        if (pos >= outLen) { truncatedLocal = true; break; }
+        const char* key = m.name ? m.name : "";
+        const size_t keyLen = strlen(key);
+        if (pos + keyLen + 3 >= outLen) { // quotes + colon + trailing '\0'
+            truncatedLocal = true;
+            break;
+        }
+        out[pos++] = '"';
+        memcpy(out + pos, key, keyLen);
+        pos += keyLen;
+        out[pos++] = '"';
+        out[pos++] = ':';
+        out[pos] = '\0';
+
+        int n = 0;
 
         switch (m.type) {
             case ConfigType::Int32:

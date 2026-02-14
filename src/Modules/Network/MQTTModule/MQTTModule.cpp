@@ -177,7 +177,8 @@ bool MQTTModule::publishConfigBlocksFromPatch(const char* patchJson, bool retain
     if (!patchJson || patchJson[0] == '\0') return false;
     if (!cfgSvc || !cfgSvc->toJsonModule) return false;
     static constexpr size_t PATCH_DOC_CAPACITY = 1024;
-    StaticJsonDocument<PATCH_DOC_CAPACITY> patchDoc;
+    static StaticJsonDocument<PATCH_DOC_CAPACITY> patchDoc;
+    patchDoc.clear();
     const DeserializationError patchErr = deserializeJson(patchDoc, patchJson);
     if (patchErr || !patchDoc.is<JsonObjectConst>()) return false;
     JsonObjectConst patch = patchDoc.as<JsonObjectConst>();
@@ -274,7 +275,8 @@ bool MQTTModule::addRuntimePublisher(const char* topic, uint32_t periodMs, int q
 void MQTTModule::processRx(const RxMsg& msg) {
     if (strcmp(msg.topic, topicCmd) == 0) {
         static constexpr size_t CMD_DOC_CAPACITY = 1024;
-        StaticJsonDocument<CMD_DOC_CAPACITY> doc;
+        static StaticJsonDocument<CMD_DOC_CAPACITY> doc;
+        doc.clear();
         DeserializationError err = deserializeJson(doc, msg.payload);
         if (err || !doc.is<JsonObjectConst>()) {
             client.publish(topicAck, 0, false, "{\"ok\":false,\"err\":\"bad_cmd_json\"}");

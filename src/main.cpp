@@ -44,6 +44,10 @@
 #include "Core/Layout/PoolSensorMap.h"
 #include "Modules/IOModule/IORuntime.h"
 #include "Core/SystemStats.h"
+#include "Board/BoardLayout.h"
+#include "Board/BoardPinMap.h"
+#include "Core/SystemLimits.h"
+#include "Domain/Calibration.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include <string.h>
@@ -76,24 +80,23 @@ static PoolDeviceModule     poolDeviceModule;
 static PoolLogicModule      poolLogicModule;
 static DataStore*           gIoDataStore = nullptr;
 
-static OneWireBus oneWireWater(19);
-static OneWireBus oneWireAir(18);
+static OneWireBus oneWireWater(Board::OneWire::BusA);
+static OneWireBus oneWireAir(Board::OneWire::BusB);
 static TaskHandle_t ledRandomTaskHandle = nullptr;
 
-static char topicRuntimeMux[128] = {0};
-static char topicRuntimeState[128] = {0};
-static char topicNetworkState[128] = {0};
-static char topicSystemState[128] = {0};
+static char topicRuntimeMux[Limits::TopicBuf] = {0};
+static char topicRuntimeState[Limits::TopicBuf] = {0};
+static char topicNetworkState[Limits::TopicBuf] = {0};
+static char topicSystemState[Limits::TopicBuf] = {0};
 
-static constexpr uint8_t MAX_RUNTIME_ROUTES = 32;
 struct RuntimeSnapshotRoute {
     const IRuntimeSnapshotProvider* provider = nullptr;
     uint8_t snapshotIdx = 0;
-    char topic[128] = {0};
+    char topic[Limits::TopicBuf] = {0};
     uint32_t dirtyMask = DIRTY_SENSORS;
     uint32_t lastPublishedTs = 0;
 };
-static RuntimeSnapshotRoute gRuntimeRoutes[MAX_RUNTIME_ROUTES]{};
+static RuntimeSnapshotRoute gRuntimeRoutes[Limits::MaxRuntimeRoutes]{};
 static uint8_t gRuntimeRouteCount = 0;
 
 struct RuntimeMuxStats {
@@ -110,19 +113,6 @@ struct RuntimeMuxStats {
 static RuntimeMuxStats gRuntimeMuxStats{};
 
 static constexpr uint8_t IO_DO_COUNT = FLOW_POOL_IO_BINDING_COUNT;
-
-static constexpr float PH_INTERNAL_C0 = 0.9583f;
-static constexpr float PH_INTERNAL_C1 = 4.834f;
-static constexpr float PH_EXTERNAL_C0 = -2.50133333f;
-static constexpr float PH_EXTERNAL_C1 = 6.9f;
-
-static constexpr float ORP_INTERNAL_C0 = 129.2f;
-static constexpr float ORP_INTERNAL_C1 = 384.1f;
-static constexpr float ORP_EXTERNAL_C0 = 431.03f;
-static constexpr float ORP_EXTERNAL_C1 = 0.0f;
-
-static constexpr float PSI_DEFAULT_C0 = 0.377923399f;
-static constexpr float PSI_DEFAULT_C1 = -0.17634473f;
 
 static void setAdcDefaultCalib(IOAnalogDefinition& def,
                                float internalC0,
@@ -164,7 +154,7 @@ static bool registerRuntimeProvider(MQTTModule& mqtt, const IRuntimeSnapshotProv
     bool any = false;
     const uint8_t count = provider->runtimeSnapshotCount();
     for (uint8_t idx = 0; idx < count; ++idx) {
-        if (gRuntimeRouteCount >= MAX_RUNTIME_ROUTES) break;
+        if (gRuntimeRouteCount >= Limits::MaxRuntimeRoutes) break;
         const char* suffix = provider->runtimeSnapshotSuffix(idx);
         if (!suffix || suffix[0] == '\0') continue;
 
@@ -333,7 +323,7 @@ void setup() {
     orpDef.ioId = orp->ioId;
     orpDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     orpDef.channel = 0;
-    setAdcDefaultCalib(orpDef, ORP_INTERNAL_C0, ORP_INTERNAL_C1, ORP_EXTERNAL_C0, ORP_EXTERNAL_C1);
+    setAdcDefaultCalib(orpDef, Calib::Orp::InternalC0, Calib::Orp::InternalC1, Calib::Orp::ExternalC0, Calib::Orp::ExternalC1);
     orpDef.precision = 0;
     orpDef.onValueChanged = onIoFloatValue;
     orpDef.onValueCtx = (void*)(uintptr_t)orp->runtimeIndex;
@@ -346,7 +336,7 @@ void setup() {
     phDef.ioId = ph->ioId;
     phDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     phDef.channel = 1;
-    setAdcDefaultCalib(phDef, PH_INTERNAL_C0, PH_INTERNAL_C1, PH_EXTERNAL_C0, PH_EXTERNAL_C1);
+    setAdcDefaultCalib(phDef, Calib::Ph::InternalC0, Calib::Ph::InternalC1, Calib::Ph::ExternalC0, Calib::Ph::ExternalC1);
     phDef.precision = 1;
     phDef.onValueChanged = onIoFloatValue;
     phDef.onValueCtx = (void*)(uintptr_t)ph->runtimeIndex;
@@ -359,8 +349,8 @@ void setup() {
     psiDef.ioId = psi->ioId;
     psiDef.source = IO_SRC_ADS_INTERNAL_SINGLE;
     psiDef.channel = 2;
-    psiDef.c0 = PSI_DEFAULT_C0;
-    psiDef.c1 = PSI_DEFAULT_C1;
+    psiDef.c0 = Calib::Psi::DefaultC0;
+    psiDef.c1 = Calib::Psi::DefaultC1;
     psiDef.precision = 1;
     psiDef.onValueChanged = onIoFloatValue;
     psiDef.onValueCtx = (void*)(uintptr_t)psi->runtimeIndex;
@@ -389,8 +379,8 @@ void setup() {
     waterDef.source = IO_SRC_DS18_WATER;
     waterDef.channel = 0;
     waterDef.precision = 1;
-    waterDef.minValid = -55.0f;
-    waterDef.maxValid = 125.0f;
+    waterDef.minValid = Calib::Temperature::Ds18MinValidC;
+    waterDef.maxValid = Calib::Temperature::Ds18MaxValidC;
     waterDef.onValueChanged = onIoFloatValue;
     waterDef.onValueCtx = (void*)(uintptr_t)water->runtimeIndex;
     requireSetup(ioModule.defineAnalogInput(waterDef), "define analog water temperature");
@@ -403,8 +393,8 @@ void setup() {
     airDef.source = IO_SRC_DS18_AIR;
     airDef.channel = 0;
     airDef.precision = 1;
-    airDef.minValid = -55.0f;
-    airDef.maxValid = 125.0f;
+    airDef.minValid = Calib::Temperature::Ds18MinValidC;
+    airDef.maxValid = Calib::Temperature::Ds18MaxValidC;
     airDef.onValueChanged = onIoFloatValue;
     airDef.onValueCtx = (void*)(uintptr_t)air->runtimeIndex;
     requireSetup(ioModule.defineAnalogInput(airDef), "define analog air temperature");
@@ -414,14 +404,14 @@ void setup() {
     requireSetup(level != nullptr, "missing sensor mapping Pool Level");
     snprintf(poolLevelDef.id, sizeof(poolLevelDef.id), "%s", level->endpointId);
     poolLevelDef.ioId = level->ioId;
-    poolLevelDef.pin = 34;
+    poolLevelDef.pin = Board::DI::FlowSwitch;
     poolLevelDef.activeHigh = true;
     poolLevelDef.pullMode = IO_PULL_NONE;
     poolLevelDef.onValueChanged = onIoBoolValue;
     poolLevelDef.onValueCtx = (void*)(uintptr_t)level->runtimeIndex;
     requireSetup(ioModule.defineDigitalInput(poolLevelDef), "define digital input pool level");
 
-    static_assert(FLOW_POOL_IO_BINDING_COUNT == 8, "Unexpected pool IO binding count");
+    static_assert(FLOW_POOL_IO_BINDING_COUNT == BoardLayout::DigitalOutCount, "Unexpected pool IO binding count");
 
     for (uint8_t i = 0; i < FLOW_POOL_IO_BINDING_COUNT; ++i) {
         const PoolIoBinding& b = FLOW_POOL_IO_BINDINGS[i];
@@ -433,19 +423,13 @@ void setup() {
         d.activeHigh = false;
         d.initialOn = false;
 
-        switch (logical) {
-            case 0: d.pin = 32; break; // filtration
-            case 1: d.pin = 25; break; // pH pump
-            case 2: d.pin = 26; break; // chlorine pump
-            case 3: d.pin = 13; d.momentary = true; d.pulseMs = 500; break; // chlorine generator
-            case 4: d.pin = 33; break; // robot
-            case 5: d.pin = 27; break; // lights
-            case 6: d.pin = 23; break; // fill pump
-            case 7: d.pin = 12; break; // water heater
-            default:
-                requireSetup(false, "unknown digital output logical index");
-                break;
+        if (logical >= BoardLayout::DigitalOutCount) {
+            requireSetup(false, "unknown digital output logical index");
         }
+        const DigitalOutDef& outDef = BoardLayout::DOs[logical];
+        d.pin = outDef.pin;
+        d.momentary = outDef.momentary;
+        d.pulseMs = outDef.momentary ? outDef.pulseMs : 0;
 
         requireSetup(ioModule.defineDigitalOutput(d), "define digital output");
     }

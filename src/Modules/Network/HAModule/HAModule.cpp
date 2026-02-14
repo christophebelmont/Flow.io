@@ -7,6 +7,7 @@
 #include "Modules/Network/HAModule/HARuntime.h"
 #include <esp_system.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include <string.h>
 
 #define LOG_TAG "HAModule"
@@ -33,6 +34,16 @@ static void buildAvailabilityField(const MqttService* mqttSvc, char* out, size_t
         "\"availability_mode\":\"all\",\"payload_available\":\"online\",\"payload_not_available\":\"offline\"",
         availabilityTopic
     );
+}
+
+static bool formatChecked(char* out, size_t outLen, const char* fmt, ...)
+{
+    if (!out || outLen == 0 || !fmt) return false;
+    va_list ap;
+    va_start(ap, fmt);
+    const int n = vsnprintf(out, outLen, fmt, ap);
+    va_end(ap);
+    return (n >= 0) && ((size_t)n < outLen);
 }
 
 void HAModule::makeDeviceId(char* out, size_t len)
@@ -238,7 +249,10 @@ bool HAModule::publishDiscovery(const char* component, const char* objectId, con
 {
     if (!component || !objectId || !payload || !mqttSvc || !mqttSvc->publish) return false;
 
-    snprintf(topicBuf, sizeof(topicBuf), "%s/%s/%s/%s/config", cfgData.discoveryPrefix, component, nodeTopicId, objectId);
+    if (!formatChecked(topicBuf, sizeof(topicBuf), "%s/%s/%s/%s/config", cfgData.discoveryPrefix, component, nodeTopicId, objectId)) {
+        LOGW("HA discovery topic truncated component=%s object=%s", component, objectId);
+        return false;
+    }
     return mqttSvc->publish(mqttSvc->ctx, topicBuf, payload, 1, true);
 }
 
@@ -267,7 +281,7 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
     char availabilityField[384] = {0};
     buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField));
 
-    snprintf(payloadBuf, sizeof(payloadBuf),
+    if (!formatChecked(payloadBuf, sizeof(payloadBuf),
              "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
              "\"state_topic\":\"%s\",\"value_template\":\"%s\",\"state_class\":\"measurement\"%s%s%s%s,"
              "\"origin\":{\"name\":\"Flow.IO\"},"
@@ -276,7 +290,10 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
              name, objectId, defaultEntityId, uniqueId,
              stateTopic, valueTemplate,
              entityCategoryField, iconField, unitField, availabilityField,
-             deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+             deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+        LOGW("HA sensor payload truncated object=%s", objectId);
+        return false;
+    }
 
     return publishDiscovery("sensor", objectId, payloadBuf);
 }
@@ -307,7 +324,7 @@ bool HAModule::publishBinarySensor(const char* objectId, const char* name,
         snprintf(iconField, sizeof(iconField), ",\"icon\":\"%s\"", icon);
     }
 
-    snprintf(payloadBuf, sizeof(payloadBuf),
+    if (!formatChecked(payloadBuf, sizeof(payloadBuf),
              "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
              "\"state_topic\":\"%s\",\"value_template\":\"%s\",\"payload_on\":\"True\",\"payload_off\":\"False\"%s%s%s%s,"
              "\"origin\":{\"name\":\"Flow.IO\"},"
@@ -315,7 +332,10 @@ bool HAModule::publishBinarySensor(const char* objectId, const char* name,
              "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
              name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
              deviceClassField, entityCategoryField, iconField, availabilityField,
-             deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+             deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+        LOGW("HA binary_sensor payload truncated object=%s", objectId);
+        return false;
+    }
 
     return publishDiscovery("binary_sensor", objectId, payloadBuf);
 }
@@ -335,7 +355,7 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
     buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField));
 
     if (icon && icon[0] != '\0') {
-        snprintf(payloadBuf, sizeof(payloadBuf),
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"state_on\":\"ON\",\"state_off\":\"OFF\","
                  "\"command_topic\":\"%s\",\"payload_on\":\"%s\",\"payload_off\":\"%s\","
@@ -346,9 +366,12 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
                  commandTopic, payloadOn, payloadOff, icon,
                  availabilityField,
-                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA switch payload truncated object=%s", objectId);
+            return false;
+        }
     } else {
-        snprintf(payloadBuf, sizeof(payloadBuf),
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"state_on\":\"ON\",\"state_off\":\"OFF\","
                  "\"command_topic\":\"%s\",\"payload_on\":\"%s\",\"payload_off\":\"%s\"%s,"
@@ -357,7 +380,10 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
                  "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
                  commandTopic, payloadOn, payloadOff, availabilityField,
-                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA switch payload truncated object=%s", objectId);
+            return false;
+        }
     }
     return publishDiscovery("switch", objectId, payloadBuf);
 }
@@ -386,7 +412,7 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
     }
 
     if (icon && icon[0] != '\0') {
-        snprintf(payloadBuf, sizeof(payloadBuf),
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"command_topic\":\"%s\",\"command_template\":\"%s\","
                  "\"min\":%.3f,\"max\":%.3f,\"step\":%.3f,\"mode\":\"%s\",\"icon\":\"%s\"%s%s%s,"
@@ -395,9 +421,12 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
                  "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate, commandTopic, commandTemplate,
                  (double)minValue, (double)maxValue, (double)step, mode ? mode : "slider", icon, entityCategoryField, unitField, availabilityField,
-                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA number payload truncated object=%s", objectId);
+            return false;
+        }
     } else {
-        snprintf(payloadBuf, sizeof(payloadBuf),
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"command_topic\":\"%s\",\"command_template\":\"%s\","
                  "\"min\":%.3f,\"max\":%.3f,\"step\":%.3f,\"mode\":\"%s\"%s%s%s,"
@@ -406,7 +435,10 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
                  "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate, commandTopic, commandTemplate,
                  (double)minValue, (double)maxValue, (double)step, mode ? mode : "slider", entityCategoryField, unitField, availabilityField,
-                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW);
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA number payload truncated object=%s", objectId);
+            return false;
+        }
     }
     return publishDiscovery("number", objectId, payloadBuf);
 }
