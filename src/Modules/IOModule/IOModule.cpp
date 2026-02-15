@@ -8,6 +8,7 @@
 #include "Core/ModuleLog.h"
 #include "Modules/IOModule/IORuntime.h"
 #include <Arduino.h>
+#include <new>
 #include <stdlib.h>
 #include <string.h>
 
@@ -469,6 +470,7 @@ bool IOModule::tickDigitalInputs_(void* ctx, uint32_t nowMs)
         if (self->digitalSlots_[i].kind != DIGITAL_SLOT_INPUT) continue;
         (void)self->processDigitalInputDefinition_(i, nowMs);
     }
+    self->pollPulseOutputs_(nowMs);
     return true;
 }
 
@@ -478,43 +480,19 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     AnalogSlot& slot = analogSlots_[idx];
     if (!slot.used || !slot.endpoint) return false;
 
-    float raw = 0.0f;
-    int16_t rawBinary = 0;
-    uint32_t sampleSeq = 0;
-    bool hasSampleSeq = false;
-    bool valid = false;
+    IAnalogSourceDriver* sourceDriver = nullptr;
+    if (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) sourceDriver = adsInternal_;
+    else if (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF) sourceDriver = adsExternal_;
+    else if (slot.def.source == IO_SRC_DS18_WATER) sourceDriver = dsWater_;
+    else if (slot.def.source == IO_SRC_DS18_AIR) sourceDriver = dsAir_;
+    if (!sourceDriver) return false;
 
-    if (slot.def.source == IO_SRC_ADS_INTERNAL_SINGLE) {
-        if (!adsInternal_) return false;
-        bool rawOk = adsInternal_->readRawChannel(slot.def.channel, rawBinary);
-        bool vOk = adsInternal_->readVoltsChannel(slot.def.channel, raw);
-        bool seqOk = adsInternal_->readSampleSeqChannel(slot.def.channel, sampleSeq);
-        hasSampleSeq = true;
-        valid = rawOk && vOk && seqOk;
-    } else if (slot.def.source == IO_SRC_ADS_EXTERNAL_DIFF) {
-        if (!adsExternal_) return false;
-        if (slot.def.channel == 0) {
-            bool rawOk = adsExternal_->readRawDifferential01(rawBinary);
-            bool vOk = adsExternal_->readVoltsDifferential01(raw);
-            bool seqOk = adsExternal_->readSampleSeqDifferential01(sampleSeq);
-            hasSampleSeq = true;
-            valid = rawOk && vOk && seqOk;
-        } else {
-            bool rawOk = adsExternal_->readRawDifferential23(rawBinary);
-            bool vOk = adsExternal_->readVoltsDifferential23(raw);
-            bool seqOk = adsExternal_->readSampleSeqDifferential23(sampleSeq);
-            hasSampleSeq = true;
-            valid = rawOk && vOk && seqOk;
-        }
-    } else if (slot.def.source == IO_SRC_DS18_WATER) {
-        if (!dsWater_) return false;
-        valid = dsWater_->readCelsius(raw);
-    } else if (slot.def.source == IO_SRC_DS18_AIR) {
-        if (!dsAir_) return false;
-        valid = dsAir_->readCelsius(raw);
-    }
-
-    if (!valid) return false;
+    IOAnalogSample sample{};
+    if (!sourceDriver->readSample(slot.def.channel, sample)) return false;
+    float raw = sample.value;
+    int16_t rawBinary = sample.raw;
+    uint32_t sampleSeq = sample.seq;
+    bool hasSampleSeq = sample.hasSeq;
 
     // ADS values are processed only when a fresh sample arrives for that channel/pair.
     if (hasSampleSeq) {
@@ -1079,7 +1057,8 @@ bool IOModule::configureRuntime_()
         else if (analogSlots_[i].def.source == IO_SRC_DS18_WATER) needDsWater = true;
         else if (analogSlots_[i].def.source == IO_SRC_DS18_AIR) needDsAir = true;
 
-        analogSlots_[i].endpoint = new AnalogSensorEndpoint(analogSlots_[i].def.id);
+        analogSlots_[i].endpoint = allocAnalogEndpoint_(analogSlots_[i].def.id);
+        if (!analogSlots_[i].endpoint) continue;
         registry_.add(analogSlots_[i].endpoint);
     }
 
@@ -1093,16 +1072,18 @@ bool IOModule::configureRuntime_()
 
         if (s.kind == DIGITAL_SLOT_INPUT) {
             snprintf(s.endpointId, sizeof(s.endpointId), "i%u", (unsigned)s.logicalIdx);
-            s.driver = new GpioDriver(
+            s.driver = allocGpioDriver_(
                 s.endpointId,
                 s.inDef.pin,
                 false,
                 s.inDef.activeHigh,
                 s.inDef.pullMode
             );
+            if (!s.driver) continue;
             if (!s.driver->begin()) continue;
 
-            s.endpoint = new DigitalSensorEndpoint(s.endpointId);
+            s.endpoint = allocDigitalSensorEndpoint_(s.endpointId);
+            if (!s.endpoint) continue;
             registry_.add(s.endpoint);
             (void)processDigitalInputDefinition_(i, millis());
             continue;
@@ -1126,25 +1107,19 @@ bool IOModule::configureRuntime_()
         strncpy(s.endpointId, s.outDef.id, sizeof(s.endpointId) - 1);
         s.endpointId[sizeof(s.endpointId) - 1] = '\0';
 
-        s.driver = new GpioDriver(s.outDef.id, s.outDef.pin, true, s.outDef.activeHigh);
+        s.driver = allocGpioDriver_(s.outDef.id, s.outDef.pin, true, s.outDef.activeHigh);
+        if (!s.driver) continue;
         if (!s.driver->begin()) continue;
         s.driver->write(s.outDef.initialOn);
+        s.pulseArmed = false;
+        s.pulseDeadlineMs = 0;
 
-        if (s.outDef.momentary) {
-            s.pulseTimer = xTimerCreate(
-                s.outDef.id,
-                pdMS_TO_TICKS((s.outDef.pulseMs == 0) ? 500u : (uint32_t)s.outDef.pulseMs),
-                pdFALSE,
-                &s,
-                &IOModule::digitalPulseTimerCb_
-            );
-        }
-
-        s.endpoint = static_cast<IOEndpoint*>(new DigitalActuatorEndpoint(
+        s.endpoint = static_cast<IOEndpoint*>(allocDigitalActuatorEndpoint_(
             s.outDef.id,
             &IOModule::writeDigitalOut_,
             &s
         ));
+        if (!s.endpoint) continue;
         registry_.add(s.endpoint);
     }
 
@@ -1160,19 +1135,23 @@ bool IOModule::configureRuntime_()
     adsExternalCfg.differentialPairs = true;
 
     if (needAdsInternal) {
-        adsInternal_ = new Ads1115Driver("ads_internal", &i2cBus_, adsInternalCfg);
+        adsInternal_ = allocAdsDriver_("ads_internal", &i2cBus_, adsInternalCfg);
+        if (!adsInternal_) {
+            LOGW("ADS internal pool exhausted");
+        } else
         if (!adsInternal_->begin()) {
             LOGW("ADS internal not detected at 0x%02X", cfgData_.adsInternalAddr);
-            delete adsInternal_;
             adsInternal_ = nullptr;
         }
     }
 
     if (needAdsExternal) {
-        adsExternal_ = new Ads1115Driver("ads_external", &i2cBus_, adsExternalCfg);
+        adsExternal_ = allocAdsDriver_("ads_external", &i2cBus_, adsExternalCfg);
+        if (!adsExternal_) {
+            LOGW("ADS external pool exhausted");
+        } else
         if (!adsExternal_->begin()) {
             LOGW("ADS external not detected at 0x%02X", cfgData_.adsExternalAddr);
-            delete adsExternal_;
             adsExternal_ = nullptr;
         }
     }
@@ -1184,8 +1163,9 @@ bool IOModule::configureRuntime_()
     if (needDsWater && oneWireWater_) {
         oneWireWater_->begin();
         if (oneWireWater_->getAddress(0, oneWireWaterAddr_)) {
-            dsWater_ = new Ds18b20Driver("ds18_water", oneWireWater_, oneWireWaterAddr_, dsCfg);
-            dsWater_->begin();
+            dsWater_ = allocDsDriver_("ds18_water", oneWireWater_, oneWireWaterAddr_, dsCfg);
+            if (dsWater_) dsWater_->begin();
+            else LOGW("DS18 water pool exhausted");
         } else {
             LOGW("No DS18B20 found on water OneWire bus");
         }
@@ -1194,32 +1174,37 @@ bool IOModule::configureRuntime_()
     if (needDsAir && oneWireAir_) {
         oneWireAir_->begin();
         if (oneWireAir_->getAddress(0, oneWireAirAddr_)) {
-            dsAir_ = new Ds18b20Driver("ds18_air", oneWireAir_, oneWireAirAddr_, dsCfg);
-            dsAir_->begin();
+            dsAir_ = allocDsDriver_("ds18_air", oneWireAir_, oneWireAirAddr_, dsCfg);
+            if (dsAir_) dsAir_->begin();
+            else LOGW("DS18 air pool exhausted");
         } else {
             LOGW("No DS18B20 found on air OneWire bus");
         }
     }
 
     if (cfgData_.pcfEnabled) {
-        pcf_ = new Pcf8574Driver("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
+        pcf_ = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
+        if (!pcf_) {
+            LOGW("PCF8574 pool exhausted");
+        } else
         if (pcf_->begin()) {
-            ledMaskEp_ = new Pcf8574MaskEndpoint(
+            ledMaskEp_ = allocMaskEndpoint_(
                 "status_leds_mask",
                 [](void* ctx, uint8_t mask) -> bool {
-                    return static_cast<Pcf8574Driver*>(ctx)->writeMask(mask);
+                    return static_cast<IMaskOutputDriver*>(ctx)->writeMask(mask);
                 },
                 [](void* ctx, uint8_t* mask) -> bool {
                     if (!mask) return false;
-                    return static_cast<Pcf8574Driver*>(ctx)->readMask(*mask);
+                    return static_cast<IMaskOutputDriver*>(ctx)->readMask(*mask);
                 },
                 pcf_
             );
-            registry_.add(ledMaskEp_);
-            setLedMask_(cfgData_.pcfMaskDefault, millis());
+            if (ledMaskEp_) {
+                registry_.add(ledMaskEp_);
+                setLedMask_(cfgData_.pcfMaskDefault, millis());
+            }
         } else {
             LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
-            delete pcf_;
             pcf_ = nullptr;
         }
     }
@@ -1258,6 +1243,74 @@ bool IOModule::configureRuntime_()
     return true;
 }
 
+void IOModule::pollPulseOutputs_(uint32_t nowMs)
+{
+    for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
+        DigitalSlot& s = digitalSlots_[i];
+        if (!s.used || s.kind != DIGITAL_SLOT_OUTPUT) continue;
+        if (!s.outDef.momentary || !s.pulseArmed || !s.driver) continue;
+        if ((int32_t)(nowMs - s.pulseDeadlineMs) < 0) continue;
+        (void)s.driver->write(false);
+        s.pulseArmed = false;
+    }
+}
+
+AnalogSensorEndpoint* IOModule::allocAnalogEndpoint_(const char* endpointId)
+{
+    if (analogEndpointPoolUsed_ >= MAX_ANALOG_ENDPOINTS) return nullptr;
+    void* mem = analogEndpointPool_[analogEndpointPoolUsed_++];
+    return new (mem) AnalogSensorEndpoint(endpointId);
+}
+
+DigitalSensorEndpoint* IOModule::allocDigitalSensorEndpoint_(const char* endpointId)
+{
+    if (digitalSensorEndpointPoolUsed_ >= MAX_DIGITAL_INPUTS) return nullptr;
+    void* mem = digitalSensorEndpointPool_[digitalSensorEndpointPoolUsed_++];
+    return new (mem) DigitalSensorEndpoint(endpointId);
+}
+
+DigitalActuatorEndpoint* IOModule::allocDigitalActuatorEndpoint_(const char* endpointId, DigitalWriteFn writeFn, void* writeCtx)
+{
+    if (digitalActuatorEndpointPoolUsed_ >= MAX_DIGITAL_OUTPUTS) return nullptr;
+    void* mem = digitalActuatorEndpointPool_[digitalActuatorEndpointPoolUsed_++];
+    return new (mem) DigitalActuatorEndpoint(endpointId, writeFn, writeCtx);
+}
+
+IDigitalPinDriver* IOModule::allocGpioDriver_(const char* driverId, uint8_t pin, bool output, bool activeHigh, uint8_t inputPullMode)
+{
+    if (gpioDriverPoolUsed_ >= MAX_DIGITAL_SLOTS) return nullptr;
+    void* mem = gpioDriverPool_[gpioDriverPoolUsed_++];
+    return new (mem) GpioDriver(driverId, pin, output, activeHigh, inputPullMode);
+}
+
+IAnalogSourceDriver* IOModule::allocAdsDriver_(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg)
+{
+    if (adsDriverPoolUsed_ >= 2) return nullptr;
+    void* mem = adsDriverPool_[adsDriverPoolUsed_++];
+    return new (mem) Ads1115Driver(driverId, bus, cfg);
+}
+
+IAnalogSourceDriver* IOModule::allocDsDriver_(const char* driverId, OneWireBus* bus, const uint8_t address[8], const Ds18b20DriverConfig& cfg)
+{
+    if (dsDriverPoolUsed_ >= 2) return nullptr;
+    void* mem = dsDriverPool_[dsDriverPoolUsed_++];
+    return new (mem) Ds18b20Driver(driverId, bus, address, cfg);
+}
+
+IMaskOutputDriver* IOModule::allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address)
+{
+    if (pcfDriverPoolUsed_ >= 1) return nullptr;
+    void* mem = pcfDriverPool_[pcfDriverPoolUsed_++];
+    return new (mem) Pcf8574Driver(driverId, bus, address);
+}
+
+Pcf8574MaskEndpoint* IOModule::allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx)
+{
+    if (maskEndpointPoolUsed_ >= 1) return nullptr;
+    void* mem = maskEndpointPool_[maskEndpointPoolUsed_++];
+    return new (mem) Pcf8574MaskEndpoint(endpointId, writeFn, readFn, fnCtx);
+}
+
 bool IOModule::writeDigitalOut_(void* ctx, bool on)
 {
     IOModule::DigitalSlot* s = static_cast<IOModule::DigitalSlot*>(ctx);
@@ -1273,11 +1326,9 @@ bool IOModule::writeDigitalOut_(void* ctx, bool on)
     // Momentary outputs always generate a physical pulse on each command.
     if (!s->driver->write(true)) return false;
     uint32_t pulse = (s->outDef.pulseMs == 0) ? 500u : (uint32_t)s->outDef.pulseMs;
-    if (s->pulseTimer) {
-        (void)xTimerStop(s->pulseTimer, 0);
-        (void)xTimerChangePeriod(s->pulseTimer, pdMS_TO_TICKS(pulse), 0);
-        (void)xTimerStart(s->pulseTimer, 0);
-    }
+    const uint32_t nowMs = millis();
+    s->pulseDeadlineMs = nowMs + pulse;
+    s->pulseArmed = true;
     if (s->owner) s->owner->markIoCycleChanged_(s->ioId);
     return true;
 }
@@ -1293,15 +1344,6 @@ bool IOModule::endpointIndexFromId_(const char* id, uint8_t& idxOut) const
         return true;
     }
     return false;
-}
-
-void IOModule::digitalPulseTimerCb_(TimerHandle_t timer)
-{
-    if (!timer) return;
-    IOModule::DigitalSlot* s = static_cast<IOModule::DigitalSlot*>(pvTimerGetTimerID(timer));
-    if (!s || !s->driver) return;
-    if (!s->used || s->kind != DIGITAL_SLOT_OUTPUT) return;
-    (void)s->driver->write(false);
 }
 
 void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)

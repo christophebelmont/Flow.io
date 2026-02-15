@@ -236,7 +236,7 @@ static bool buildRuntimeMuxState(MQTTModule* mqtt, char* out, size_t len) {
 }
 
 static bool buildNetworkSnapshot(MQTTModule* mqtt, char* out, size_t len) {
-    if (!mqtt) return false;
+    if (!mqtt || !out || len == 0) return false;
     DataStore* ds = mqtt->dataStorePtr();
     if (!ds) return false;
 
@@ -247,31 +247,41 @@ static bool buildNetworkSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     bool mqttOk = mqttReady(*ds);
     int rssi = (WiFi.isConnected()) ? WiFi.RSSI() : -127;
 
-    snprintf(out, len,
-             "{\"ready\":%s,\"ip\":\"%s\",\"rssi\":%d,\"mqtt\":%s,\"ts\":%lu}",
-             netReady ? "true" : "false",
-             ip,
-             rssi,
-             mqttOk ? "true" : "false",
-             (unsigned long)millis());
-    return true;
+    int wrote = snprintf(out, len,
+                         "{\"ready\":%s,\"ip\":\"%s\",\"rssi\":%d,\"mqtt\":%s,\"ts\":%lu}",
+                         netReady ? "true" : "false",
+                         ip,
+                         rssi,
+                         mqttOk ? "true" : "false",
+                         (unsigned long)millis());
+    return (wrote > 0) && ((size_t)wrote < len);
 }
 
 static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
-    if (!mqtt) return false;
+    if (!mqtt || !out || len == 0) return false;
 
     SystemStatsSnapshot snap{};
     SystemStats::collect(snap);
+    DataStore* ds = mqtt->dataStorePtr();
+    const uint32_t rxDrop = ds ? mqttRxDrop(*ds) : 0U;
+    const uint32_t parseFail = ds ? mqttParseFail(*ds) : 0U;
+    const uint32_t handlerFail = ds ? mqttHandlerFail(*ds) : 0U;
 
-    snprintf(out, len,
-             "{\"upt_ms\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"largest\":%lu,\"frag\":%u},\"ts\":%lu}",
-             (unsigned long)snap.uptimeMs,
-             (unsigned long)snap.heap.freeBytes,
-             (unsigned long)snap.heap.minFreeBytes,
-             (unsigned long)snap.heap.largestFreeBlock,
-             (unsigned int)snap.heap.fragPercent,
-             (unsigned long)millis());
-    return true;
+    int wrote = snprintf(
+        out, len,
+        "{\"upt_ms\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"largest\":%lu,\"frag\":%u},"
+        "\"mqtt_rx\":{\"rx_drop\":%lu,\"parse_fail\":%lu,\"handler_fail\":%lu},\"ts\":%lu}",
+        (unsigned long)snap.uptimeMs,
+        (unsigned long)snap.heap.freeBytes,
+        (unsigned long)snap.heap.minFreeBytes,
+        (unsigned long)snap.heap.largestFreeBlock,
+        (unsigned int)snap.heap.fragPercent,
+        (unsigned long)rxDrop,
+        (unsigned long)parseFail,
+        (unsigned long)handlerFail,
+        (unsigned long)millis()
+    );
+    return (wrote > 0) && ((size_t)wrote < len);
 }
 /* Test task currently deactivated */
 static void ledRandomTask(void*)

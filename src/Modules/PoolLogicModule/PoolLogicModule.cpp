@@ -4,9 +4,9 @@
  */
 
 #include "PoolLogicModule.h"
+#include "Modules/PoolLogicModule/FiltrationWindow.h"
 
 #include <Arduino.h>
-#include <math.h>
 #include <cstring>
 
 #define LOG_TAG "PoolLogc"
@@ -191,43 +191,18 @@ void PoolLogicModule::ensureDailySlot_()
 
 bool PoolLogicModule::computeFiltrationWindow_(float waterTemp, uint8_t& startHourOut, uint8_t& stopHourOut, uint8_t& durationOut)
 {
-    if (!isfinite(waterTemp)) return false;
+    FiltrationWindowInput in{};
+    in.waterTemp = waterTemp;
+    in.lowThreshold = waterTempLowThreshold_;
+    in.setpoint = waterTempSetpoint_;
+    in.startMinHour = filtrationStartMin_;
+    in.stopMaxHour = filtrationStopMax_;
 
-    int duration = PoolDefaults::MinDurationHours;
-    if (waterTemp < waterTempLowThreshold_) {
-        duration = PoolDefaults::MinDurationHours;
-    } else if (waterTemp < waterTempSetpoint_) {
-        duration = (int)lroundf(waterTemp * PoolDefaults::FactorLow);
-    } else {
-        duration = (int)lroundf(waterTemp * PoolDefaults::FactorHigh);
-    }
-
-    if (duration < PoolDefaults::MinDurationHours) duration = PoolDefaults::MinDurationHours;
-    if (duration > PoolDefaults::MaxDurationHours) duration = PoolDefaults::MaxDurationHours;
-
-    const int startMin = (int)filtrationStartMin_;
-    int stopMax = (int)filtrationStopMax_;
-    if (stopMax > PoolDefaults::MaxClockHour) stopMax = PoolDefaults::MaxClockHour;
-    if (stopMax < 0) stopMax = 0;
-
-    int start = PoolDefaults::FiltrationPivotHour - (int)lroundf((float)duration * PoolDefaults::FactorHigh);
-    if (start < startMin) start = startMin;
-
-    int stop = start + duration;
-    if (stop > stopMax) stop = stopMax;
-
-    if (stop <= start) {
-        if (start < PoolDefaults::MaxClockHour) {
-            stop = start + PoolDefaults::MinEmergencyDurationHours;
-        } else {
-            start = PoolDefaults::FallbackStartHour;
-            stop = PoolDefaults::MaxClockHour;
-        }
-    }
-
-    durationOut = (uint8_t)(stop - start);
-    startHourOut = (uint8_t)start;
-    stopHourOut = (uint8_t)stop;
+    FiltrationWindowOutput out{};
+    if (!computeFiltrationWindowDeterministic(in, out)) return false;
+    startHourOut = out.startHour;
+    stopHourOut = out.stopHour;
+    durationOut = out.durationHours;
     return true;
 }
 

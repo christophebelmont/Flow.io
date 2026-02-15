@@ -74,6 +74,18 @@ public:
     DataStore* dataStorePtr() const { return dataStore; }
 
 private:
+    enum class RxErrorCode : uint8_t {
+        BadCmdJson = 0,
+        MissingCmd = 1,
+        CmdServiceUnavailable = 2,
+        ArgsTooLarge = 3,
+        CmdHandlerFailed = 4,
+        BadCfgJson = 5,
+        CfgServiceUnavailable = 6,
+        CfgApplyFailed = 7,
+        UnknownTopic = 8
+    };
+
     MQTTConfig cfgData;
     MQTTState state = MQTTState::WaitingNetwork;
     uint32_t stateTs = 0;
@@ -181,4 +193,15 @@ private:
     uint8_t _retryCount = 0;
     uint32_t _retryDelayMs = 2000; // 2s start
     volatile bool _pendingPublish = false;
+
+    uint32_t rxDropCount_ = 0;
+    uint32_t parseFailCount_ = 0;
+    uint32_t handlerFailCount_ = 0;
+
+    void processRxCmd_(const RxMsg& msg);
+    void processRxCfgSet_(const RxMsg& msg);
+    void publishRxError_(const char* ackTopic, RxErrorCode code, const char* family, bool parseFailure);
+    static const char* rxErrorCodeStr_(RxErrorCode code);
+    void syncRxMetrics_();
+    void countRxDrop_();
 };

@@ -14,7 +14,7 @@ struct Ds18b20DriverConfig {
     uint32_t conversionWaitMs = 750;
 };
 
-class Ds18b20Driver : public IODriver {
+class Ds18b20Driver : public IAnalogSourceDriver {
 public:
     Ds18b20Driver(const char* driverId, OneWireBus* bus, const uint8_t address[8],
                   const Ds18b20DriverConfig& cfg);
@@ -24,6 +24,7 @@ public:
     void tick(uint32_t nowMs) override;
 
     bool readCelsius(float& out) const;
+    bool readSample(uint8_t channel, IOAnalogSample& out) const override;
 
 private:
     const char* driverId_ = nullptr;

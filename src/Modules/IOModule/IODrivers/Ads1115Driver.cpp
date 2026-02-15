@@ -128,6 +128,46 @@ bool Ads1115Driver::readSampleSeqDifferential23(uint32_t& outSeq) const
     return true;
 }
 
+bool Ads1115Driver::readSample(uint8_t channel, IOAnalogSample& out) const
+{
+    out = IOAnalogSample{};
+    if (!cfg_.differentialPairs) {
+        int16_t raw = 0;
+        float volts = 0.0f;
+        uint32_t seq = 0;
+        if (!readRawChannel(channel, raw)) return false;
+        if (!readVoltsChannel(channel, volts)) return false;
+        if (!readSampleSeqChannel(channel, seq)) return false;
+        out.value = volts;
+        out.raw = raw;
+        out.seq = seq;
+        out.hasRaw = true;
+        out.hasSeq = true;
+        return true;
+    }
+
+    // Differential mode exposes pair index: 0 -> 0-1, 1 -> 2-3.
+    int16_t raw = 0;
+    float volts = 0.0f;
+    uint32_t seq = 0;
+    if (channel == 0) {
+        if (!readRawDifferential01(raw)) return false;
+        if (!readVoltsDifferential01(volts)) return false;
+        if (!readSampleSeqDifferential01(seq)) return false;
+    } else {
+        if (!readRawDifferential23(raw)) return false;
+        if (!readVoltsDifferential23(volts)) return false;
+        if (!readSampleSeqDifferential23(seq)) return false;
+    }
+
+    out.value = volts;
+    out.raw = raw;
+    out.seq = seq;
+    out.hasRaw = true;
+    out.hasSeq = true;
+    return true;
+}
+
 void Ads1115Driver::requestNext_()
 {
     if (cfg_.differentialPairs) {

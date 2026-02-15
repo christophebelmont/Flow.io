@@ -28,7 +28,7 @@ bool CommandRegistry::execute(const char* cmd, const char* json, const char* arg
         }
     }
     if (reply && replyLen) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"unknown_cmd\"}");
+        snprintf(reply, replyLen, "{\"ok\":false,\"error\":{\"code\":\"unknown_cmd\",\"family\":\"command\"}}");
     }
     return false;
 }

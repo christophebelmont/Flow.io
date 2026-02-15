@@ -8,7 +8,7 @@
 #include "Modules/IOModule/IOBus/I2CBus.h"
 #include "Modules/IOModule/IODrivers/IODriver.h"
 
-class Pcf8574Driver : public IODriver {
+class Pcf8574Driver : public IMaskOutputDriver {
 public:
     Pcf8574Driver(const char* driverId, I2CBus* bus, uint8_t address);
 
@@ -16,8 +16,8 @@ public:
     bool begin() override;
     void tick(uint32_t) override {}
 
-    bool writeMask(uint8_t mask);
-    bool readMask(uint8_t& mask) const;
+    bool writeMask(uint8_t mask) override;
+    bool readMask(uint8_t& mask) const override;
     bool writePin(uint8_t pin, bool on);
     bool readShadow(uint8_t pin, bool& on) const;
 

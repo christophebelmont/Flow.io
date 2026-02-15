@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include "Modules/IOModule/IODrivers/IODriver.h"
 
-class GpioDriver : public IODriver {
+class GpioDriver : public IDigitalPinDriver {
 public:
     enum InputPullMode : uint8_t {
         PullNone = 0,
@@ -22,8 +22,8 @@ public:
     bool begin() override;
     void tick(uint32_t) override {}
 
-    bool write(bool on);
-    bool read(bool& on) const;
+    bool write(bool on) override;
+    bool read(bool& on) const override;
 
 private:
     const char* driverId_ = nullptr;

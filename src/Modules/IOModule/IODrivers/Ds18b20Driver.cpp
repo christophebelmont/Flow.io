@@ -54,3 +54,12 @@ bool Ds18b20Driver::readCelsius(float& out) const
     out = celsius_;
     return true;
 }
+
+bool Ds18b20Driver::readSample(uint8_t, IOAnalogSample& out) const
+{
+    float c = 0.0f;
+    if (!readCelsius(c)) return false;
+    out = IOAnalogSample{};
+    out.value = c;
+    return true;
+}

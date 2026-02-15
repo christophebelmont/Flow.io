@@ -60,6 +60,15 @@ static bool parseCmdArgsObject_(const CommandRequest& req, JsonObjectConst& outO
     return false;
 }
 
+static void writeCmdError_(char* reply, size_t replyLen, const char* family, const char* code)
+{
+    if (!reply || replyLen == 0) return;
+    snprintf(reply, replyLen,
+             "{\"ok\":false,\"error\":{\"code\":\"%s\",\"family\":\"%s\"}}",
+             code ? code : "unknown",
+             family ? family : "time");
+}
+
 static bool parseBoolField_(JsonObjectConst obj, const char* key, bool& out, bool required)
 {
     if (!obj.containsKey(key)) return !required;
@@ -597,19 +606,19 @@ bool TimeModule::handleCmdSchedGet_(const CommandRequest& req, char* reply, size
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"missing_args\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.get", "missing_args");
         return false;
     }
 
     uint32_t slot = 0;
     if (!parseU32Field_(args, "slot", slot, true) || slot >= TIME_SCHED_MAX_SLOTS) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.get", "invalid_slot");
         return false;
     }
 
     TimeSchedulerSlot def{};
     if (!getSlot_((uint8_t)slot, def)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"unused_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.get", "unused_slot");
         return false;
     }
 
@@ -640,17 +649,17 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"missing_args\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "missing_args");
         return false;
     }
 
     uint32_t slot = 0;
     if (!parseU32Field_(args, "slot", slot, true) || slot >= TIME_SCHED_MAX_SLOTS) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_slot");
         return false;
     }
     if (isSystemSlot_((uint8_t)slot)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"reserved_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "reserved_slot");
         return false;
     }
 
@@ -670,12 +679,12 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     const bool hasEventId = args.containsKey("event_id");
     if (hasEventId) {
         if (!parseU32Field_(args, "event_id", eventId, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_event_id\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_event_id");
             return false;
         }
         def.eventId = (uint16_t)eventId;
     } else if (def.eventId == 0) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"missing_event_id\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "missing_event_id");
         return false;
     }
 
@@ -684,7 +693,7 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
         if (modeVar.is<const char*>()) {
             const char* modeBuf = modeVar.as<const char*>();
             if (!modeBuf) {
-                snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_mode\"}");
+                writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_mode");
                 return false;
             }
             if (strcmp(modeBuf, "one_shot_epoch") == 0 ||
@@ -697,13 +706,13 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
                        strcmp(modeBuf, "clock") == 0) {
                 def.mode = TimeSchedulerMode::RecurringClock;
             } else {
-                snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_mode\"}");
+                writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_mode");
                 return false;
             }
         } else {
             uint32_t modeNum = 0;
             if (!parseU32Field_(args, "mode", modeNum, true)) {
-                snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_mode\"}");
+                writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_mode");
                 return false;
             }
             def.mode = (modeNum == 0) ? TimeSchedulerMode::RecurringClock : TimeSchedulerMode::OneShotEpoch;
@@ -713,42 +722,42 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     if (!parseBoolField_(args, "enabled", def.enabled, false) ||
         !parseBoolField_(args, "has_end", def.hasEnd, false) ||
         !parseBoolField_(args, "replay_start_on_boot", def.replayStartOnBoot, false)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_bool\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_bool");
         return false;
     }
 
     uint32_t value = 0;
     if (args.containsKey("weekday_mask")) {
         if (!parseU32Field_(args, "weekday_mask", value, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_weekday_mask\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_weekday_mask");
             return false;
         }
         def.weekdayMask = (uint8_t)value;
     }
     if (args.containsKey("start_hour")) {
         if (!parseU32Field_(args, "start_hour", value, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_start_hour\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_start_hour");
             return false;
         }
         def.startHour = (uint8_t)value;
     }
     if (args.containsKey("start_minute")) {
         if (!parseU32Field_(args, "start_minute", value, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_start_minute\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_start_minute");
             return false;
         }
         def.startMinute = (uint8_t)value;
     }
     if (args.containsKey("end_hour")) {
         if (!parseU32Field_(args, "end_hour", value, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_end_hour\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_end_hour");
             return false;
         }
         def.endHour = (uint8_t)value;
     }
     if (args.containsKey("end_minute")) {
         if (!parseU32Field_(args, "end_minute", value, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_end_minute\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_end_minute");
             return false;
         }
         def.endMinute = (uint8_t)value;
@@ -757,14 +766,14 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     uint64_t value64 = 0;
     if (args.containsKey("start_epoch_sec")) {
         if (!parseU64Field_(args, "start_epoch_sec", value64, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_start_epoch\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_start_epoch");
             return false;
         }
         def.startEpochSec = value64;
     }
     if (args.containsKey("end_epoch_sec")) {
         if (!parseU64Field_(args, "end_epoch_sec", value64, true)) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_end_epoch\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_end_epoch");
             return false;
         }
         def.endEpochSec = value64;
@@ -773,12 +782,12 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     if (args.containsKey("label")) {
         JsonVariantConst labelVar = args["label"];
         if (!labelVar.is<const char*>()) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_label\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_label");
             return false;
         }
         const char* label = labelVar.as<const char*>();
         if (!label) {
-            snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_label\"}");
+            writeCmdError_(reply, replyLen, "time.scheduler.set", "invalid_label");
             return false;
         }
         strncpy(def.label, label, sizeof(def.label) - 1);
@@ -786,7 +795,7 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     }
 
     if (!setSlot_(def)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"set_failed\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.set", "set_failed");
         return false;
     }
 
@@ -798,21 +807,21 @@ bool TimeModule::handleCmdSchedClear_(const CommandRequest& req, char* reply, si
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"missing_args\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.clear", "missing_args");
         return false;
     }
 
     uint32_t slot = 0;
     if (!parseU32Field_(args, "slot", slot, true) || slot >= TIME_SCHED_MAX_SLOTS) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"invalid_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.clear", "invalid_slot");
         return false;
     }
     if (isSystemSlot_((uint8_t)slot)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"reserved_slot\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.clear", "reserved_slot");
         return false;
     }
     if (!clearSlot_((uint8_t)slot)) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"clear_failed\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.clear", "clear_failed");
         return false;
     }
     snprintf(reply, replyLen, "{\"ok\":true,\"slot\":%u}", (unsigned)slot);
@@ -822,7 +831,7 @@ bool TimeModule::handleCmdSchedClear_(const CommandRequest& req, char* reply, si
 bool TimeModule::handleCmdSchedClearAll_(const CommandRequest&, char* reply, size_t replyLen)
 {
     if (!clearAllSlots_()) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"err\":\"clear_all_failed\"}");
+        writeCmdError_(reply, replyLen, "time.scheduler.clear_all", "clear_all_failed");
         return false;
     }
     snprintf(reply, replyLen, "{\"ok\":true}");

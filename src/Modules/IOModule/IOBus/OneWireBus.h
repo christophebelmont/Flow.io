@@ -6,14 +6,12 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
-class OneWire;
-class DallasTemperature;
+#include <DallasTemperature.h>
+#include <OneWire.h>
 
 class OneWireBus {
 public:
     explicit OneWireBus(int pin);
-    ~OneWireBus();
 
     void begin();
     void request();
@@ -24,6 +22,7 @@ public:
 
 private:
     int pin_ = -1;
-    OneWire* oneWire_ = nullptr;
-    DallasTemperature* dt_ = nullptr;
+    OneWire oneWire_;
+    mutable DallasTemperature dt_;
+    bool started_ = false;
 };

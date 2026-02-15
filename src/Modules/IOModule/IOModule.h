@@ -22,8 +22,6 @@
 #include "Modules/IOModule/IORegistry/IORegistry.h"
 #include "Modules/IOModule/IOScheduler/IOScheduler.h"
 #include "Modules/IOModule/IOModuleDataModel.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
 
 struct IOModuleConfig {
     bool enabled = true;
@@ -201,7 +199,15 @@ private:
     void beginIoCycle_(uint32_t nowMs);
     void markIoCycleChanged_(IoId id);
     static bool writeDigitalOut_(void* ctx, bool on);
-    static void digitalPulseTimerCb_(TimerHandle_t timer);
+    void pollPulseOutputs_(uint32_t nowMs);
+    AnalogSensorEndpoint* allocAnalogEndpoint_(const char* endpointId);
+    DigitalSensorEndpoint* allocDigitalSensorEndpoint_(const char* endpointId);
+    DigitalActuatorEndpoint* allocDigitalActuatorEndpoint_(const char* endpointId, DigitalWriteFn writeFn, void* writeCtx);
+    IDigitalPinDriver* allocGpioDriver_(const char* driverId, uint8_t pin, bool output, bool activeHigh, uint8_t inputPullMode = GpioDriver::PullNone);
+    IAnalogSourceDriver* allocAdsDriver_(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg);
+    IAnalogSourceDriver* allocDsDriver_(const char* driverId, OneWireBus* bus, const uint8_t address[8], const Ds18b20DriverConfig& cfg);
+    IMaskOutputDriver* allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address);
+    Pcf8574MaskEndpoint* allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx);
 
     static constexpr uint8_t MAX_ANALOG_ENDPOINTS = 12;
     static constexpr uint8_t MAX_DIGITAL_INPUTS = 8;
@@ -238,9 +244,10 @@ private:
         char endpointId[8] = {0};
         IODigitalInputDefinition inDef{};
         IODigitalOutputDefinition outDef{};
-        GpioDriver* driver = nullptr;
+        IDigitalPinDriver* driver = nullptr;
         IOEndpoint* endpoint = nullptr;
-        TimerHandle_t pulseTimer = nullptr;
+        bool pulseArmed = false;
+        uint32_t pulseDeadlineMs = 0;
         bool lastValid = false;
         bool lastValue = false;
     };
@@ -262,12 +269,12 @@ private:
     uint8_t oneWireWaterAddr_[8] = {0};
     uint8_t oneWireAirAddr_[8] = {0};
 
-    Ads1115Driver* adsInternal_ = nullptr;
-    Ads1115Driver* adsExternal_ = nullptr;
-    Ds18b20Driver* dsWater_ = nullptr;
-    Ds18b20Driver* dsAir_ = nullptr;
+    IAnalogSourceDriver* adsInternal_ = nullptr;
+    IAnalogSourceDriver* adsExternal_ = nullptr;
+    IAnalogSourceDriver* dsWater_ = nullptr;
+    IAnalogSourceDriver* dsAir_ = nullptr;
 
-    Pcf8574Driver* pcf_ = nullptr;
+    IMaskOutputDriver* pcf_ = nullptr;
     Pcf8574MaskEndpoint* ledMaskEp_ = nullptr;
     IOServiceV2 ioSvc_{
         svcCount_,
@@ -287,6 +294,22 @@ private:
 
     AnalogSlot analogSlots_[MAX_ANALOG_ENDPOINTS]{};
     DigitalSlot digitalSlots_[MAX_DIGITAL_SLOTS]{};
+    alignas(AnalogSensorEndpoint) uint8_t analogEndpointPool_[MAX_ANALOG_ENDPOINTS][sizeof(AnalogSensorEndpoint)]{};
+    alignas(DigitalSensorEndpoint) uint8_t digitalSensorEndpointPool_[MAX_DIGITAL_INPUTS][sizeof(DigitalSensorEndpoint)]{};
+    alignas(DigitalActuatorEndpoint) uint8_t digitalActuatorEndpointPool_[MAX_DIGITAL_OUTPUTS][sizeof(DigitalActuatorEndpoint)]{};
+    alignas(GpioDriver) uint8_t gpioDriverPool_[MAX_DIGITAL_SLOTS][sizeof(GpioDriver)]{};
+    alignas(Ads1115Driver) uint8_t adsDriverPool_[2][sizeof(Ads1115Driver)]{};
+    alignas(Ds18b20Driver) uint8_t dsDriverPool_[2][sizeof(Ds18b20Driver)]{};
+    alignas(Pcf8574Driver) uint8_t pcfDriverPool_[1][sizeof(Pcf8574Driver)]{};
+    alignas(Pcf8574MaskEndpoint) uint8_t maskEndpointPool_[1][sizeof(Pcf8574MaskEndpoint)]{};
+    uint8_t analogEndpointPoolUsed_ = 0;
+    uint8_t digitalSensorEndpointPoolUsed_ = 0;
+    uint8_t digitalActuatorEndpointPoolUsed_ = 0;
+    uint8_t gpioDriverPoolUsed_ = 0;
+    uint8_t adsDriverPoolUsed_ = 0;
+    uint8_t dsDriverPoolUsed_ = 0;
+    uint8_t pcfDriverPoolUsed_ = 0;
+    uint8_t maskEndpointPoolUsed_ = 0;
     bool runtimeReady_ = false;
     bool runtimeInitAttempted_ = false;
     bool pcfEnableNeedsReinitWarned_ = false;

@@ -18,7 +18,7 @@ struct Ads1115DriverConfig {
     float voltLsb = 0.0001875f;
 };
 
-class Ads1115Driver : public IODriver {
+class Ads1115Driver : public IAnalogSourceDriver {
 public:
     Ads1115Driver(const char* driverId, I2CBus* bus, const Ads1115DriverConfig& cfg);
 
@@ -36,6 +36,7 @@ public:
     bool readSampleSeqChannel(uint8_t ch, uint32_t& outSeq) const;
     bool readSampleSeqDifferential01(uint32_t& outSeq) const;
     bool readSampleSeqDifferential23(uint32_t& outSeq) const;
+    bool readSample(uint8_t channel, IOAnalogSample& out) const override;
 
 private:
     void requestNext_();
