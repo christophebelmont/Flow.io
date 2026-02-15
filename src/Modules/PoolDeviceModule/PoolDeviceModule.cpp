@@ -4,6 +4,8 @@
  */
 
 #include "PoolDeviceModule.h"
+#include "Core/ErrorCodes.h"
+#include "Core/SystemLimits.h"
 #define LOG_TAG "PoolDevc"
 #include "Core/ModuleLog.h"
 #include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
@@ -15,7 +17,7 @@
 
 static bool parseCmdArgsObject_(const CommandRequest& req, JsonObjectConst& outObj)
 {
-    static constexpr size_t CMD_DOC_CAPACITY = 256;
+    static constexpr size_t CMD_DOC_CAPACITY = Limits::JsonCmdPoolDeviceBuf;
     static StaticJsonDocument<CMD_DOC_CAPACITY> doc;
 
     doc.clear();
@@ -42,23 +44,18 @@ static bool parseCmdArgsObject_(const CommandRequest& req, JsonObjectConst& outO
     return false;
 }
 
-static void writeCmdError_(char* reply, size_t replyLen, const char* family, const char* code)
+static void writeCmdError_(char* reply, size_t replyLen, const char* where, ErrorCode code)
 {
-    if (!reply || replyLen == 0) return;
-    snprintf(reply, replyLen,
-             "{\"ok\":false,\"error\":{\"code\":\"%s\",\"family\":\"%s\"}}",
-             code ? code : "unknown",
-             family ? family : "pool");
+    if (!writeErrorJson(reply, replyLen, code, where)) {
+        snprintf(reply, replyLen, "{\"ok\":false}");
+    }
 }
 
-static void writeCmdErrorSlot_(char* reply, size_t replyLen, const char* family, const char* code, uint8_t slot)
+static void writeCmdErrorSlot_(char* reply, size_t replyLen, const char* where, ErrorCode code, uint8_t slot)
 {
-    if (!reply || replyLen == 0) return;
-    snprintf(reply, replyLen,
-             "{\"ok\":false,\"slot\":%u,\"error\":{\"code\":\"%s\",\"family\":\"%s\"}}",
-             (unsigned)slot,
-             code ? code : "unknown",
-             family ? family : "pool");
+    if (!writeErrorJsonWithSlot(reply, replyLen, code, where, slot)) {
+        snprintf(reply, replyLen, "{\"ok\":false}");
+    }
 }
 
 bool PoolDeviceModule::defineDevice(const PoolDeviceDefinition& def)
@@ -356,26 +353,26 @@ bool PoolDeviceModule::handlePoolWrite_(const CommandRequest& req, char* reply, 
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        writeCmdError_(reply, replyLen, "pool.write", "missing_args");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingArgs);
         return false;
     }
 
     if (!args.containsKey("slot")) {
-        writeCmdError_(reply, replyLen, "pool.write", "missing_slot");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingSlot);
         return false;
     }
     if (!args["slot"].is<uint8_t>()) {
-        writeCmdError_(reply, replyLen, "pool.write", "bad_slot");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::BadSlot);
         return false;
     }
     const uint8_t slot = args["slot"].as<uint8_t>();
     if (slot >= POOL_DEVICE_MAX) {
-        writeCmdError_(reply, replyLen, "pool.write", "bad_slot");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::BadSlot);
         return false;
     }
 
     if (!args.containsKey("value")) {
-        writeCmdError_(reply, replyLen, "pool.write", "missing_value");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingValue);
         return false;
     }
 
@@ -392,19 +389,19 @@ bool PoolDeviceModule::handlePoolWrite_(const CommandRequest& req, char* reply, 
         else if (strcmp(s, "false") == 0) requested = false;
         else requested = (atoi(s) != 0);
     } else {
-        writeCmdError_(reply, replyLen, "pool.write", "missing_value");
+        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingValue);
         return false;
     }
 
     const PoolDeviceSvcStatus st = svcWriteDesiredImpl_(slot, requested ? 1U : 0U);
     if (st != POOLDEV_SVC_OK) {
-        const char* err = "failed";
-        if (st == POOLDEV_SVC_ERR_UNKNOWN_SLOT) err = "unknown_slot";
-        else if (st == POOLDEV_SVC_ERR_NOT_READY) err = "not_ready";
-        else if (st == POOLDEV_SVC_ERR_DISABLED) err = "disabled";
-        else if (st == POOLDEV_SVC_ERR_INTERLOCK) err = "interlock_blocked";
-        else if (st == POOLDEV_SVC_ERR_IO) err = "io_error";
-        writeCmdErrorSlot_(reply, replyLen, "pool.write", err, slot);
+        ErrorCode code = ErrorCode::Failed;
+        if (st == POOLDEV_SVC_ERR_UNKNOWN_SLOT) code = ErrorCode::UnknownSlot;
+        else if (st == POOLDEV_SVC_ERR_NOT_READY) code = ErrorCode::NotReady;
+        else if (st == POOLDEV_SVC_ERR_DISABLED) code = ErrorCode::Disabled;
+        else if (st == POOLDEV_SVC_ERR_INTERLOCK) code = ErrorCode::InterlockBlocked;
+        else if (st == POOLDEV_SVC_ERR_IO) code = ErrorCode::IoError;
+        writeCmdErrorSlot_(reply, replyLen, "pool.write", code, slot);
         return false;
     }
 
@@ -416,21 +413,21 @@ bool PoolDeviceModule::handlePoolRefill_(const CommandRequest& req, char* reply,
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        writeCmdError_(reply, replyLen, "pool.refill", "missing_args");
+        writeCmdError_(reply, replyLen, "pool.refill", ErrorCode::MissingArgs);
         return false;
     }
 
     if (!args.containsKey("slot")) {
-        writeCmdError_(reply, replyLen, "pool.refill", "missing_slot");
+        writeCmdError_(reply, replyLen, "pool.refill", ErrorCode::MissingSlot);
         return false;
     }
     if (!args["slot"].is<uint8_t>()) {
-        writeCmdError_(reply, replyLen, "pool.refill", "bad_slot");
+        writeCmdError_(reply, replyLen, "pool.refill", ErrorCode::BadSlot);
         return false;
     }
     const uint8_t slot = args["slot"].as<uint8_t>();
     if (slot >= POOL_DEVICE_MAX) {
-        writeCmdError_(reply, replyLen, "pool.refill", "bad_slot");
+        writeCmdError_(reply, replyLen, "pool.refill", ErrorCode::BadSlot);
         return false;
     }
 
@@ -447,8 +444,8 @@ bool PoolDeviceModule::handlePoolRefill_(const CommandRequest& req, char* reply,
 
     const PoolDeviceSvcStatus st = svcRefillTankImpl_(slot, remaining);
     if (st != POOLDEV_SVC_OK) {
-        const char* err = (st == POOLDEV_SVC_ERR_UNKNOWN_SLOT) ? "unknown_slot" : "failed";
-        writeCmdErrorSlot_(reply, replyLen, "pool.refill", err, slot);
+        const ErrorCode code = (st == POOLDEV_SVC_ERR_UNKNOWN_SLOT) ? ErrorCode::UnknownSlot : ErrorCode::Failed;
+        writeCmdErrorSlot_(reply, replyLen, "pool.refill", code, slot);
         return false;
     }
 

@@ -4,6 +4,7 @@
  */
 #include "MQTTModule.h"
 #include "Core/Runtime.h"
+#include "Core/SystemLimits.h"
 #include "Core/SystemStats.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -92,7 +93,7 @@ void MQTTModule::onConnect(bool) {
     publishConfigBlocks(true);
 
     _retryCount = 0;
-    _retryDelayMs = 2000;
+    _retryDelayMs = Limits::MqttBackoffMinMs;
     setState(MQTTState::Connected);
 
     if (sensorsTopic && sensorsBuild) {
@@ -178,8 +179,10 @@ bool MQTTModule::publishConfigModuleAt(size_t idx, bool retained)
     if (truncated) {
         LOGW("cfg/%s truncated (buffer=%u)", cfgModules[idx], (unsigned)sizeof(stateCfgBuf));
         // Avoid publishing malformed partial JSON when truncation happens.
-        const char* truncPayload = "{\"ok\":false,\"err\":\"cfg_truncated\"}";
-        client.publish(topicCfgBlocks[idx], 1, retained, truncPayload);
+        if (!writeErrorJson(stateCfgBuf, sizeof(stateCfgBuf), ErrorCode::CfgTruncated, "cfg")) {
+            snprintf(stateCfgBuf, sizeof(stateCfgBuf), "{\"ok\":false}");
+        }
+        client.publish(topicCfgBlocks[idx], 1, retained, stateCfgBuf);
         return true;
     }
     if (!any) return false;
@@ -191,7 +194,7 @@ bool MQTTModule::publishConfigBlocksFromPatch(const char* patchJson, bool retain
 {
     if (!patchJson || patchJson[0] == '\0') return false;
     if (!cfgSvc || !cfgSvc->toJsonModule) return false;
-    static constexpr size_t PATCH_DOC_CAPACITY = 1024;
+    static constexpr size_t PATCH_DOC_CAPACITY = Limits::JsonPatchBuf;
     static StaticJsonDocument<PATCH_DOC_CAPACITY> patchDoc;
     patchDoc.clear();
     const DeserializationError patchErr = deserializeJson(patchDoc, patchJson);
@@ -290,33 +293,33 @@ bool MQTTModule::addRuntimePublisher(const char* topic, uint32_t periodMs, int q
 void MQTTModule::processRx(const RxMsg& msg) {
     if (strcmp(msg.topic, topicCmd) == 0) return processRxCmd_(msg);
     if (strcmp(msg.topic, topicCfgSet) == 0) return processRxCfgSet_(msg);
-    publishRxError_(topicAck, RxErrorCode::UnknownTopic, "rx", false);
+    publishRxError_(topicAck, ErrorCode::UnknownTopic, "rx", false);
 }
 
 void MQTTModule::processRxCmd_(const RxMsg& msg)
 {
-    static constexpr size_t CMD_DOC_CAPACITY = 1024;
+    static constexpr size_t CMD_DOC_CAPACITY = Limits::JsonCmdBuf;
     static StaticJsonDocument<CMD_DOC_CAPACITY> doc;
     doc.clear();
     DeserializationError err = deserializeJson(doc, msg.payload);
     if (err || !doc.is<JsonObjectConst>()) {
-        publishRxError_(topicAck, RxErrorCode::BadCmdJson, "cmd", true);
+        publishRxError_(topicAck, ErrorCode::BadCmdJson, "cmd", true);
         return;
     }
 
     JsonObjectConst root = doc.as<JsonObjectConst>();
     JsonVariantConst cmdVar = root["cmd"];
     if (!cmdVar.is<const char*>()) {
-        publishRxError_(topicAck, RxErrorCode::MissingCmd, "cmd", true);
+        publishRxError_(topicAck, ErrorCode::MissingCmd, "cmd", true);
         return;
     }
     const char* cmdVal = cmdVar.as<const char*>();
     if (!cmdVal || cmdVal[0] == '\0') {
-        publishRxError_(topicAck, RxErrorCode::MissingCmd, "cmd", true);
+        publishRxError_(topicAck, ErrorCode::MissingCmd, "cmd", true);
         return;
     }
     if (!cmdSvc || !cmdSvc->execute) {
-        publishRxError_(topicAck, RxErrorCode::CmdServiceUnavailable, "cmd", false);
+        publishRxError_(topicAck, ErrorCode::CmdServiceUnavailable, "cmd", false);
         return;
     }
 
@@ -332,7 +335,7 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
     if (!argsVar.isNull()) {
         const size_t written = serializeJson(argsVar, argsBuf, sizeof(argsBuf));
         if (written == 0 || written >= sizeof(argsBuf)) {
-            publishRxError_(topicAck, RxErrorCode::ArgsTooLarge, "cmd", true);
+            publishRxError_(topicAck, ErrorCode::ArgsTooLarge, "cmd", true);
             return;
         }
         argsJson = argsBuf;
@@ -340,13 +343,13 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
 
     bool ok = cmdSvc->execute(cmdSvc->ctx, cmd, msg.payload, argsJson, replyBuf, sizeof(replyBuf));
     if (!ok) {
-        publishRxError_(topicAck, RxErrorCode::CmdHandlerFailed, "cmd", false);
+        publishRxError_(topicAck, ErrorCode::CmdHandlerFailed, "cmd", false);
         return;
     }
 
     int wrote = snprintf(ackBuf, sizeof(ackBuf), "{\"ok\":true,\"cmd\":\"%s\",\"reply\":%s}", cmd, replyBuf);
     if (!(wrote > 0 && (size_t)wrote < sizeof(ackBuf))) {
-        publishRxError_(topicAck, RxErrorCode::CmdHandlerFailed, "cmd", false);
+        publishRxError_(topicAck, ErrorCode::InternalAckOverflow, "cmd", false);
         return;
     }
     client.publish(topicAck, 0, false, ackBuf);
@@ -355,22 +358,22 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
 void MQTTModule::processRxCfgSet_(const RxMsg& msg)
 {
     if (!cfgSvc || !cfgSvc->applyJson) {
-        publishRxError_(topicCfgAck, RxErrorCode::CfgServiceUnavailable, "cfg/set", false);
+        publishRxError_(topicCfgAck, ErrorCode::CfgServiceUnavailable, "cfg/set", false);
         return;
     }
 
-    static constexpr size_t CFG_DOC_CAPACITY = 1024;
+    static constexpr size_t CFG_DOC_CAPACITY = Limits::JsonCfgBuf;
     static StaticJsonDocument<CFG_DOC_CAPACITY> cfgDoc;
     cfgDoc.clear();
     const DeserializationError cfgErr = deserializeJson(cfgDoc, msg.payload);
     if (cfgErr || !cfgDoc.is<JsonObjectConst>()) {
-        publishRxError_(topicCfgAck, RxErrorCode::BadCfgJson, "cfg/set", true);
+        publishRxError_(topicCfgAck, ErrorCode::BadCfgJson, "cfg/set", true);
         return;
     }
 
     bool ok = cfgSvc->applyJson(cfgSvc->ctx, msg.payload);
     if (!ok) {
-        publishRxError_(topicCfgAck, RxErrorCode::CfgApplyFailed, "cfg/set", false);
+        publishRxError_(topicCfgAck, ErrorCode::CfgApplyFailed, "cfg/set", false);
         return;
     }
 
@@ -383,41 +386,19 @@ void MQTTModule::processRxCfgSet_(const RxMsg& msg)
     }
 }
 
-void MQTTModule::publishRxError_(const char* ackTopic, RxErrorCode code, const char* family, bool parseFailure)
+void MQTTModule::publishRxError_(const char* ackTopic, ErrorCode code, const char* where, bool parseFailure)
 {
     if (!ackTopic || ackTopic[0] == '\0') return;
     if (parseFailure) ++parseFailCount_;
     else ++handlerFailCount_;
     syncRxMetrics_();
 
-    int wrote = snprintf(
-        ackBuf,
-        sizeof(ackBuf),
-        "{\"ok\":false,\"error\":{\"code\":\"%s\",\"family\":\"%s\"}}",
-        rxErrorCodeStr_(code),
-        (family && family[0] != '\0') ? family : "rx"
-    );
-    if (!(wrote > 0 && (size_t)wrote < sizeof(ackBuf))) {
-        client.publish(ackTopic, 0, false, "{\"ok\":false,\"error\":{\"code\":\"internal_ack_overflow\",\"family\":\"rx\"}}");
-        return;
+    if (!writeErrorJson(ackBuf, sizeof(ackBuf), code, where)) {
+        if (!writeErrorJson(ackBuf, sizeof(ackBuf), ErrorCode::InternalAckOverflow, "rx")) {
+            snprintf(ackBuf, sizeof(ackBuf), "{\"ok\":false}");
+        }
     }
     client.publish(ackTopic, 0, false, ackBuf);
-}
-
-const char* MQTTModule::rxErrorCodeStr_(RxErrorCode code)
-{
-    switch (code) {
-    case RxErrorCode::BadCmdJson: return "bad_cmd_json";
-    case RxErrorCode::MissingCmd: return "missing_cmd";
-    case RxErrorCode::CmdServiceUnavailable: return "cmd_service_unavailable";
-    case RxErrorCode::ArgsTooLarge: return "args_too_large";
-    case RxErrorCode::CmdHandlerFailed: return "cmd_handler_failed";
-    case RxErrorCode::BadCfgJson: return "bad_cfg_json";
-    case RxErrorCode::CfgServiceUnavailable: return "cfg_service_unavailable";
-    case RxErrorCode::CfgApplyFailed: return "cfg_apply_failed";
-    case RxErrorCode::UnknownTopic: return "unknown_topic";
-    default: return "unknown";
-    }
 }
 
 void MQTTModule::syncRxMetrics_()
@@ -474,7 +455,7 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     makeDeviceId(deviceId, sizeof(deviceId));
     buildTopics();
 
-    rxQ = xQueueCreate(8, sizeof(RxMsg));
+    rxQ = xQueueCreate(Limits::MqttRxQueueLen, sizeof(RxMsg));
 
     client.onConnect([this](bool sp){ this->onConnect(sp); });
     client.onDisconnect([this](AsyncMqttClientDisconnectReason r){ this->onDisconnect(r); });
@@ -492,7 +473,7 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     _netReady = dataStore ? wifiReady(*dataStore) : false;
     _netReadyTs = millis();
     _retryCount = 0;
-    _retryDelayMs = 2000;
+    _retryDelayMs = Limits::MqttBackoffMinMs;
 
     setState(cfgData.enabled ? MQTTState::WaitingNetwork : MQTTState::Disabled);
 }
@@ -585,20 +566,20 @@ void MQTTModule::loop() {
             _retryCount++;
             uint32_t next = _retryDelayMs;
 
-            if      (next < 5000)   next = 5000;
-            else if (next < 10000)  next = 10000;
-            else if (next < 30000)  next = 30000;
-            else if (next < 60000)  next = 60000;
-            else                    next = 300000;
+            if      (next < Limits::MqttBackoffStep1Ms)   next = Limits::MqttBackoffStep1Ms;
+            else if (next < Limits::MqttBackoffStep2Ms)   next = Limits::MqttBackoffStep2Ms;
+            else if (next < Limits::MqttBackoffStep3Ms)   next = Limits::MqttBackoffStep3Ms;
+            else if (next < Limits::MqttBackoffStep4Ms)   next = Limits::MqttBackoffStep4Ms;
+            else                                           next = Limits::MqttBackoffMaxMs;
 
-            next = clampU32(next, 2000, 300000);
-            _retryDelayMs = jitterMs(next, 15);
+            next = clampU32(next, Limits::MqttBackoffMinMs, Limits::MqttBackoffMaxMs);
+            _retryDelayMs = jitterMs(next, Limits::MqttBackoffJitterPct);
             setState(MQTTState::WaitingNetwork);
         }
         break;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(Limits::MqttLoopDelayMs));
 }
 
 void MQTTModule::onEventStatic(const Event& e, void* user)

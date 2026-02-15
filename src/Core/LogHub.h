@@ -4,6 +4,7 @@
  * @brief Central log queue for asynchronous logging.
  */
 #include "Core/Services/ILogger.h"
+#include "Core/SystemLimits.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -13,7 +14,7 @@
 class LogHub {
 public:
     /** @brief Initialize the log queue with a given length. */
-    void init(int queueLen = 32);
+    void init(int queueLen = Limits::LogQueueLen);
 
     /** @brief Enqueue a log entry (non-blocking). */
     bool enqueue(const LogEntry& e);

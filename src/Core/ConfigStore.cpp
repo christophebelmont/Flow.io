@@ -366,7 +366,7 @@ bool ConfigStore::applyJson(const char* json)
 {
     if (!json || json[0] == '\0') return false;
 
-    static constexpr size_t APPLY_JSON_DOC_CAPACITY = JSON_BUFFER_SIZE * 4;
+    static constexpr size_t APPLY_JSON_DOC_CAPACITY = Limits::JsonConfigApplyBuf;
     static StaticJsonDocument<APPLY_JSON_DOC_CAPACITY> doc;
     doc.clear();
     const DeserializationError err = deserializeJson(doc, json);

@@ -4,11 +4,12 @@
  */
 #include "LogHubModule.h"
 #include "Core/Log.h"
+#include "Core/SystemLimits.h"
 
 void LogHubModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     (void)cfg;
 
-    hub.init(32);
+    hub.init(Limits::LogQueueLen);
 
     /// expose loghub service
     hubSvc.enqueue = [](void* ctx, const LogEntry& e) -> bool {

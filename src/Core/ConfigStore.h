@@ -23,6 +23,7 @@
 
 #include "ConfigTypes.h"
 #include "Core/Log.h"
+#include "Core/SystemLimits.h"
 #include "Core/Services/IEventBus.h"
 #include "Core/EventBus/EventBus.h"
 #include "Core/EventBus/EventPayloads.h"
@@ -44,8 +45,8 @@ struct MigrationStep {
  */
 class ConfigStore {
 public:
-    static constexpr size_t JSON_BUFFER_SIZE = 1024;
-    static constexpr size_t MAX_CONFIG_VARS = 500;
+    static constexpr size_t JSON_BUFFER_SIZE = Limits::JsonCfgBuf;
+    static constexpr size_t MAX_CONFIG_VARS = Limits::MaxConfigVars;
 
     //explicit ConfigStore(Preferences& prefs);
     ConfigStore() = default;

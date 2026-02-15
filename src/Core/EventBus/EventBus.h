@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "EventId.h"
+#include "Core/SystemLimits.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -49,7 +50,7 @@ public:
     static constexpr uint8_t MAX_PAYLOAD_SIZE = 48;
 
     // Maximum number of queued events (FreeRTOS queue length).
-    static constexpr uint8_t QUEUE_LENGTH = 16;
+    static constexpr uint8_t QUEUE_LENGTH = Limits::EventQueueLen;
 
     /** @brief Construct and initialize the event queue. */
     EventBus();

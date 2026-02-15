@@ -3,6 +3,7 @@
  * @brief Implementation file.
  */
 #include "CommandRegistry.h"
+#include "Core/ErrorCodes.h"
 #include <cstring>
 #include <cstdio>
 #define LOG_TAG_CORE "CmdRegst"
@@ -28,7 +29,9 @@ bool CommandRegistry::execute(const char* cmd, const char* json, const char* arg
         }
     }
     if (reply && replyLen) {
-        snprintf(reply, replyLen, "{\"ok\":false,\"error\":{\"code\":\"unknown_cmd\",\"family\":\"command\"}}");
+        if (!writeErrorJson(reply, replyLen, ErrorCode::UnknownCmd, "command")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
     }
     return false;
 }
