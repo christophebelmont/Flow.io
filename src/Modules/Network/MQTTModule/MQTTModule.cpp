@@ -799,6 +799,11 @@ void MQTTModule::onEvent(const Event& e)
             const uint32_t now = millis();
             if ((int32_t)(now - _suppressConfigChangedUntilMs) < 0) {
                 // cfg/set and command paths already publish targeted cfg modules immediately.
+                // Exception: scheduler mutations can be asynchronous (ex: poollogic recalc),
+                // so force a deferred cfg publication for scheduler keys.
+                if (isTimeSchedKey(key)) {
+                    _pendingPublish = true;
+                }
                 return;
             }
 

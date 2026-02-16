@@ -37,46 +37,60 @@ void ConfigStore::recordNvsWrite_(size_t bytesWritten)
     _nvsWriteWindow.fetch_add(1U, std::memory_order_relaxed);
 }
 
-void ConfigStore::putInt_(const char* key, int32_t value)
+bool ConfigStore::putInt_(const char* key, int32_t value)
 {
-    if (!_prefs || !key) return;
-    recordNvsWrite_(_prefs->putInt(key, value));
+    if (!_prefs || !key) return false;
+    const size_t wrote = _prefs->putInt(key, value);
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(int32_t);
 }
 
-void ConfigStore::putUChar_(const char* key, uint8_t value)
+bool ConfigStore::putUChar_(const char* key, uint8_t value)
 {
-    if (!_prefs || !key) return;
-    recordNvsWrite_(_prefs->putUChar(key, value));
+    if (!_prefs || !key) return false;
+    const size_t wrote = _prefs->putUChar(key, value);
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(uint8_t);
 }
 
-void ConfigStore::putBool_(const char* key, bool value)
+bool ConfigStore::putBool_(const char* key, bool value)
 {
-    if (!_prefs || !key) return;
-    recordNvsWrite_(_prefs->putBool(key, value));
+    if (!_prefs || !key) return false;
+    const size_t wrote = _prefs->putBool(key, value);
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(bool);
 }
 
-void ConfigStore::putFloat_(const char* key, float value)
+bool ConfigStore::putFloat_(const char* key, float value)
 {
-    if (!_prefs || !key) return;
-    recordNvsWrite_(_prefs->putFloat(key, value));
+    if (!_prefs || !key) return false;
+    const size_t wrote = _prefs->putFloat(key, value);
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(float);
 }
 
-void ConfigStore::putBytes_(const char* key, const void* value, size_t len)
+bool ConfigStore::putBytes_(const char* key, const void* value, size_t len)
 {
-    if (!_prefs || !key || !value || len == 0) return;
-    recordNvsWrite_(_prefs->putBytes(key, value, len));
+    if (!_prefs || !key || !value || len == 0) return false;
+    const size_t wrote = _prefs->putBytes(key, value, len);
+    recordNvsWrite_(wrote);
+    return wrote == len;
 }
 
-void ConfigStore::putString_(const char* key, const char* value)
+bool ConfigStore::putString_(const char* key, const char* value)
 {
-    if (!_prefs || !key || !value) return;
-    recordNvsWrite_(_prefs->putString(key, value));
+    if (!_prefs || !key || !value) return false;
+    const size_t wrote = _prefs->putString(key, value);
+    recordNvsWrite_(wrote);
+    return (wrote > 0U) || (value[0] == '\0');
 }
 
-void ConfigStore::putUInt_(const char* key, uint32_t value)
+bool ConfigStore::putUInt_(const char* key, uint32_t value)
 {
-    if (!_prefs || !key) return;
-    recordNvsWrite_(_prefs->putUInt(key, value));
+    if (!_prefs || !key) return false;
+    const size_t wrote = _prefs->putUInt(key, value);
+    recordNvsWrite_(wrote);
+    return wrote == sizeof(uint32_t);
 }
 
 void ConfigStore::logNvsWriteSummaryIfDue(uint32_t nowMs, uint32_t periodMs)
@@ -108,23 +122,17 @@ bool ConfigStore::writePersistent(const ConfigMeta& m)
 
     switch (m.type) {
         case ConfigType::Int32:
-            putInt_(m.nvsKey, *(int32_t*)m.valuePtr);
-            return true;
+            return putInt_(m.nvsKey, *(int32_t*)m.valuePtr);
         case ConfigType::UInt8:
-            putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr);
-            return true;
+            return putUChar_(m.nvsKey, *(uint8_t*)m.valuePtr);
         case ConfigType::Bool:
-            putBool_(m.nvsKey, *(bool*)m.valuePtr);
-            return true;
+            return putBool_(m.nvsKey, *(bool*)m.valuePtr);
         case ConfigType::Float:
-            putFloat_(m.nvsKey, *(float*)m.valuePtr);
-            return true;
+            return putFloat_(m.nvsKey, *(float*)m.valuePtr);
         case ConfigType::Double:
-            putBytes_(m.nvsKey, m.valuePtr, sizeof(double));
-            return true;
+            return putBytes_(m.nvsKey, m.valuePtr, sizeof(double));
         case ConfigType::CharArray:
-            putString_(m.nvsKey, (const char*)m.valuePtr);
-            return true;
+            return putString_(m.nvsKey, (const char*)m.valuePtr);
         default:
             return false;
     }

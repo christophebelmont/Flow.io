@@ -222,16 +222,26 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         return;
     }
 
+    LOGI("PoolLogic ready");
+    (void)cfgStore_;
+    (void)logHub_;
+}
+
+void PoolLogicModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
+{
+    if (!enabled_) return;
+
     ensureDailySlot_();
-    pendingDailyRecalc_ = true;
 
     if (schedSvc_ && schedSvc_->isActive) {
         filtrationWindowActive_ = schedSvc_->isActive(schedSvc_->ctx, SLOT_FILTR_WINDOW);
     }
 
-    LOGI("PoolLogic ready");
-    (void)cfgStore_;
-    (void)logHub_;
+    // Trigger one recompute on startup, after persisted config and scheduler blob
+    // are fully loaded.
+    portENTER_CRITICAL(&pendingMux_);
+    pendingDailyRecalc_ = true;
+    portEXIT_CRITICAL(&pendingMux_);
 }
 
 AlarmCondState PoolLogicModule::condPsiLowStatic_(void* ctx, uint32_t nowMs)

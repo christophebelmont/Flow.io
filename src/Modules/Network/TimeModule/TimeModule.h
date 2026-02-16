@@ -43,6 +43,8 @@ public:
 
     /** @brief Initialize time config and services. */
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
+    /** @brief Load persisted scheduler blob once config is fully loaded. */
+    void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
     /** @brief Time task loop. */
     void loop() override;
 

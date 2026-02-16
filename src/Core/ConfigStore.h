@@ -98,13 +98,13 @@ private:
     void notifyChanged(const char* nvsKey);
     bool writePersistent(const ConfigMeta& m);
     void recordNvsWrite_(size_t bytesWritten);
-    void putInt_(const char* key, int32_t value);
-    void putUChar_(const char* key, uint8_t value);
-    void putBool_(const char* key, bool value);
-    void putFloat_(const char* key, float value);
-    void putBytes_(const char* key, const void* value, size_t len);
-    void putString_(const char* key, const char* value);
-    void putUInt_(const char* key, uint32_t value);
+    bool putInt_(const char* key, int32_t value);
+    bool putUChar_(const char* key, uint8_t value);
+    bool putBool_(const char* key, bool value);
+    bool putFloat_(const char* key, float value);
+    bool putBytes_(const char* key, const void* value, size_t len);
+    bool putString_(const char* key, const char* value);
+    bool putUInt_(const char* key, uint32_t value);
 
     const ConfigMeta* findByJsonName(const char* jsonName) const;
     ConfigMeta* findByJsonName(const char* jsonName);
@@ -144,6 +144,7 @@ bool ConfigStore::set(ConfigVariable<T, H>& var, const T& value)
     if (!var.value) return false;
 
     bool changed = false;
+    const T oldValue = *(var.value);
 
     // Comparaison selon type
     if constexpr (std::is_same<T, char>::value) {
@@ -158,20 +159,25 @@ bool ConfigStore::set(ConfigVariable<T, H>& var, const T& value)
 
     if (!changed) return true;
 
-    // notify handlers
-    var.notify();
-
     // persist
     if (var.persistence == ConfigPersistence::Persistent && var.nvsKey && _prefs) {
+        bool persisted = true;
         switch (var.type) {
-        case ConfigType::Int32:  putInt_(var.nvsKey, *(int32_t*)var.value); break;
-        case ConfigType::UInt8:  putUChar_(var.nvsKey, *(uint8_t*)var.value); break;
-        case ConfigType::Bool:   putBool_(var.nvsKey, *(bool*)var.value); break;
-        case ConfigType::Float:  putFloat_(var.nvsKey, *(float*)var.value); break;
-        case ConfigType::Double: putBytes_(var.nvsKey, var.value, sizeof(double)); break;
-        default: break;
+        case ConfigType::Int32:  persisted = putInt_(var.nvsKey, *(int32_t*)var.value); break;
+        case ConfigType::UInt8:  persisted = putUChar_(var.nvsKey, *(uint8_t*)var.value); break;
+        case ConfigType::Bool:   persisted = putBool_(var.nvsKey, *(bool*)var.value); break;
+        case ConfigType::Float:  persisted = putFloat_(var.nvsKey, *(float*)var.value); break;
+        case ConfigType::Double: persisted = putBytes_(var.nvsKey, var.value, sizeof(double)); break;
+        default: persisted = false; break;
+        }
+        if (!persisted) {
+            *(var.value) = oldValue;
+            return false;
         }
     }
+
+    // notify handlers
+    var.notify();
 
     // EventBus
     notifyChanged(var.nvsKey);
@@ -196,12 +202,15 @@ bool ConfigStore::set(ConfigVariable<char, H>& var, const char* str)
 
     if (!changed) return true;
 
-    var.notify();
-
     if (var.persistence == ConfigPersistence::Persistent && var.nvsKey && _prefs) {
-        putString_(var.nvsKey, var.value);
+        if (!putString_(var.nvsKey, var.value)) {
+            // Keep memory and NVS consistent when persistence fails.
+            _prefs->getString(var.nvsKey, var.value, var.size);
+            return false;
+        }
     }
 
+    var.notify();
     notifyChanged(var.nvsKey);
     return true;
 }

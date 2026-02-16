@@ -81,7 +81,7 @@ constexpr size_t Ack = 512;
 /** @brief Command handler reply buffer length used by `MQTTModule` (`replyBuf`). */
 constexpr size_t Reply = 256;
 /** @brief Config JSON serialization buffer length used by `MQTTModule` (`stateCfgBuf`). */
-constexpr size_t StateCfg = 768;
+constexpr size_t StateCfg = 1536;
 /** @brief Runtime publish payload buffer length used by `MQTTModule` (`publishBuf`). */
 constexpr size_t Publish = 1536;
 /** @brief Parsed command name buffer length in `MQTTModule::processRxCmd_`. */

@@ -428,6 +428,13 @@ void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     setState(cfgData.enabled ? TimeSyncState::WaitingNetwork : TimeSyncState::Disabled);
 }
 
+void TimeModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
+{
+    // Ensure runtime scheduler table mirrors persisted blob before other modules
+    // start mutating slots in their own onConfigLoaded hooks.
+    (void)loadScheduleFromBlob_();
+}
+
 void TimeModule::loop() {
     if (schedNeedsReload_) {
         (void)loadScheduleFromBlob_();
@@ -1137,7 +1144,14 @@ bool TimeModule::setSlot_(const TimeSchedulerSlot& slotDef)
         normalized.endMinute = 0;
     }
 
+    SchedulerSlotRuntime previous{};
+    bool previousSchedInitialized = false;
+    uint16_t previousActiveMask = 0;
     portENTER_CRITICAL(&schedMux_);
+    previous = sched_[normalized.slot];
+    previousSchedInitialized = schedInitialized_;
+    previousActiveMask = activeMaskValue_;
+
     SchedulerSlotRuntime& s = sched_[normalized.slot];
     s.used = true;
     s.def = normalized;
@@ -1147,7 +1161,17 @@ bool TimeModule::setSlot_(const TimeSchedulerSlot& slotDef)
     activeMaskValue_ &= (uint16_t)~(uint16_t)(1u << normalized.slot);
     portEXIT_CRITICAL(&schedMux_);
 
-    return persistSchedule_();
+    if (!persistSchedule_()) {
+        portENTER_CRITICAL(&schedMux_);
+        sched_[normalized.slot] = previous;
+        schedInitialized_ = previousSchedInitialized;
+        activeMaskValue_ = previousActiveMask;
+        portEXIT_CRITICAL(&schedMux_);
+        LOGW("Failed to persist scheduler slot=%u", (unsigned)normalized.slot);
+        return false;
+    }
+
+    return true;
 }
 
 bool TimeModule::getSlot_(uint8_t slot, TimeSchedulerSlot& outDef) const
