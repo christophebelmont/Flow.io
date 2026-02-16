@@ -35,13 +35,14 @@ public:
     /** @brief Task name. */
     const char* taskName() const override { return "mqtt"; }
 
-    /** @brief MQTT depends on log hub, WiFi, command service and time service. */
-    uint8_t dependencyCount() const override { return 4; }
+    /** @brief MQTT depends on log hub, WiFi, command service, time service and alarms service. */
+    uint8_t dependencyCount() const override { return 5; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "wifi";
         if (i == 2) return "cmd";
         if (i == 3) return "time";
+        if (i == 4) return "alarms";
         return nullptr;
     }
 
@@ -88,6 +89,7 @@ private:
     const CommandService* cmdSvc = nullptr;
     const ConfigStoreService* cfgSvc = nullptr;
     const TimeSchedulerService* timeSchedSvc = nullptr;
+    const AlarmService* alarmSvc = nullptr;
     const LogHubService* logHub = nullptr;
     EventBus* eventBus = nullptr;
     DataStore* dataStore = nullptr;
@@ -98,6 +100,7 @@ private:
     char topicStatus[Limits::Mqtt::Buffers::Topic] = {0};
     char topicCfgSet[Limits::Mqtt::Buffers::Topic] = {0};
     char topicCfgAck[Limits::Mqtt::Buffers::Topic] = {0};
+    char topicRtAlarmsMeta[Limits::Mqtt::Buffers::Topic] = {0};
     RuntimePublisher publishers[Limits::Mqtt::Capacity::MaxPublishers] = {};
     uint8_t publisherCount = 0;
     const char* cfgModules[Limits::Mqtt::Capacity::CfgTopicMax] = {nullptr};
@@ -160,6 +163,11 @@ private:
     bool publishConfigModuleAt(size_t idx, bool retained);
     bool publishConfigBlocksFromPatch(const char* patchJson, bool retained);
     void publishTimeSchedulerSlots(bool retained, const char* rootTopic);
+    void enqueueCfgBranch_(uint16_t branchId);
+    uint8_t takePendingCfgBranches_(uint16_t* out, uint8_t maxItems);
+    void processPendingCfgBranches_();
+    void beginConfigRamp_(uint32_t nowMs);
+    void runConfigRamp_(uint32_t nowMs);
 
     void onConnect(bool sessionPresent);
     void onDisconnect(AsyncMqttClientDisconnectReason reason);
@@ -182,7 +190,20 @@ private:
     uint32_t _retryDelayMs = Limits::Mqtt::Backoff::MinMs;
     bool _startupReady = false;
     volatile bool _pendingPublish = false;
-    volatile uint32_t _suppressConfigChangedUntilMs = 0;
+    static constexpr uint8_t PendingCfgBranchesMax = 24;
+    uint16_t pendingCfgBranches_[PendingCfgBranchesMax] = {0};
+    uint8_t pendingCfgBranchCount_ = 0;
+    portMUX_TYPE pendingCfgMux_ = portMUX_INITIALIZER_UNLOCKED;
+    bool cfgRampActive_ = false;
+    bool cfgRampRestartRequested_ = false;
+    uint8_t cfgRampIndex_ = 0;
+    uint32_t cfgRampNextMs_ = 0;
+    static constexpr uint8_t PendingAlarmIdsMax = Limits::Alarm::MaxAlarms;
+    AlarmId pendingAlarmIds_[PendingAlarmIdsMax] = {};
+    uint8_t pendingAlarmCount_ = 0;
+    portMUX_TYPE pendingAlarmMux_ = portMUX_INITIALIZER_UNLOCKED;
+    bool alarmsMetaPending_ = false;
+    bool alarmsFullSyncPending_ = false;
 
     uint32_t rxDropCount_ = 0;
     uint32_t parseFailCount_ = 0;
@@ -191,6 +212,10 @@ private:
 
     void processRxCmd_(const RxMsg& msg);
     void processRxCfgSet_(const RxMsg& msg);
+    bool publishAlarmState_(AlarmId id);
+    bool publishAlarmMeta_();
+    void enqueuePendingAlarmId_(AlarmId id);
+    uint8_t takePendingAlarmIds_(AlarmId* out, uint8_t maxItems);
     bool publishConfigModuleByName_(const char* module, bool retained);
     void publishRxError_(const char* ackTopic, ErrorCode code, const char* where, bool parseFailure);
     void syncRxMetrics_();

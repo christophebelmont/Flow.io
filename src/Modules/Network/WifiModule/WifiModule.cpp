@@ -67,6 +67,8 @@ void WifiModule::startConnect() {
 void WifiModule::init(ConfigStore& cfg,
                       ServiceRegistry& services)
 {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Wifi;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::Wifi;
     /// récupérer service loghub (log async)
     logHub = services.get<LogHubService>("loghub");
 
@@ -74,9 +76,9 @@ void WifiModule::init(ConfigStore& cfg,
     dataStore = dsSvc ? dsSvc->store : nullptr;
 
     /// Register config vars
-    cfg.registerVar(enabledVar);
-    cfg.registerVar(ssidVar);
-    cfg.registerVar(passVar);
+    cfg.registerVar(enabledVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(ssidVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(passVar, kCfgModuleId, kCfgBranchId);
 
     /// Register WifiService
     static WifiService svc {

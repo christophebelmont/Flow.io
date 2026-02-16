@@ -60,12 +60,24 @@ struct HANumberEntry {
     const char* unit;
 };
 
+/** @brief Static Home Assistant button discovery registration. */
+struct HAButtonEntry {
+    const char* ownerId;
+    const char* objectSuffix;
+    const char* name;
+    const char* commandTopicSuffix;
+    const char* payloadPress;
+    const char* entityCategory;
+    const char* icon;
+};
+
 /** @brief Service used by modules to register static HA discovery entries and request refreshes. */
 struct HAService {
     bool (*addSensor)(void* ctx, const HASensorEntry* entry);
     bool (*addBinarySensor)(void* ctx, const HABinarySensorEntry* entry);
     bool (*addSwitch)(void* ctx, const HASwitchEntry* entry);
     bool (*addNumber)(void* ctx, const HANumberEntry* entry);
+    bool (*addButton)(void* ctx, const HAButtonEntry* entry);
     bool (*requestRefresh)(void* ctx);
     void* ctx;
 };

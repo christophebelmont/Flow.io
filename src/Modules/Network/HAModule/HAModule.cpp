@@ -6,6 +6,7 @@
 #include "HAModule.h"
 #include "Modules/Network/HAModule/HARuntime.h"
 #include "Core/MqttTopics.h"
+#include "Core/SystemLimits.h"
 #include <esp_system.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -123,6 +124,13 @@ bool HAModule::svcAddNumber(void* ctx, const HANumberEntry* entry)
     return self->addNumberEntry(*entry);
 }
 
+bool HAModule::svcAddButton(void* ctx, const HAButtonEntry* entry)
+{
+    HAModule* self = static_cast<HAModule*>(ctx);
+    if (!self || !entry) return false;
+    return self->addButtonEntry(*entry);
+}
+
 bool HAModule::svcRequestRefresh(void* ctx)
 {
     HAModule* self = static_cast<HAModule*>(ctx);
@@ -213,6 +221,27 @@ bool HAModule::addNumberEntry(const HANumberEntry& entry)
 
     if (numberCount_ >= MAX_HA_NUMBERS) return false;
     numbers_[numberCount_++] = entry;
+    requestAutoconfigRefresh();
+    return true;
+}
+
+bool HAModule::addButtonEntry(const HAButtonEntry& entry)
+{
+    if (!entry.ownerId || !entry.objectSuffix || !entry.name || !entry.commandTopicSuffix || !entry.payloadPress) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < buttonCount_; ++i) {
+        if (strcmp(buttons_[i].ownerId, entry.ownerId) == 0 &&
+            strcmp(buttons_[i].objectSuffix, entry.objectSuffix) == 0) {
+            buttons_[i] = entry;
+            requestAutoconfigRefresh();
+            return true;
+        }
+    }
+
+    if (buttonCount_ >= MAX_HA_BUTTONS) return false;
+    buttons_[buttonCount_++] = entry;
     requestAutoconfigRefresh();
     return true;
 }
@@ -449,9 +478,66 @@ bool HAModule::publishNumber(const char* objectId, const char* name,
     return publishDiscovery("number", objectId, payloadBuf);
 }
 
+bool HAModule::publishButton(const char* objectId, const char* name,
+                             const char* commandTopic, const char* payloadPress,
+                             const char* entityCategory, const char* icon)
+{
+    if (!objectId || !name || !commandTopic || !payloadPress) return false;
+    char defaultEntityId[224] = {0};
+    if (!buildDefaultEntityId("button", objectId, defaultEntityId, sizeof(defaultEntityId))) return false;
+    char uniqueId[256] = {0};
+    if (!buildUniqueId(objectId, name, uniqueId, sizeof(uniqueId))) return false;
+    char availabilityField[384] = {0};
+    buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField));
+    char entityCategoryField[64] = {0};
+    if (entityCategory && entityCategory[0] != '\0') {
+        snprintf(entityCategoryField, sizeof(entityCategoryField), ",\"entity_category\":\"%s\"", entityCategory);
+    }
+
+    if (icon && icon[0] != '\0') {
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
+                 "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
+                 "\"command_topic\":\"%s\",\"payload_press\":\"%s\",\"icon\":\"%s\"%s%s,"
+                 "\"origin\":{\"name\":\"Flow.IO\"},"
+                 "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"%s\","
+                 "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
+                 name, objectId, defaultEntityId, uniqueId,
+                 commandTopic, payloadPress, icon,
+                 entityCategoryField, availabilityField,
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA button payload truncated object=%s", objectId);
+            return false;
+        }
+    } else {
+        if (!formatChecked(payloadBuf, sizeof(payloadBuf),
+                 "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
+                 "\"command_topic\":\"%s\",\"payload_press\":\"%s\"%s%s,"
+                 "\"origin\":{\"name\":\"Flow.IO\"},"
+                 "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"%s\","
+                 "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
+                 name, objectId, defaultEntityId, uniqueId,
+                 commandTopic, payloadPress,
+                 entityCategoryField, availabilityField,
+                 deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
+            LOGW("HA button payload truncated object=%s", objectId);
+            return false;
+        }
+    }
+
+    return publishDiscovery("button", objectId, payloadBuf);
+}
+
 bool HAModule::publishAutoconfig()
 {
     return publishRegisteredEntities();
+}
+
+void HAModule::setStartupReady(bool ready)
+{
+    startupReady_ = ready;
+    if (ready) {
+        signalAutoconfigCheck();
+    }
 }
 
 bool HAModule::publishRegisteredEntities()
@@ -459,6 +545,7 @@ bool HAModule::publishRegisteredEntities()
     if (!mqttSvc || !mqttSvc->formatTopic) return false;
 
     bool okAll = true;
+    const TickType_t stepDelay = pdMS_TO_TICKS(Limits::Ha::Timing::DiscoveryStepMs);
 
     for (uint8_t i = 0; i < sensorCount_; ++i) {
         const HASensorEntry& e = sensors_[i];
@@ -470,6 +557,7 @@ bool HAModule::publishRegisteredEntities()
         if (!publishSensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate, e.entityCategory, e.icon, e.unit)) {
             okAll = false;
         }
+        if (stepDelay > 0) vTaskDelay(stepDelay);
     }
 
     for (uint8_t i = 0; i < binarySensorCount_; ++i) {
@@ -482,6 +570,7 @@ bool HAModule::publishRegisteredEntities()
         if (!publishBinarySensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate, e.deviceClass, e.entityCategory, e.icon)) {
             okAll = false;
         }
+        if (stepDelay > 0) vTaskDelay(stepDelay);
     }
 
     for (uint8_t i = 0; i < switchCount_; ++i) {
@@ -496,6 +585,7 @@ bool HAModule::publishRegisteredEntities()
                            commandTopicBuf, e.payloadOn, e.payloadOff, e.icon, e.entityCategory)) {
             okAll = false;
         }
+        if (stepDelay > 0) vTaskDelay(stepDelay);
     }
 
     for (uint8_t i = 0; i < numberCount_; ++i) {
@@ -512,6 +602,20 @@ bool HAModule::publishRegisteredEntities()
                            e.mode, e.entityCategory, e.icon, e.unit)) {
             okAll = false;
         }
+        if (stepDelay > 0) vTaskDelay(stepDelay);
+    }
+
+    for (uint8_t i = 0; i < buttonCount_; ++i) {
+        const HAButtonEntry& e = buttons_[i];
+        if (!buildObjectId(e.objectSuffix, objectIdBuf, sizeof(objectIdBuf))) {
+            okAll = false;
+            continue;
+        }
+        mqttSvc->formatTopic(mqttSvc->ctx, e.commandTopicSuffix, commandTopicBuf, sizeof(commandTopicBuf));
+        if (!publishButton(objectIdBuf, e.name, commandTopicBuf, e.payloadPress, e.entityCategory, e.icon)) {
+            okAll = false;
+        }
+        if (stepDelay > 0) vTaskDelay(stepDelay);
     }
 
     return okAll;
@@ -536,6 +640,7 @@ void HAModule::refreshIdentityFromConfig()
 void HAModule::tryPublishAutoconfig()
 {
     if (published && !refreshRequested) return;
+    if (!startupReady_) return;
     refreshIdentityFromConfig();
     if (!cfgData.enabled) return;
     if (!mqttSvc || !mqttSvc->isConnected || !dsSvc || !dsSvc->store) return;
@@ -549,8 +654,8 @@ void HAModule::tryPublishAutoconfig()
         published = true;
         refreshRequested = false;
         setHaAutoconfigPublished(*dsSvc->store, true);
-        LOGI("Home Assistant auto-discovery published (sensor=%u switch=%u number=%u)",
-             (unsigned)sensorCount_, (unsigned)switchCount_, (unsigned)numberCount_);
+        LOGI("Home Assistant auto-discovery published (sensor=%u switch=%u number=%u button=%u)",
+             (unsigned)sensorCount_, (unsigned)switchCount_, (unsigned)numberCount_, (unsigned)buttonCount_);
     } else {
         setHaAutoconfigPublished(*dsSvc->store, false);
         LOGW("Home Assistant auto-discovery publish failed");
@@ -616,11 +721,13 @@ void HAModule::loop()
 
 void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
-    cfg.registerVar(enabledVar);
-    cfg.registerVar(vendorVar);
-    cfg.registerVar(deviceIdVar);
-    cfg.registerVar(prefixVar);
-    cfg.registerVar(modelVar);
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Ha;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::Ha;
+    cfg.registerVar(enabledVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(vendorVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(deviceIdVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(prefixVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(modelVar, kCfgModuleId, kCfgBranchId);
 
     eventBusSvc = services.get<EventBusService>("eventbus");
     dsSvc = services.get<DataStoreService>("datastore");
@@ -630,6 +737,7 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     haSvc.addBinarySensor = HAModule::svcAddBinarySensor;
     haSvc.addSwitch = HAModule::svcAddSwitch;
     haSvc.addNumber = HAModule::svcAddNumber;
+    haSvc.addButton = HAModule::svcAddButton;
     haSvc.requestRefresh = HAModule::svcRequestRefresh;
     haSvc.ctx = this;
     services.add("ha", &haSvc);

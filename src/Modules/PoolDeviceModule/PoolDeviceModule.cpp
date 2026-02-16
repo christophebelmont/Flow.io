@@ -819,6 +819,7 @@ uint32_t PoolDeviceModule::toSeconds_(uint64_t ms)
 
 void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::PoolDevice;
     logHub_ = services.get<LogHubService>("loghub");
     ioSvc_ = services.get<IOServiceV2>("io");
     (void)services.add("pooldev", &poolSvc_);
@@ -840,6 +841,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
         if (!s.used) continue;
+        const uint16_t branchId = (uint16_t)configBranchFromPoolDeviceSlot(i);
 
         snprintf(cfgModuleName_[i], sizeof(cfgModuleName_[i]), "pdm/pd%u", (unsigned)i);
         snprintf(nvsEnabledKey_[i], sizeof(nvsEnabledKey_[i]), NvsKeys::PoolDevice::EnabledFmt, (unsigned)i);
@@ -856,7 +858,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgEnabledVar_[i].value = &s.def.enabled;
         cfgEnabledVar_[i].persistence = ConfigPersistence::Persistent;
         cfgEnabledVar_[i].size = 0;
-        cfg.registerVar(cfgEnabledVar_[i]);
+        cfg.registerVar(cfgEnabledVar_[i], kCfgModuleId, branchId);
 
         cfgTypeVar_[i].nvsKey = nvsTypeKey_[i];
         cfgTypeVar_[i].jsonName = "type";
@@ -865,7 +867,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgTypeVar_[i].value = &s.def.type;
         cfgTypeVar_[i].persistence = ConfigPersistence::Persistent;
         cfgTypeVar_[i].size = 0;
-        cfg.registerVar(cfgTypeVar_[i]);
+        cfg.registerVar(cfgTypeVar_[i], kCfgModuleId, branchId);
 
         cfgDependsVar_[i].nvsKey = nvsDependsKey_[i];
         cfgDependsVar_[i].jsonName = "depends_on_mask";
@@ -874,7 +876,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgDependsVar_[i].value = &s.def.dependsOnMask;
         cfgDependsVar_[i].persistence = ConfigPersistence::Persistent;
         cfgDependsVar_[i].size = 0;
-        cfg.registerVar(cfgDependsVar_[i]);
+        cfg.registerVar(cfgDependsVar_[i], kCfgModuleId, branchId);
 
         cfgFlowVar_[i].nvsKey = nvsFlowKey_[i];
         cfgFlowVar_[i].jsonName = "flow_l_h";
@@ -883,7 +885,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgFlowVar_[i].value = &s.def.flowLPerHour;
         cfgFlowVar_[i].persistence = ConfigPersistence::Persistent;
         cfgFlowVar_[i].size = 0;
-        cfg.registerVar(cfgFlowVar_[i]);
+        cfg.registerVar(cfgFlowVar_[i], kCfgModuleId, branchId);
 
         cfgTankCapVar_[i].nvsKey = nvsTankCapKey_[i];
         cfgTankCapVar_[i].jsonName = "tank_capacity_ml";
@@ -892,7 +894,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgTankCapVar_[i].value = &s.def.tankCapacityMl;
         cfgTankCapVar_[i].persistence = ConfigPersistence::Persistent;
         cfgTankCapVar_[i].size = 0;
-        cfg.registerVar(cfgTankCapVar_[i]);
+        cfg.registerVar(cfgTankCapVar_[i], kCfgModuleId, branchId);
 
         cfgTankInitVar_[i].nvsKey = nvsTankInitKey_[i];
         cfgTankInitVar_[i].jsonName = "tank_initial_ml";
@@ -901,7 +903,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgTankInitVar_[i].value = &s.def.tankInitialMl;
         cfgTankInitVar_[i].persistence = ConfigPersistence::Persistent;
         cfgTankInitVar_[i].size = 0;
-        cfg.registerVar(cfgTankInitVar_[i]);
+        cfg.registerVar(cfgTankInitVar_[i], kCfgModuleId, branchId);
     }
 
     if (cmdSvc_ && cmdSvc_->registerHandler) {
@@ -912,7 +914,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (haSvc_ && haSvc_->addSensor) {
         if (slots_[POOL_IO_SLOT_CHLORINE_PUMP].used) {
             const HASensorEntry s0{
-                "pooldev", "chlorine_pump_uptime_s", "Chlorine Pump uptime (s)",
+                "pooldev", "chlorine_pump_uptime_s", "Chlorine Pump uptime",
                 "rt/pdm/metrics/pd2", "{{ value_json.running.day_s | int(0) }}",
                 nullptr, "mdi:timer-outline", "s"
             };
@@ -920,7 +922,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_PH_PUMP].used) {
             const HASensorEntry s1{
-                "pooldev", "ph_pump_uptime_s", "pH Pump uptime (s)",
+                "pooldev", "ph_pump_uptime_s", "pH Pump uptime",
                 "rt/pdm/metrics/pd1", "{{ value_json.running.day_s | int(0) }}",
                 nullptr, "mdi:timer-outline", "s"
             };
@@ -928,7 +930,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_FILL_PUMP].used) {
             const HASensorEntry s2{
-                "pooldev", "fill_pump_uptime_mn", "Fill Pump uptime (mn)",
+                "pooldev", "fill_pump_uptime_mn", "Fill Pump uptime",
                 "rt/pdm/metrics/pd4", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };
@@ -936,7 +938,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_FILTRATION_PUMP].used) {
             const HASensorEntry s3{
-                "pooldev", "filtration_uptime_mn", "Filtration uptime (mn)",
+                "pooldev", "filtration_uptime_mn", "Filtration uptime",
                 "rt/pdm/metrics/pd0", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };
@@ -944,7 +946,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_CHLORINE_GENERATOR].used) {
             const HASensorEntry s4{
-                "pooldev", "chlorine_generator_uptime_mn", "Chlorine Generator uptime (mn)",
+                "pooldev", "chlorine_generator_uptime_mn", "Chlorine Generator uptime",
                 "rt/pdm/metrics/pd5", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };

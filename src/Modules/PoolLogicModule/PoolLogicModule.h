@@ -94,7 +94,7 @@ private:
     float freezeHoldTempC_ = 2.0f;
     float secureElectroTempC_ = 15.0f;
     float orpSetpoint_ = 700.0f;
-    uint8_t psiStartupDelaySec_ = 180;
+    uint8_t psiStartupDelaySec_ = 60;
     uint8_t delayPidsMin_ = 5;
     uint8_t delayElectroMin_ = 10;
     uint8_t robotDelayMin_ = 30;
@@ -159,9 +159,9 @@ private:
     ConfigVariable<uint8_t,0> stopMaxVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationStopMax), "filtration_stop_max", "poollogic", ConfigType::UInt8,
                                           &filtrationStopMax_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> calcStartVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStart), "filtration_start_calc", "poollogic", ConfigType::UInt8,
-                                            &filtrationCalcStart_, ConfigPersistence::Runtime, 0};
+                                            &filtrationCalcStart_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> calcStopVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStop), "filtration_stop_calc", "poollogic", ConfigType::UInt8,
-                                           &filtrationCalcStop_, ConfigPersistence::Runtime, 0};
+                                           &filtrationCalcStop_, ConfigPersistence::Persistent, 0};
 
     ConfigVariable<uint8_t,0> orpIdVar_{NVS_KEY(NvsKeys::PoolLogic::OrpIoId), "orp_io_id", "poollogic", ConfigType::UInt8,
                                         &orpIoId_, ConfigPersistence::Persistent, 0};

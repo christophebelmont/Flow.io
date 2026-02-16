@@ -38,12 +38,14 @@ public:
     virtual uint16_t taskStackSize() const { return 3072; }
     /** @brief Task priority for the FreeRTOS task. */
     virtual UBaseType_t taskPriority() const { return 1; }
+    /** @brief CPU core affinity for the FreeRTOS task (`0` or `1` on ESP32). */
+    virtual BaseType_t taskCore() const { return 1; }
 
     /** @brief Create and start the FreeRTOS task for this module. */
     void startTask() {
         xTaskCreatePinnedToCore(
             taskEntry, taskName(), taskStackSize(),
-            this, taskPriority(), &taskHandle, 1
+            this, taskPriority(), &taskHandle, taskCore()
         );
     }
 

@@ -60,6 +60,9 @@ public:
     /** @brief Register a config variable definition. */
     template<typename T, size_t H>
     void registerVar(ConfigVariable<T, H>& var);
+    /** @brief Register a config variable with explicit module/branch ids. */
+    template<typename T, size_t H>
+    void registerVar(ConfigVariable<T, H>& var, uint8_t moduleId, uint16_t branchId);
 
     /** @brief Set a typed config value and persist if needed. */
     template<typename T, size_t H>
@@ -95,7 +98,7 @@ private:
     ConfigMeta _meta[MAX_CONFIG_VARS];
     uint16_t _metaCount = 0;
 
-    void notifyChanged(const char* nvsKey);
+    void notifyChanged(const char* nvsKey, const char* moduleName, uint8_t moduleId, uint16_t branchId);
     bool writePersistent(const ConfigMeta& m);
     void recordNvsWrite_(size_t bytesWritten);
     bool putInt_(const char* key, int32_t value);
@@ -136,6 +139,16 @@ void ConfigStore::registerVar(ConfigVariable<T, H>& var)
     m.persistence = var.persistence;
     m.valuePtr    = (void*)var.value;
     m.size        = var.size;
+    m.moduleId    = var.moduleId;
+    m.branchId    = var.branchId;
+}
+
+template<typename T, size_t H>
+void ConfigStore::registerVar(ConfigVariable<T, H>& var, uint8_t moduleId, uint16_t branchId)
+{
+    var.moduleId = moduleId;
+    var.branchId = branchId;
+    registerVar(var);
 }
 
 template<typename T, size_t H>
@@ -180,7 +193,7 @@ bool ConfigStore::set(ConfigVariable<T, H>& var, const T& value)
     var.notify();
 
     // EventBus
-    notifyChanged(var.nvsKey);
+    notifyChanged(var.nvsKey, var.moduleName, var.moduleId, var.branchId);
 
     return true;
 }
@@ -211,7 +224,7 @@ bool ConfigStore::set(ConfigVariable<char, H>& var, const char* str)
     }
 
     var.notify();
-    notifyChanged(var.nvsKey);
+    notifyChanged(var.nvsKey, var.moduleName, var.moduleId, var.branchId);
     return true;
 }
 

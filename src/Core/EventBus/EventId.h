@@ -31,5 +31,6 @@ enum class EventId : uint16_t {
     AlarmCleared = 411,
     AlarmAcked = 412,
     AlarmSilenceChanged = 413,
+    AlarmConditionChanged = 414,
     SchedulerEventTriggered = 420,
 };

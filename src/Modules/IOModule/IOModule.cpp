@@ -1350,6 +1350,23 @@ bool IOModule::endpointIndexFromId_(const char* id, uint8_t& idxOut) const
 
 void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Io;
+    constexpr uint16_t kCfgBranchIo = (uint16_t)ConfigBranchId::Io;
+    constexpr uint16_t kCfgBranchIoDebug = (uint16_t)ConfigBranchId::IoDebug;
+    constexpr uint16_t kCfgBranchIoA0 = (uint16_t)ConfigBranchId::IoInputA0;
+    constexpr uint16_t kCfgBranchIoA1 = (uint16_t)ConfigBranchId::IoInputA1;
+    constexpr uint16_t kCfgBranchIoA2 = (uint16_t)ConfigBranchId::IoInputA2;
+    constexpr uint16_t kCfgBranchIoA3 = (uint16_t)ConfigBranchId::IoInputA3;
+    constexpr uint16_t kCfgBranchIoA4 = (uint16_t)ConfigBranchId::IoInputA4;
+    constexpr uint16_t kCfgBranchIoA5 = (uint16_t)ConfigBranchId::IoInputA5;
+    constexpr uint16_t kCfgBranchIoD0 = (uint16_t)ConfigBranchId::IoOutputD0;
+    constexpr uint16_t kCfgBranchIoD1 = (uint16_t)ConfigBranchId::IoOutputD1;
+    constexpr uint16_t kCfgBranchIoD2 = (uint16_t)ConfigBranchId::IoOutputD2;
+    constexpr uint16_t kCfgBranchIoD3 = (uint16_t)ConfigBranchId::IoOutputD3;
+    constexpr uint16_t kCfgBranchIoD4 = (uint16_t)ConfigBranchId::IoOutputD4;
+    constexpr uint16_t kCfgBranchIoD5 = (uint16_t)ConfigBranchId::IoOutputD5;
+    constexpr uint16_t kCfgBranchIoD6 = (uint16_t)ConfigBranchId::IoOutputD6;
+    constexpr uint16_t kCfgBranchIoD7 = (uint16_t)ConfigBranchId::IoOutputD7;
     logHub_ = services.get<LogHubService>("loghub");
     haSvc_ = services.get<HAService>("ha");
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
@@ -1365,48 +1382,48 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
         snprintf(digitalCfg_[logical].name, sizeof(digitalCfg_[logical].name), "%s", b.name ? b.name : "");
     }
 
-    cfg.registerVar(enabledVar_);
-    cfg.registerVar(i2cSdaVar_);
-    cfg.registerVar(i2cSclVar_);
-    cfg.registerVar(adsPollVar_);
-    cfg.registerVar(dsPollVar_);
-    cfg.registerVar(digitalPollVar_);
-    cfg.registerVar(adsInternalAddrVar_);
-    cfg.registerVar(adsExternalAddrVar_);
-    cfg.registerVar(adsGainVar_);
-    cfg.registerVar(adsRateVar_);
-    cfg.registerVar(pcfEnabledVar_);
-    cfg.registerVar(pcfAddressVar_);
-    cfg.registerVar(pcfMaskDefaultVar_);
-    cfg.registerVar(pcfActiveLowVar_);
-    cfg.registerVar(traceEnabledVar_);
-    cfg.registerVar(tracePeriodVar_);
+    cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(i2cSdaVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(i2cSclVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(adsPollVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(dsPollVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(digitalPollVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(adsInternalAddrVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(adsExternalAddrVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(adsGainVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(adsRateVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(pcfEnabledVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(pcfAddressVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(pcfMaskDefaultVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(pcfActiveLowVar_, kCfgModuleId, kCfgBranchIo);
+    cfg.registerVar(traceEnabledVar_, kCfgModuleId, kCfgBranchIoDebug);
+    cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchIoDebug);
 
-    cfg.registerVar(a0NameVar_); cfg.registerVar(a0SourceVar_); cfg.registerVar(a0ChannelVar_); cfg.registerVar(a0C0Var_);
-    cfg.registerVar(a0C1Var_); cfg.registerVar(a0PrecVar_); cfg.registerVar(a0MinVar_); cfg.registerVar(a0MaxVar_);
+    cfg.registerVar(a0NameVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0SourceVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0ChannelVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0C0Var_, kCfgModuleId, kCfgBranchIoA0);
+    cfg.registerVar(a0C1Var_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0PrecVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0MinVar_, kCfgModuleId, kCfgBranchIoA0); cfg.registerVar(a0MaxVar_, kCfgModuleId, kCfgBranchIoA0);
 
-    cfg.registerVar(a1NameVar_); cfg.registerVar(a1SourceVar_); cfg.registerVar(a1ChannelVar_); cfg.registerVar(a1C0Var_);
-    cfg.registerVar(a1C1Var_); cfg.registerVar(a1PrecVar_); cfg.registerVar(a1MinVar_); cfg.registerVar(a1MaxVar_);
+    cfg.registerVar(a1NameVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1SourceVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1ChannelVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1C0Var_, kCfgModuleId, kCfgBranchIoA1);
+    cfg.registerVar(a1C1Var_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1PrecVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1MinVar_, kCfgModuleId, kCfgBranchIoA1); cfg.registerVar(a1MaxVar_, kCfgModuleId, kCfgBranchIoA1);
 
-    cfg.registerVar(a2NameVar_); cfg.registerVar(a2SourceVar_); cfg.registerVar(a2ChannelVar_); cfg.registerVar(a2C0Var_);
-    cfg.registerVar(a2C1Var_); cfg.registerVar(a2PrecVar_); cfg.registerVar(a2MinVar_); cfg.registerVar(a2MaxVar_);
+    cfg.registerVar(a2NameVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2SourceVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2ChannelVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2C0Var_, kCfgModuleId, kCfgBranchIoA2);
+    cfg.registerVar(a2C1Var_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2PrecVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2MinVar_, kCfgModuleId, kCfgBranchIoA2); cfg.registerVar(a2MaxVar_, kCfgModuleId, kCfgBranchIoA2);
 
-    cfg.registerVar(a3NameVar_); cfg.registerVar(a3SourceVar_); cfg.registerVar(a3ChannelVar_); cfg.registerVar(a3C0Var_);
-    cfg.registerVar(a3C1Var_); cfg.registerVar(a3PrecVar_); cfg.registerVar(a3MinVar_); cfg.registerVar(a3MaxVar_);
+    cfg.registerVar(a3NameVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3SourceVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3ChannelVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3C0Var_, kCfgModuleId, kCfgBranchIoA3);
+    cfg.registerVar(a3C1Var_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3PrecVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3MinVar_, kCfgModuleId, kCfgBranchIoA3); cfg.registerVar(a3MaxVar_, kCfgModuleId, kCfgBranchIoA3);
 
-    cfg.registerVar(a4NameVar_); cfg.registerVar(a4SourceVar_); cfg.registerVar(a4ChannelVar_); cfg.registerVar(a4C0Var_);
-    cfg.registerVar(a4C1Var_); cfg.registerVar(a4PrecVar_); cfg.registerVar(a4MinVar_); cfg.registerVar(a4MaxVar_);
-    cfg.registerVar(a5NameVar_); cfg.registerVar(a5SourceVar_); cfg.registerVar(a5ChannelVar_); cfg.registerVar(a5C0Var_);
-    cfg.registerVar(a5C1Var_); cfg.registerVar(a5PrecVar_); cfg.registerVar(a5MinVar_); cfg.registerVar(a5MaxVar_);
+    cfg.registerVar(a4NameVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4SourceVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4ChannelVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4C0Var_, kCfgModuleId, kCfgBranchIoA4);
+    cfg.registerVar(a4C1Var_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4PrecVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MinVar_, kCfgModuleId, kCfgBranchIoA4); cfg.registerVar(a4MaxVar_, kCfgModuleId, kCfgBranchIoA4);
+    cfg.registerVar(a5NameVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5SourceVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5ChannelVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5C0Var_, kCfgModuleId, kCfgBranchIoA5);
+    cfg.registerVar(a5C1Var_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5PrecVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MinVar_, kCfgModuleId, kCfgBranchIoA5); cfg.registerVar(a5MaxVar_, kCfgModuleId, kCfgBranchIoA5);
 
-    cfg.registerVar(d0NameVar_); cfg.registerVar(d0PinVar_); cfg.registerVar(d0ActiveHighVar_); cfg.registerVar(d0InitialOnVar_); cfg.registerVar(d0MomentaryVar_); cfg.registerVar(d0PulseVar_);
-    cfg.registerVar(d1NameVar_); cfg.registerVar(d1PinVar_); cfg.registerVar(d1ActiveHighVar_); cfg.registerVar(d1InitialOnVar_); cfg.registerVar(d1MomentaryVar_); cfg.registerVar(d1PulseVar_);
-    cfg.registerVar(d2NameVar_); cfg.registerVar(d2PinVar_); cfg.registerVar(d2ActiveHighVar_); cfg.registerVar(d2InitialOnVar_); cfg.registerVar(d2MomentaryVar_); cfg.registerVar(d2PulseVar_);
-    cfg.registerVar(d3NameVar_); cfg.registerVar(d3PinVar_); cfg.registerVar(d3ActiveHighVar_); cfg.registerVar(d3InitialOnVar_); cfg.registerVar(d3MomentaryVar_); cfg.registerVar(d3PulseVar_);
-    cfg.registerVar(d4NameVar_); cfg.registerVar(d4PinVar_); cfg.registerVar(d4ActiveHighVar_); cfg.registerVar(d4InitialOnVar_); cfg.registerVar(d4MomentaryVar_); cfg.registerVar(d4PulseVar_);
-    cfg.registerVar(d5NameVar_); cfg.registerVar(d5PinVar_); cfg.registerVar(d5ActiveHighVar_); cfg.registerVar(d5InitialOnVar_); cfg.registerVar(d5MomentaryVar_); cfg.registerVar(d5PulseVar_);
-    cfg.registerVar(d6NameVar_); cfg.registerVar(d6PinVar_); cfg.registerVar(d6ActiveHighVar_); cfg.registerVar(d6InitialOnVar_); cfg.registerVar(d6MomentaryVar_); cfg.registerVar(d6PulseVar_);
-    cfg.registerVar(d7NameVar_); cfg.registerVar(d7PinVar_); cfg.registerVar(d7ActiveHighVar_); cfg.registerVar(d7InitialOnVar_); cfg.registerVar(d7MomentaryVar_); cfg.registerVar(d7PulseVar_);
+    cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PinVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
+    cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PinVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
+    cfg.registerVar(d2NameVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PinVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2ActiveHighVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2InitialOnVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2MomentaryVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PulseVar_, kCfgModuleId, kCfgBranchIoD2);
+    cfg.registerVar(d3NameVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PinVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3ActiveHighVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3InitialOnVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3MomentaryVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PulseVar_, kCfgModuleId, kCfgBranchIoD3);
+    cfg.registerVar(d4NameVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PinVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4ActiveHighVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4InitialOnVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4MomentaryVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PulseVar_, kCfgModuleId, kCfgBranchIoD4);
+    cfg.registerVar(d5NameVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PinVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5ActiveHighVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5InitialOnVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5MomentaryVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PulseVar_, kCfgModuleId, kCfgBranchIoD5);
+    cfg.registerVar(d6NameVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PinVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6ActiveHighVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6InitialOnVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6MomentaryVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PulseVar_, kCfgModuleId, kCfgBranchIoD6);
+    cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PinVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
 
     LOGI("I/O config registered");
     if (haSvc_ && haSvc_->addSwitch) {

@@ -4,14 +4,34 @@
  * @brief Payload types used by EventBus events.
  */
 #include <stdint.h>
+#include "Core/ConfigBranchIds.h"
 
 // Keep payloads small and trivially copyable.
 // EventBus will copy payload bytes into its queue buffer.
 
 /** @brief Payload for ConfigChanged events. */
-struct ConfigChangedPayload {
-    char nvsKey[32];
+enum class ConfigModuleId : uint8_t {
+    Unknown = 0,
+    Wifi,
+    Mqtt,
+    Ha,
+    Time,
+    TimeScheduler,
+    SystemMonitor,
+    Io,
+    PoolLogic,
+    PoolDevice,
+    Alarms
 };
+
+/** @brief Payload for ConfigChanged events. */
+struct ConfigChangedPayload {
+    uint8_t moduleId = (uint8_t)ConfigModuleId::Unknown;
+    uint16_t branchId = (uint16_t)ConfigBranchId::Unknown;
+    char nvsKey[16];
+    char module[24];
+};
+static_assert(sizeof(ConfigChangedPayload) <= 48, "ConfigChangedPayload too large for EventBus queue");
 
 /** @brief Payload carrying network readiness information. */
 struct WifiNetReadyPayload {

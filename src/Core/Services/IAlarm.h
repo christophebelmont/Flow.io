@@ -42,5 +42,7 @@ struct AlarmService {
     uint8_t (*activeCount)(void* ctx);
     AlarmSeverity (*highestSeverity)(void* ctx);
     bool (*buildSnapshot)(void* ctx, char* out, size_t len);
+    uint8_t (*listIds)(void* ctx, AlarmId* out, uint8_t max);
+    bool (*buildAlarmState)(void* ctx, AlarmId id, char* out, size_t len);
     void* ctx;
 };

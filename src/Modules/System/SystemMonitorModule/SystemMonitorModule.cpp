@@ -22,9 +22,11 @@ const char* SystemMonitorModule::wifiStateStr(WifiState st) {
 }
 
 void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::SystemMonitor;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::SystemMonitor;
     cfgStore_ = &cfg;
-    cfg.registerVar(traceEnabledVar_);
-    cfg.registerVar(tracePeriodVar_);
+    cfg.registerVar(traceEnabledVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchId);
 
     wifiSvc = services.get<WifiService>("wifi");
     cfgSvc  = services.get<ConfigStoreService>("config");

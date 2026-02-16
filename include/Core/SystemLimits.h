@@ -77,9 +77,10 @@ constexpr size_t RxTopic = 128;
 /** @brief RX command payload buffer length inside `MQTTModule::RxMsg`. */
 constexpr size_t RxPayload = 384;
 /** @brief ACK JSON buffer length used by `MQTTModule` (`ackBuf`). */
-constexpr size_t Ack = 512;
-/** @brief Command handler reply buffer length used by `MQTTModule` (`replyBuf`). */
-constexpr size_t Reply = 256;
+constexpr size_t Ack = 1536;
+/** @brief Command handler reply buffer length used by `MQTTModule` (`replyBuf`).
+ *  Must accommodate larger structured replies (e.g. `alarms.list` snapshots). */
+constexpr size_t Reply = 1024;
 /** @brief Config JSON serialization buffer length used by `MQTTModule` (`stateCfgBuf`). */
 constexpr size_t StateCfg = 1536;
 /** @brief Runtime publish payload buffer length used by `MQTTModule` (`publishBuf`). */
@@ -94,8 +95,8 @@ constexpr size_t CmdModule = 32;
 
 /** @brief MQTT timing constants (runtime behavior). */
 namespace Timing {
-/** @brief Suppression window in ms for duplicate config echo events in `MQTTModule`. */
-constexpr uint32_t CfgEchoSuppressMs = 1500;
+/** @brief Delay in ms between each retained `cfg/<module>` publish during startup ramp in `MQTTModule`. */
+constexpr uint32_t CfgRampStepMs = 100;
 /** @brief Startup retry window in ms for forced actuator runtime publishes in `MQTTModule`. */
 constexpr uint32_t StartupActuatorRetryMs = 3000;
 /** @brief Delay in ms while MQTT is disabled in `MQTTModule::loop`. */
@@ -147,5 +148,21 @@ constexpr uint32_t DefaultEvalPeriodMs = 250;
 /** @brief JSON capacity for alarm command args parsing. */
 constexpr size_t JsonCmdBuf = 256;
 }  // namespace Alarm
+
+/** @brief Home Assistant auto-discovery publication pacing limits. */
+namespace Ha {
+namespace Timing {
+/** @brief Delay in ms between each HA discovery entity publish in `HAModule`. */
+constexpr uint32_t DiscoveryStepMs = 40;
+}  // namespace Timing
+}  // namespace Ha
+
+/** @brief Boot orchestration timings used in `main.cpp` staged startup. */
+namespace Boot {
+/** @brief Delay in ms before allowing MQTT connection attempts (`MQTTModule::setStartupReady`). */
+constexpr uint32_t MqttStartDelayMs = 1500;
+/** @brief Delay in ms before enabling HA auto-discovery publishing (`HAModule::setStartupReady`). */
+constexpr uint32_t HaStartDelayMs = 9000;
+}  // namespace Boot
 
 }  // namespace Limits

@@ -353,14 +353,18 @@ void TimeModule::applySystemSlots_(SchedulerSlotRuntime* slots, size_t count) co
 }
 
 void TimeModule::init(ConfigStore& cfg, ServiceRegistry& services) {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Time;
+    constexpr uint8_t kSchedCfgModuleId = (uint8_t)ConfigModuleId::TimeScheduler;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::Time;
+    constexpr uint16_t kSchedCfgBranchId = (uint16_t)ConfigBranchId::TimeScheduler;
     cfgStore = &cfg;
 
-    cfg.registerVar(server1Var);
-    cfg.registerVar(server2Var);
-    cfg.registerVar(tzVar);
-    cfg.registerVar(enabledVar);
-    cfg.registerVar(weekStartMondayVar);
-    cfg.registerVar(scheduleBlobVar);
+    cfg.registerVar(server1Var, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(server2Var, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(tzVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(enabledVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(weekStartMondayVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(scheduleBlobVar, kSchedCfgModuleId, kSchedCfgBranchId);
 
     logHub = services.get<LogHubService>("loghub");
 
@@ -878,10 +882,8 @@ void TimeModule::onEvent(const Event& e)
     if (e.id == EventId::ConfigChanged) {
         if (!e.payload || e.len < sizeof(ConfigChangedPayload)) return;
         const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
-        if (p->nvsKey[0] == '\0') return;
-
-        if (strcmp(p->nvsKey, scheduleBlobVar.nvsKey) == 0 ||
-            strcmp(p->nvsKey, weekStartMondayVar.nvsKey) == 0) {
+        const ConfigBranchId branchId = (ConfigBranchId)p->branchId;
+        if (branchId == ConfigBranchId::TimeScheduler || branchId == ConfigBranchId::Time) {
             schedNeedsReload_ = true;
         }
         return;

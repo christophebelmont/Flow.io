@@ -19,13 +19,19 @@ static bool strEquals(const char* a, const char* b) {
     return strcmp(a, b) == 0;
 }
 
-void ConfigStore::notifyChanged(const char* nvsKey)
+void ConfigStore::notifyChanged(const char* nvsKey, const char* moduleName, uint8_t moduleId, uint16_t branchId)
 {
     if (!_eventBus || !nvsKey) return;
 
     ConfigChangedPayload p{};
+    p.moduleId = moduleId;
+    p.branchId = branchId;
     strncpy(p.nvsKey, nvsKey, sizeof(p.nvsKey) - 1);
     p.nvsKey[sizeof(p.nvsKey) - 1] = '\0';
+    if (moduleName && moduleName[0] != '\0') {
+        strncpy(p.module, moduleName, sizeof(p.module) - 1);
+        p.module[sizeof(p.module) - 1] = '\0';
+    }
 
     _eventBus->post(EventId::ConfigChanged, &p, sizeof(p));
 }
@@ -524,7 +530,7 @@ bool ConfigStore::applyJson(const char* json)
 
             /// Notify listeners + EventBus
             if (m.nvsKey) {
-                notifyChanged(m.nvsKey);
+                notifyChanged(m.nvsKey, m.module, m.moduleId, m.branchId);
             }
         }
     }

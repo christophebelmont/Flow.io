@@ -126,6 +126,8 @@ bool AlarmModule::ack_(AlarmId id)
 {
     bool postAck = false;
     bool postClear = false;
+    char alarmCode[sizeof(slots_[0].def.code)] = {0};
+    AlarmCondState ackCond = AlarmCondState::Unknown;
     uint32_t nowMs = millis();
 
     portENTER_CRITICAL(&slotsMux_);
@@ -133,7 +135,10 @@ bool AlarmModule::ack_(AlarmId id)
     if (idx >= 0) {
         AlarmSlot& s = slots_[(uint16_t)idx];
         if (s.active && s.def.latched && !s.acked) {
+            strncpy(alarmCode, s.def.code, sizeof(alarmCode) - 1);
+            alarmCode[sizeof(alarmCode) - 1] = '\0';
             s.acked = true;
+            ackCond = s.lastCond;
             s.lastChangeMs = nowMs;
             postAck = true;
 
@@ -148,8 +153,18 @@ bool AlarmModule::ack_(AlarmId id)
     }
     portEXIT_CRITICAL(&slotsMux_);
 
-    if (postAck) emitAlarmEvent_(EventId::AlarmAcked, id);
-    if (postClear) emitAlarmEvent_(EventId::AlarmCleared, id);
+    if (postAck) {
+        LOGD("Alarm ack request accepted id=%u code=%s cond=%s",
+             (unsigned)id,
+             alarmCode[0] ? alarmCode : "?",
+             condStateStr_(ackCond));
+        LOGI("Alarm acked id=%u code=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?");
+        emitAlarmEvent_(EventId::AlarmAcked, id);
+    }
+    if (postClear) {
+        LOGI("Alarm cleared id=%u code=%s (ack path)", (unsigned)id, alarmCode[0] ? alarmCode : "?");
+        emitAlarmEvent_(EventId::AlarmCleared, id);
+    }
     return postAck || postClear;
 }
 
@@ -272,6 +287,47 @@ bool AlarmModule::buildSnapshot_(char* out, size_t len) const
     return true;
 }
 
+uint8_t AlarmModule::listIds_(AlarmId* out, uint8_t max) const
+{
+    if (!out || max == 0) return 0;
+    uint8_t count = 0;
+    portENTER_CRITICAL(&slotsMux_);
+    for (uint16_t i = 0; i < Limits::Alarm::MaxAlarms && count < max; ++i) {
+        if (!slots_[i].used) continue;
+        out[count++] = slots_[i].id;
+    }
+    portEXIT_CRITICAL(&slotsMux_);
+    return count;
+}
+
+bool AlarmModule::buildAlarmState_(AlarmId id, char* out, size_t len) const
+{
+    if (!out || len == 0) return false;
+
+    AlarmSlot snap{};
+    bool found = false;
+    portENTER_CRITICAL(&slotsMux_);
+    const int16_t idx = findSlotById_(id);
+    if (idx >= 0) {
+        snap = slots_[(uint16_t)idx];
+        found = true;
+    }
+    portEXIT_CRITICAL(&slotsMux_);
+    if (!found) return false;
+
+    const int wrote = snprintf(
+        out,
+        len,
+        "{\"id\":%u,\"a\":%u,\"k\":%u,\"c\":%u,\"s\":%u,\"lc\":%lu}",
+        (unsigned)snap.id,
+        snap.active ? 1u : 0u,
+        snap.acked ? 1u : 0u,
+        (unsigned)((uint8_t)snap.lastCond),
+        (unsigned)((uint8_t)snap.def.severity),
+        (unsigned long)snap.lastChangeMs);
+    return (wrote > 0) && ((size_t)wrote < len);
+}
+
 bool AlarmModule::svcRegisterAlarm_(void* ctx, const AlarmRegistration* def, AlarmCondFn condFn, void* condCtx)
 {
     AlarmModule* self = static_cast<AlarmModule*>(ctx);
@@ -319,6 +375,18 @@ bool AlarmModule::svcBuildSnapshot_(void* ctx, char* out, size_t len)
 {
     AlarmModule* self = static_cast<AlarmModule*>(ctx);
     return self ? self->buildSnapshot_(out, len) : false;
+}
+
+uint8_t AlarmModule::svcListIds_(void* ctx, AlarmId* out, uint8_t max)
+{
+    AlarmModule* self = static_cast<AlarmModule*>(ctx);
+    return self ? self->listIds_(out, max) : 0;
+}
+
+bool AlarmModule::svcBuildAlarmState_(void* ctx, AlarmId id, char* out, size_t len)
+{
+    AlarmModule* self = static_cast<AlarmModule*>(ctx);
+    return self ? self->buildAlarmState_(id, out, len) : false;
 }
 
 bool AlarmModule::cmdList_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen)
@@ -387,8 +455,10 @@ bool AlarmModule::cmdAckAll_(void* userCtx, const CommandRequest&, char* reply, 
 
 void AlarmModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
-    cfg.registerVar(enabledVar_);
-    cfg.registerVar(evalPeriodVar_);
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Alarms;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::Alarms;
+    cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(evalPeriodVar_, kCfgModuleId, kCfgBranchId);
 
     logHub_ = services.get<LogHubService>("loghub");
     const EventBusService* eb = services.get<EventBusService>("eventbus");
@@ -434,10 +504,25 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
         const AlarmCondState cond = condFn(condCtx, nowMs);
         bool postRaised = false;
         bool postCleared = false;
+        bool postCondTrue = false;
+        bool postCondFalse = false;
+        char alarmCode[sizeof(slots_[0].def.code)] = {0};
 
         portENTER_CRITICAL(&slotsMux_);
         AlarmSlot& s = slots_[i];
         if (s.used && s.id == id && s.condFn == condFn && s.condCtx == condCtx) {
+            const AlarmCondState prevCond = s.lastCond;
+            if (prevCond != cond) {
+                if (cond == AlarmCondState::True) {
+                    postCondTrue = true;
+                    strncpy(alarmCode, s.def.code, sizeof(alarmCode) - 1);
+                    alarmCode[sizeof(alarmCode) - 1] = '\0';
+                } else if (cond == AlarmCondState::False) {
+                    postCondFalse = true;
+                    strncpy(alarmCode, s.def.code, sizeof(alarmCode) - 1);
+                    alarmCode[sizeof(alarmCode) - 1] = '\0';
+                }
+            }
             s.lastCond = cond;
 
             if (cond == AlarmCondState::True) {
@@ -451,6 +536,8 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
                         s.lastChangeMs = nowMs;
                         s.onSinceMs = 0U;
                         postRaised = true;
+                        strncpy(alarmCode, s.def.code, sizeof(alarmCode) - 1);
+                        alarmCode[sizeof(alarmCode) - 1] = '\0';
                     }
                 } else {
                     s.onSinceMs = 0U;
@@ -467,6 +554,8 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
                             s.offSinceMs = 0U;
                             s.lastChangeMs = nowMs;
                             postCleared = true;
+                            strncpy(alarmCode, s.def.code, sizeof(alarmCode) - 1);
+                            alarmCode[sizeof(alarmCode) - 1] = '\0';
                         }
                     } else {
                         s.offSinceMs = 0U;
@@ -482,8 +571,22 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
         }
         portEXIT_CRITICAL(&slotsMux_);
 
-        if (postRaised) emitAlarmEvent_(EventId::AlarmRaised, id);
-        if (postCleared) emitAlarmEvent_(EventId::AlarmCleared, id);
+        if (postCondTrue) {
+            LOGD("Alarm cond=true id=%u code=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?");
+            emitAlarmEvent_(EventId::AlarmConditionChanged, id);
+        }
+        if (postCondFalse) {
+            LOGD("Alarm cond=false id=%u code=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?");
+            emitAlarmEvent_(EventId::AlarmConditionChanged, id);
+        }
+        if (postRaised) {
+            LOGW("Alarm raised id=%u code=%s cond=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?", condStateStr_(cond));
+            emitAlarmEvent_(EventId::AlarmRaised, id);
+        }
+        if (postCleared) {
+            LOGI("Alarm cleared id=%u code=%s cond=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?", condStateStr_(cond));
+            emitAlarmEvent_(EventId::AlarmCleared, id);
+        }
     }
 }
 

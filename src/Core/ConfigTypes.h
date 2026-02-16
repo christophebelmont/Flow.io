@@ -45,6 +45,8 @@ struct ConfigVariable {
     T* value;
     ConfigPersistence persistence;
     uint16_t size; // for char[]
+    uint8_t moduleId = 0; // 0 = unknown, set by module via ConfigStore::registerVar(var, moduleId, branchId)
+    uint16_t branchId = 0; // 0 = unknown, set by module via ConfigStore::registerVar(var, moduleId, branchId)
 
     /** @brief Change handler entry. */
     struct Handler { ConfigCallback<T> cb; void* ctx; };
@@ -74,4 +76,6 @@ struct ConfigMeta {
     ConfigPersistence persistence;
     void* valuePtr;
     uint16_t size;
+    uint8_t moduleId = 0; // 0 = unknown
+    uint16_t branchId = 0; // 0 = unknown
 };

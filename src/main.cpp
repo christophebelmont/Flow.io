@@ -96,6 +96,14 @@ static char topicRuntimeState[Limits::TopicBuf] = {0};
 static char topicNetworkState[Limits::TopicBuf] = {0};
 static char topicSystemState[Limits::TopicBuf] = {0};
 
+struct BootOrchestratorState {
+    bool active = false;
+    bool mqttReleased = false;
+    bool haReleased = false;
+    uint32_t t0Ms = 0;
+};
+static BootOrchestratorState gBootOrchestrator{};
+
 struct RuntimeSnapshotRoute {
     const IRuntimeSnapshotProvider* provider = nullptr;
     uint8_t snapshotIdx = 0;
@@ -308,6 +316,46 @@ static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     );
     return (wrote > 0) && ((size_t)wrote < len);
 }
+
+static void startBootOrchestrator()
+{
+    gBootOrchestrator.active = true;
+    gBootOrchestrator.mqttReleased = false;
+    gBootOrchestrator.haReleased = false;
+    gBootOrchestrator.t0Ms = millis();
+
+    // Stage gates: keep local control active immediately, delay network-heavy phases.
+    mqttModule.setStartupReady(false);
+    haModule.setStartupReady(false);
+    Serial.printf("[BOOT] staged startup armed (mqtt=%lums ha=%lums)\n",
+                  (unsigned long)Limits::Boot::MqttStartDelayMs,
+                  (unsigned long)Limits::Boot::HaStartDelayMs);
+}
+
+static void runBootOrchestrator()
+{
+    if (!gBootOrchestrator.active) return;
+
+    const uint32_t now = millis();
+    const uint32_t elapsed = now - gBootOrchestrator.t0Ms;
+
+    if (!gBootOrchestrator.mqttReleased && elapsed >= Limits::Boot::MqttStartDelayMs) {
+        mqttModule.setStartupReady(true);
+        gBootOrchestrator.mqttReleased = true;
+        Serial.printf("[BOOT] mqtt stage released at %lums\n", (unsigned long)elapsed);
+    }
+
+    if (!gBootOrchestrator.haReleased && elapsed >= Limits::Boot::HaStartDelayMs) {
+        haModule.setStartupReady(true);
+        gBootOrchestrator.haReleased = true;
+        Serial.printf("[BOOT] ha stage released at %lums\n", (unsigned long)elapsed);
+    }
+
+    if (gBootOrchestrator.mqttReleased && gBootOrchestrator.haReleased) {
+        gBootOrchestrator.active = false;
+        Serial.println("[BOOT] staged startup completed");
+    }
+}
 /* Test task currently deactivated */
 static void ledRandomTask(void*)
 {
@@ -328,6 +376,8 @@ void setup() {
     preferences.begin(NvsKeys::StorageNamespace, false);
     registry.setPreferences(preferences);
     registry.runMigrations(CURRENT_CFG_VERSION, steps, MIGRATION_COUNT);
+    mqttModule.setStartupReady(false);
+    haModule.setStartupReady(false);
 
     moduleManager.add(&logHubModule);
     moduleManager.add(&logDispatcherModule);
@@ -514,7 +564,7 @@ void setup() {
     mqttModule.addRuntimePublisher(topicRuntimeState, 30000, 0, false, buildRuntimeMuxState);
     mqttModule.addRuntimePublisher(topicNetworkState, 60000, 0, false, buildNetworkSnapshot);
     mqttModule.addRuntimePublisher(topicSystemState, 60000, 0, false, buildSystemSnapshot);
-    mqttModule.setStartupReady(true);
+    startBootOrchestrator();
 
     /*xTaskCreatePinnedToCore(
         ledRandomTask,
@@ -545,4 +595,6 @@ void setup() {
      
 
 void loop() {
+    runBootOrchestrator();
+    delay(20);
 }

@@ -21,6 +21,7 @@ public:
     const char* taskName() const override { return "ha"; }
     uint16_t taskStackSize() const override { return 4096; }
     void loop() override;
+    void setStartupReady(bool ready);
 
     uint8_t dependencyCount() const override { return 4; }
     const char* dependency(uint8_t i) const override {
@@ -38,6 +39,7 @@ private:
     static constexpr uint8_t MAX_HA_BINARY_SENSORS = 8;
     static constexpr uint8_t MAX_HA_SWITCHES = 16;
     static constexpr uint8_t MAX_HA_NUMBERS = 16;
+    static constexpr uint8_t MAX_HA_BUTTONS = 8;
     static constexpr size_t TOPIC_BUF_SIZE = 256;
     static constexpr size_t PAYLOAD_BUF_SIZE = 1536;
 
@@ -56,6 +58,7 @@ private:
     HAConfig cfgData{};
     volatile bool autoconfigPending = false;
     volatile bool refreshRequested = false;
+    volatile bool startupReady_ = true;
     bool published = false;
     char deviceId[32] = {0};
     char deviceIdent[96] = {0};
@@ -76,6 +79,8 @@ private:
     uint8_t switchCount_ = 0;
     HANumberEntry numbers_[MAX_HA_NUMBERS]{};
     uint8_t numberCount_ = 0;
+    HAButtonEntry buttons_[MAX_HA_BUTTONS]{};
+    uint8_t buttonCount_ = 0;
 
     HAService haSvc{};
 
@@ -112,6 +117,7 @@ private:
     bool addBinarySensorEntry(const HABinarySensorEntry& entry);
     bool addSwitchEntry(const HASwitchEntry& entry);
     bool addNumberEntry(const HANumberEntry& entry);
+    bool addButtonEntry(const HAButtonEntry& entry);
     bool buildObjectId(const char* suffix, char* out, size_t outLen) const;
     bool buildDefaultEntityId(const char* component, const char* objectId, char* out, size_t outLen) const;
     bool buildUniqueId(const char* objectId, const char* name, char* out, size_t outLen) const;
@@ -140,6 +146,10 @@ private:
                        const char* entityCategory = nullptr,
                        const char* icon = nullptr,
                        const char* unit = nullptr);
+    bool publishButton(const char* objectId, const char* name,
+                       const char* commandTopic, const char* payloadPress,
+                       const char* entityCategory = nullptr,
+                       const char* icon = nullptr);
     bool publishDiscovery(const char* component, const char* objectId, const char* payload);
 
     static void makeDeviceId(char* out, size_t len);
@@ -151,5 +161,6 @@ private:
     static bool svcAddBinarySensor(void* ctx, const HABinarySensorEntry* entry);
     static bool svcAddSwitch(void* ctx, const HASwitchEntry* entry);
     static bool svcAddNumber(void* ctx, const HANumberEntry* entry);
+    static bool svcAddButton(void* ctx, const HAButtonEntry* entry);
     static bool svcRequestRefresh(void* ctx);
 };

@@ -5,6 +5,7 @@
 #include "MQTTModule.h"
 #include "Core/Runtime.h"
 #include "Core/MqttTopics.h"
+#include "Core/ConfigBranchIds.h"
 #include "Core/SystemLimits.h"
 #include "Core/SystemStats.h"
 #include <ArduinoJson.h>
@@ -52,14 +53,6 @@ static bool isMqttConnKey(const char* key)
     });
 }
 
-static bool isTimeSchedKey(const char* key)
-{
-    return isAnyOf(key, {
-        NvsKeys::Time::ScheduleBlob,
-        NvsKeys::Time::WeekStartMonday
-    });
-}
-
 bool MQTTModule::svcPublish(void* ctx, const char* topic, const char* payload, int qos, bool retain)
 {
     MQTTModule* self = static_cast<MQTTModule*>(ctx);
@@ -99,6 +92,7 @@ void MQTTModule::buildTopics() {
     snprintf(topicStatus, sizeof(topicStatus), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixStatus);
     snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgSet);
     snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgAck);
+    snprintf(topicRtAlarmsMeta, sizeof(topicRtAlarmsMeta), "%s/%s/rt/alarms/m", cfgData.baseTopic, deviceId);
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
                  "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
@@ -136,10 +130,15 @@ void MQTTModule::onConnect(bool) {
     // Defer cfg/* publication to loop() so actuator runtime snapshots can be
     // flushed first and avoid stale HA state immediately after reconnect.
     _pendingPublish = true;
+    alarmsMetaPending_ = true;
+    alarmsFullSyncPending_ = true;
 }
 
 void MQTTModule::onDisconnect(AsyncMqttClientDisconnectReason) {
     LOGW("Disconnected");
+    cfgRampActive_ = false;
+    cfgRampRestartRequested_ = false;
+    cfgRampIndex_ = 0;
     setState(MQTTState::ErrorWait);
 }
 
@@ -197,6 +196,97 @@ void MQTTModule::publishConfigBlocks(bool retained) {
     refreshConfigModules();
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         (void)publishConfigModuleAt(i, retained);
+    }
+}
+
+void MQTTModule::enqueueCfgBranch_(uint16_t branchId)
+{
+    if (branchId == (uint16_t)ConfigBranchId::Unknown) return;
+
+    portENTER_CRITICAL(&pendingCfgMux_);
+    for (uint8_t i = 0; i < pendingCfgBranchCount_; ++i) {
+        if (pendingCfgBranches_[i] == branchId) {
+            portEXIT_CRITICAL(&pendingCfgMux_);
+            return;
+        }
+    }
+    if (pendingCfgBranchCount_ < PendingCfgBranchesMax) {
+        pendingCfgBranches_[pendingCfgBranchCount_++] = branchId;
+    } else {
+        // Queue saturated: fallback to full cfg ramp to avoid dropping updates.
+        _pendingPublish = true;
+    }
+    portEXIT_CRITICAL(&pendingCfgMux_);
+}
+
+uint8_t MQTTModule::takePendingCfgBranches_(uint16_t* out, uint8_t maxItems)
+{
+    if (!out || maxItems == 0) return 0;
+
+    portENTER_CRITICAL(&pendingCfgMux_);
+    const uint8_t n = (pendingCfgBranchCount_ < maxItems) ? pendingCfgBranchCount_ : maxItems;
+    for (uint8_t i = 0; i < n; ++i) {
+        out[i] = pendingCfgBranches_[i];
+    }
+    pendingCfgBranchCount_ = 0;
+    portEXIT_CRITICAL(&pendingCfgMux_);
+    return n;
+}
+
+void MQTTModule::processPendingCfgBranches_()
+{
+    uint16_t branchIds[PendingCfgBranchesMax] = {0};
+    const uint8_t n = takePendingCfgBranches_(branchIds, PendingCfgBranchesMax);
+    for (uint8_t i = 0; i < n; ++i) {
+        const char* module = configBranchModuleName((ConfigBranchId)branchIds[i]);
+        if (!module || module[0] == '\0' || !publishConfigModuleByName_(module, true)) {
+            _pendingPublish = true;
+        }
+    }
+}
+
+void MQTTModule::beginConfigRamp_(uint32_t nowMs)
+{
+    if (!cfgSvc || !cfgSvc->toJsonModule) {
+        cfgRampActive_ = false;
+        cfgRampRestartRequested_ = false;
+        cfgRampIndex_ = 0;
+        return;
+    }
+
+    refreshConfigModules();
+    cfgRampIndex_ = 0;
+    cfgRampNextMs_ = nowMs;
+    cfgRampRestartRequested_ = false;
+    cfgRampActive_ = (cfgModuleCount > 0);
+}
+
+void MQTTModule::runConfigRamp_(uint32_t nowMs)
+{
+    if (!cfgRampActive_) return;
+    if (state != MQTTState::Connected) {
+        cfgRampActive_ = false;
+        cfgRampRestartRequested_ = false;
+        cfgRampIndex_ = 0;
+        return;
+    }
+
+    if (cfgRampRestartRequested_) {
+        beginConfigRamp_(nowMs);
+    }
+
+    if ((int32_t)(nowMs - cfgRampNextMs_) < 0) return;
+    if (cfgRampIndex_ >= cfgModuleCount) {
+        cfgRampActive_ = false;
+        return;
+    }
+
+    (void)publishConfigModuleAt(cfgRampIndex_, true);
+    ++cfgRampIndex_;
+    cfgRampNextMs_ = nowMs + Limits::Mqtt::Timing::CfgRampStepMs;
+
+    if (cfgRampIndex_ >= cfgModuleCount) {
+        cfgRampActive_ = false;
     }
 }
 
@@ -363,6 +453,82 @@ bool MQTTModule::publish(const char* topic, const char* payload, int qos, bool r
     return true;
 }
 
+bool MQTTModule::publishAlarmState_(AlarmId id)
+{
+    if (!alarmSvc || !alarmSvc->buildAlarmState) return false;
+    if (!alarmSvc->buildAlarmState(alarmSvc->ctx, id, publishBuf, sizeof(publishBuf))) {
+        LOGW("alarm state build failed id=%u (buffer=%u)", (unsigned)((uint16_t)id), (unsigned)sizeof(publishBuf));
+        return false;
+    }
+
+    char alarmTopic[Limits::Mqtt::Buffers::DynamicTopic] = {0};
+    const int tw = snprintf(
+        alarmTopic,
+        sizeof(alarmTopic),
+        "%s/%s/rt/alarms/id%u",
+        cfgData.baseTopic,
+        deviceId,
+        (unsigned)((uint16_t)id));
+    if (!(tw > 0 && (size_t)tw < sizeof(alarmTopic))) {
+        LOGW("alarm topic truncated id=%u", (unsigned)((uint16_t)id));
+        return false;
+    }
+    return publish(alarmTopic, publishBuf, 0, false);
+}
+
+bool MQTTModule::publishAlarmMeta_()
+{
+    if (!alarmSvc || !alarmSvc->activeCount || !alarmSvc->highestSeverity) return false;
+    if (topicRtAlarmsMeta[0] == '\0') return false;
+
+    const uint8_t active = alarmSvc->activeCount(alarmSvc->ctx);
+    const AlarmSeverity highest = alarmSvc->highestSeverity(alarmSvc->ctx);
+    const int wrote = snprintf(
+        publishBuf,
+        sizeof(publishBuf),
+        "{\"a\":%u,\"h\":%u,\"ts\":%lu}",
+        (unsigned)active,
+        (unsigned)((uint8_t)highest),
+        (unsigned long)millis());
+    if (!(wrote > 0 && (size_t)wrote < sizeof(publishBuf))) {
+        LOGW("alarm meta payload truncated (buffer=%u)", (unsigned)sizeof(publishBuf));
+        return false;
+    }
+    return publish(topicRtAlarmsMeta, publishBuf, 0, false);
+}
+
+void MQTTModule::enqueuePendingAlarmId_(AlarmId id)
+{
+    if (id == AlarmId::None) return;
+    portENTER_CRITICAL(&pendingAlarmMux_);
+    for (uint8_t i = 0; i < pendingAlarmCount_; ++i) {
+        if (pendingAlarmIds_[i] == id) {
+            portEXIT_CRITICAL(&pendingAlarmMux_);
+            return;
+        }
+    }
+    if (pendingAlarmCount_ < PendingAlarmIdsMax) {
+        pendingAlarmIds_[pendingAlarmCount_++] = id;
+    } else {
+        alarmsFullSyncPending_ = true;
+    }
+    portEXIT_CRITICAL(&pendingAlarmMux_);
+}
+
+uint8_t MQTTModule::takePendingAlarmIds_(AlarmId* out, uint8_t maxItems)
+{
+    if (!out || maxItems == 0) return 0;
+
+    portENTER_CRITICAL(&pendingAlarmMux_);
+    const uint8_t n = (pendingAlarmCount_ < maxItems) ? pendingAlarmCount_ : maxItems;
+    for (uint8_t i = 0; i < n; ++i) {
+        out[i] = pendingAlarmIds_[i];
+    }
+    pendingAlarmCount_ = 0;
+    portEXIT_CRITICAL(&pendingAlarmMux_);
+    return n;
+}
+
 void MQTTModule::formatTopic(char* out, size_t outLen, const char* suffix) const
 {
     if (!out || outLen == 0 || !suffix) return;
@@ -439,7 +605,6 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
         argsJson = argsBuf;
     }
 
-    _suppressConfigChangedUntilMs = millis() + Limits::Mqtt::Timing::CfgEchoSuppressMs;
     bool ok = cmdSvc->execute(cmdSvc->ctx, cmd, msg.payload, argsJson, replyBuf, sizeof(replyBuf));
     if (!ok) {
         LOGW("processRxCmd: command handler failed (cmd=%s)", cmd);
@@ -457,30 +622,7 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
         LOGW("cmd ack publish failed cmd=%s", cmd);
     }
 
-    // Publish config echo only for the command family module, to avoid flooding cfg/*
-    // and delaying subsequent rx handling on congested links.
-    char module[Limits::Mqtt::Buffers::CmdModule] = {0};
-    static constexpr const char* kTimeSchedulerCmdPrefix = "time.scheduler.";
-    if (strncmp(cmd, kTimeSchedulerCmdPrefix, sizeof("time.scheduler.") - 1U) == 0) {
-        strncpy(module, "time/scheduler", sizeof(module) - 1);
-    } else {
-        const char* dot = strchr(cmd, '.');
-        if (dot) {
-            const size_t moduleLen = (size_t)(dot - cmd);
-            if (moduleLen > 0 && moduleLen < sizeof(module)) {
-                memcpy(module, cmd, moduleLen);
-                module[moduleLen] = '\0';
-            }
-        }
-    }
-    if (module[0] != '\0') {
-        if (strcmp(module, "pool") == 0) {
-            strncpy(module, "pooldevice", sizeof(module) - 1);
-            module[sizeof(module) - 1] = '\0';
-        }
-        (void)publishConfigModuleByName_(module, true);
-    }
-    _pendingPublish = false;
+    // cfg/* publication path is intentionally ConfigChanged-only.
 }
 
 void MQTTModule::processRxCfgSet_(const RxMsg& msg)
@@ -499,30 +641,12 @@ void MQTTModule::processRxCfgSet_(const RxMsg& msg)
         return;
     }
 
-    _suppressConfigChangedUntilMs = millis() + Limits::Mqtt::Timing::CfgEchoSuppressMs;
     bool ok = cfgSvc->applyJson(cfgSvc->ctx, msg.payload);
     if (!ok) {
         publishRxError_(topicCfgAck, ErrorCode::CfgApplyFailed, "cfg/set", false);
         return;
     }
-
-    // Publish touched cfg modules immediately from the received patch.
-    // This avoids any deferred path and keeps cfg/* state in sync right after cfg/set.
-    bool publishedAny = false;
-    JsonObjectConst patch = cfgDoc.as<JsonObjectConst>();
-    for (JsonPairConst kv : patch) {
-        const char* module = kv.key().c_str();
-        if (!module || module[0] == '\0') continue;
-        publishedAny = publishConfigModuleByName_(module, true) || publishedAny;
-    }
-
-    if (!publishedAny) {
-        // Conservative fallback: publish full cfg tree when no touched module was emitted.
-        publishConfigBlocks(true);
-    } else {
-        // cfg/set already emitted touched modules immediately; avoid redundant full-tree burst.
-        _pendingPublish = false;
-    }
+    // cfg/* publication path is intentionally ConfigChanged-only.
 
     if (!writeOkJson(ackBuf, sizeof(ackBuf), "cfg/set")) {
         snprintf(ackBuf, sizeof(ackBuf), "{\"ok\":true}");
@@ -572,18 +696,21 @@ void MQTTModule::countOversizeDrop_()
 }
 
 void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
-    cfg.registerVar(hostVar);
-    cfg.registerVar(portVar);
-    cfg.registerVar(userVar);
-    cfg.registerVar(passVar);
-    cfg.registerVar(baseTopicVar);
-    cfg.registerVar(enabledVar);
-    cfg.registerVar(sensorMinVar);
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Mqtt;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::Mqtt;
+    cfg.registerVar(hostVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(portVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(userVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(passVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(baseTopicVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(enabledVar, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(sensorMinVar, kCfgModuleId, kCfgBranchId);
 
     wifiSvc = services.get<WifiService>("wifi");
     cmdSvc = services.get<CommandService>("cmd");
     cfgSvc = services.get<ConfigStoreService>("config");
     timeSchedSvc = services.get<TimeSchedulerService>("time.scheduler");
+    alarmSvc = services.get<AlarmService>("alarms");
     logHub = services.get<LogHubService>("loghub");
 
     auto* ebSvc = services.get<EventBusService>("eventbus");
@@ -595,6 +722,9 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     oversizeDropCount_ = 0;
     parseFailCount_ = 0;
     handlerFailCount_ = 0;
+    pendingAlarmCount_ = 0;
+    alarmsMetaPending_ = false;
+    alarmsFullSyncPending_ = false;
     syncRxMetrics_();
 
     mqttSvc.publish = MQTTModule::svcPublish;
@@ -607,6 +737,11 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
         eventBus->subscribe(EventId::DataChanged, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::DataSnapshotAvailable, &MQTTModule::onEventStatic, this);
         eventBus->subscribe(EventId::ConfigChanged, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::AlarmRaised, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::AlarmCleared, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::AlarmAcked, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::AlarmSilenceChanged, &MQTTModule::onEventStatic, this);
+        eventBus->subscribe(EventId::AlarmConditionChanged, &MQTTModule::onEventStatic, this);
     }
 
     makeDeviceId(deviceId, sizeof(deviceId));
@@ -663,6 +798,33 @@ void MQTTModule::loop() {
         RxMsg m;
         while (xQueueReceive(rxQ, &m, 0) == pdTRUE) processRx(m);
         uint32_t now = millis();
+
+        if (alarmsFullSyncPending_ && alarmSvc && alarmSvc->listIds) {
+            AlarmId ids[Limits::Alarm::MaxAlarms]{};
+            const uint8_t n = alarmSvc->listIds(alarmSvc->ctx, ids, (uint8_t)Limits::Alarm::MaxAlarms);
+            bool okAll = true;
+            for (uint8_t i = 0; i < n; ++i) {
+                if (!publishAlarmState_(ids[i])) okAll = false;
+            }
+            if (!publishAlarmMeta_()) okAll = false;
+            if (okAll) {
+                alarmsFullSyncPending_ = false;
+                alarmsMetaPending_ = false;
+            }
+        } else {
+            AlarmId pendingIds[PendingAlarmIdsMax]{};
+            const uint8_t nPending = takePendingAlarmIds_(pendingIds, PendingAlarmIdsMax);
+            for (uint8_t i = 0; i < nPending; ++i) {
+                if (!publishAlarmState_(pendingIds[i])) {
+                    enqueuePendingAlarmId_(pendingIds[i]);
+                }
+            }
+            if (alarmsMetaPending_) {
+                if (publishAlarmMeta_()) {
+                    alarmsMetaPending_ = false;
+                }
+            }
+        }
         if (sensorsPending && sensorsTopic && sensorsBuild) {
             const uint32_t relevantMask = (DIRTY_SENSORS | DIRTY_ACTUATORS);
             if ((sensorsPendingDirtyMask & relevantMask) == 0U) {
@@ -702,8 +864,11 @@ void MQTTModule::loop() {
         }
         if (_pendingPublish) {
             _pendingPublish = false;
-            publishConfigBlocks(true);
+            if (cfgRampActive_) cfgRampRestartRequested_ = true;
+            else beginConfigRamp_(now);
         }
+        processPendingCfgBranches_();
+        runConfigRamp_(now);
         for (uint8_t i = 0; i < publisherCount; ++i) {
             RuntimePublisher& p = publishers[i];
             if (!p.topic || !p.build) continue;
@@ -795,25 +960,33 @@ void MQTTModule::onEvent(const Event& e)
             client.disconnect();
             _netReadyTs = millis();
             setState(MQTTState::WaitingNetwork);
-        } else {
-            const uint32_t now = millis();
-            if ((int32_t)(now - _suppressConfigChangedUntilMs) < 0) {
-                // cfg/set and command paths already publish targeted cfg modules immediately.
-                // Exception: scheduler mutations can be asynchronous (ex: poollogic recalc),
-                // so force a deferred cfg publication for scheduler keys.
-                if (isTimeSchedKey(key)) {
-                    _pendingPublish = true;
-                }
-                return;
-            }
-
-            if (isTimeSchedKey(key)) {
-                _pendingPublish = true;
-            } else {
-                // Keep cfg/* topics in sync when config changes outside MQTT cfg/cmd handlers.
-                _pendingPublish = true;
-            }
         }
+
+        const uint16_t branchId = p->branchId;
+        if (branchId == (uint16_t)ConfigBranchId::Unknown) {
+            _pendingPublish = true;
+            return;
+        }
+        enqueueCfgBranch_(branchId);
+        if (branchId == (uint16_t)ConfigBranchId::Time) {
+            // Scheduler JSON shape depends on week/day policy carried by cfg/time.
+            enqueueCfgBranch_((uint16_t)ConfigBranchId::TimeScheduler);
+        }
+        return;
+    }
+
+    if (e.id == EventId::AlarmRaised ||
+        e.id == EventId::AlarmCleared ||
+        e.id == EventId::AlarmAcked ||
+        e.id == EventId::AlarmSilenceChanged ||
+        e.id == EventId::AlarmConditionChanged) {
+        const AlarmPayload* p = (const AlarmPayload*)e.payload;
+        if (p && e.len >= sizeof(AlarmPayload)) {
+            enqueuePendingAlarmId_((AlarmId)p->alarmId);
+        } else {
+            alarmsFullSyncPending_ = true;
+        }
+        alarmsMetaPending_ = true;
         return;
     }
 }

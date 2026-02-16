@@ -77,48 +77,50 @@ static void writeCmdError_(char* reply, size_t replyLen, const char* where, Erro
 
 void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
+    constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::PoolLogic;
+    constexpr uint16_t kCfgBranchId = (uint16_t)ConfigBranchId::PoolLogic;
     cfgStore_ = &cfg;
 
-    cfg.registerVar(enabledVar_);
+    cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(autoModeVar_);
-    cfg.registerVar(winterModeVar_);
-    cfg.registerVar(phAutoModeVar_);
-    cfg.registerVar(orpAutoModeVar_);
-    cfg.registerVar(electrolyseModeVar_);
-    cfg.registerVar(electroRunModeVar_);
+    cfg.registerVar(autoModeVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(winterModeVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(phAutoModeVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(orpAutoModeVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(electrolyseModeVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(electroRunModeVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(tempLowVar_);
-    cfg.registerVar(tempSetpointVar_);
-    cfg.registerVar(startMinVar_);
-    cfg.registerVar(stopMaxVar_);
-    cfg.registerVar(calcStartVar_);
-    cfg.registerVar(calcStopVar_);
+    cfg.registerVar(tempLowVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(tempSetpointVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(startMinVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(stopMaxVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(calcStartVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(calcStopVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(orpIdVar_);
-    cfg.registerVar(psiIdVar_);
-    cfg.registerVar(waterTempIdVar_);
-    cfg.registerVar(airTempIdVar_);
-    cfg.registerVar(levelIdVar_);
+    cfg.registerVar(orpIdVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(psiIdVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(waterTempIdVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(airTempIdVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(levelIdVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(psiLowVar_);
-    cfg.registerVar(psiHighVar_);
-    cfg.registerVar(winterStartVar_);
-    cfg.registerVar(freezeHoldVar_);
-    cfg.registerVar(secureElectroVar_);
-    cfg.registerVar(orpSetpointVar_);
+    cfg.registerVar(psiLowVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(psiHighVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(winterStartVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(freezeHoldVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(secureElectroVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(orpSetpointVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(psiDelayVar_);
-    cfg.registerVar(delayPidsVar_);
-    cfg.registerVar(delayElectroVar_);
-    cfg.registerVar(robotDelayVar_);
-    cfg.registerVar(robotDurationVar_);
-    cfg.registerVar(fillingMinOnVar_);
+    cfg.registerVar(psiDelayVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(delayPidsVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(delayElectroVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(robotDelayVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(robotDurationVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(fillingMinOnVar_, kCfgModuleId, kCfgBranchId);
 
-    cfg.registerVar(filtrationDeviceVar_);
-    cfg.registerVar(swgDeviceVar_);
-    cfg.registerVar(robotDeviceVar_);
-    cfg.registerVar(fillingDeviceVar_);
+    cfg.registerVar(filtrationDeviceVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(swgDeviceVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(robotDeviceVar_, kCfgModuleId, kCfgBranchId);
+    cfg.registerVar(fillingDeviceVar_, kCfgModuleId, kCfgBranchId);
 
     logHub_ = services.get<LogHubService>("loghub");
     const EventBusService* ebSvc = services.get<EventBusService>("eventbus");
@@ -148,7 +150,20 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "mdi:calendar-clock",
             "config"
         };
+        const HASwitchEntry winterModeSwitch{
+            "poollogic",
+            "pool_winter_mode",
+            "Winter Mode",
+            "cfg/poollogic",
+            "{% if value_json.winter_mode %}ON{% else %}OFF{% endif %}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"winter_mode\\\":true}}",
+            "{\\\"poollogic\\\":{\\\"winter_mode\\\":false}}",
+            "mdi:snowflake",
+            "config"
+        };
         (void)haSvc_->addSwitch(haSvc_->ctx, &autoModeSwitch);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &winterModeSwitch);
     }
     if (haSvc_ && haSvc_->addSensor) {
         const HASensorEntry filtrationStart{
@@ -173,6 +188,18 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         };
         (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStart);
         (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStop);
+    }
+    if (haSvc_ && haSvc_->addButton) {
+        const HAButtonEntry filtrationRecalc{
+            "poollogic",
+            "filtration_recalc",
+            "Recalculate Filtration Window",
+            MqttTopics::SuffixCmd,
+            "{\\\"cmd\\\":\\\"poollogic.filtration.recalc\\\"}",
+            "config",
+            "mdi:refresh"
+        };
+        (void)haSvc_->addButton(haSvc_->ctx, &filtrationRecalc);
     }
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "poollogic.filtration.write", &PoolLogicModule::cmdFiltrationWriteStatic_, this);
@@ -560,11 +587,12 @@ bool PoolLogicModule::recalcAndApplyFiltrationWindow_(uint8_t* startHourOut,
         return false;
     }
 
-    filtrationCalcStart_ = startHour;
-    filtrationCalcStop_ = stopHour;
     if (cfgStore_) {
         (void)cfgStore_->set(calcStartVar_, startHour);
         (void)cfgStore_->set(calcStopVar_, stopHour);
+    } else {
+        filtrationCalcStart_ = startHour;
+        filtrationCalcStop_ = stopHour;
     }
     if (startHourOut) *startHourOut = startHour;
     if (stopHourOut) *stopHourOut = stopHour;
