@@ -147,6 +147,30 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         };
         (void)haSvc_->addSwitch(haSvc_->ctx, &autoModeSwitch);
     }
+    if (haSvc_ && haSvc_->addSensor) {
+        const HASensorEntry filtrationStart{
+            "poollogic",
+            "calculated_filtration_start",
+            "Calculated Filtration Start",
+            "cfg/poollogic",
+            "{{ value_json.filtration_start_min | int(0) }}",
+            nullptr,
+            "mdi:clock-start",
+            "h"
+        };
+        const HASensorEntry filtrationStop{
+            "poollogic",
+            "calculated_filtration_stop",
+            "Calculated Filtration Stop",
+            "cfg/poollogic",
+            "{{ value_json.filtration_stop_max | int(0) }}",
+            nullptr,
+            "mdi:clock-end",
+            "h"
+        };
+        (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStart);
+        (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStop);
+    }
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "poollogic.filtration.write", &PoolLogicModule::cmdFiltrationWriteStatic_, this);
         cmdSvc_->registerHandler(cmdSvc_->ctx, "poollogic.auto_mode.set", &PoolLogicModule::cmdAutoModeSetStatic_, this);
