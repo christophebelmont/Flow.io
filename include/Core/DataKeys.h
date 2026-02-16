@@ -24,6 +24,8 @@ constexpr DataKey MqttRxDrop = 5;
 constexpr DataKey MqttParseFail = 6;
 /** @brief MQTT runtime key: RX handler failures counter (`MQTTRuntime`). */
 constexpr DataKey MqttHandlerFail = 7;
+/** @brief MQTT runtime key: dropped RX messages due to oversize topic/payload (`MQTTRuntime`). */
+constexpr DataKey MqttOversizeDrop = 8;
 
 /** @brief Home Assistant runtime key: autoconfig publish state (`HARuntime`). */
 constexpr DataKey HaPublished = 10;
@@ -51,10 +53,9 @@ constexpr DataKey ReservedMax = 127;
 
 static_assert(WifiReady < TimeReady, "DataKey ordering invariant broken");
 static_assert(TimeReady < MqttReady, "DataKey ordering invariant broken");
-static_assert(MqttHandlerFail < HaPublished, "DataKey ranges overlap");
+static_assert(MqttOversizeDrop < HaPublished, "DataKey ranges overlap");
 static_assert(HaDeviceId < IoBase, "HA fixed keys overlap IO key range");
 static_assert(IoEndExclusive <= PoolDeviceBase, "IO and pool-device key ranges overlap");
 static_assert(PoolDeviceEndExclusive <= ReservedMax, "Pool-device key range exceeds reserved max");
 
 }  // namespace DataKeys
-

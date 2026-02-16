@@ -5,12 +5,75 @@
 
 #include "PoolLogicModule.h"
 #include "Modules/PoolLogicModule/FiltrationWindow.h"
+#include "Core/MqttTopics.h"
+#include "Core/ErrorCodes.h"
+#include "Core/SystemLimits.h"
+#include "Core/CommandRegistry.h"
 
 #include <Arduino.h>
 #include <cstring>
+#include <ArduinoJson.h>
+#include <stdlib.h>
 
 #define LOG_TAG "PoolLogc"
 #include "Core/ModuleLog.h"
+
+static bool parseCmdArgsObject_(const CommandRequest& req, JsonObjectConst& outObj)
+{
+    static constexpr size_t CMD_DOC_CAPACITY = Limits::JsonCmdPoolDeviceBuf;
+    static StaticJsonDocument<CMD_DOC_CAPACITY> doc;
+
+    doc.clear();
+    const char* json = req.args ? req.args : req.json;
+    if (!json || json[0] == '\0') return false;
+
+    const DeserializationError err = deserializeJson(doc, json);
+    if (!err && doc.is<JsonObject>()) {
+        outObj = doc.as<JsonObjectConst>();
+        return true;
+    }
+
+    if (req.json && req.json[0] != '\0' && req.args != req.json) {
+        doc.clear();
+        const DeserializationError rootErr = deserializeJson(doc, req.json);
+        if (rootErr || !doc.is<JsonObjectConst>()) return false;
+        JsonVariantConst argsVar = doc["args"];
+        if (argsVar.is<JsonObjectConst>()) {
+            outObj = argsVar.as<JsonObjectConst>();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool parseBoolValue_(JsonVariantConst value, bool& out)
+{
+    if (value.is<bool>()) {
+        out = value.as<bool>();
+        return true;
+    }
+    if (value.is<int32_t>() || value.is<uint32_t>() || value.is<float>()) {
+        out = (value.as<float>() != 0.0f);
+        return true;
+    }
+    if (value.is<const char*>()) {
+        const char* s = value.as<const char*>();
+        if (!s) s = "0";
+        if (strcmp(s, "true") == 0) out = true;
+        else if (strcmp(s, "false") == 0) out = false;
+        else out = (atoi(s) != 0);
+        return true;
+    }
+    return false;
+}
+
+static void writeCmdError_(char* reply, size_t replyLen, const char* where, ErrorCode code)
+{
+    if (!writeErrorJson(reply, replyLen, code, where)) {
+        snprintf(reply, replyLen, "{\"ok\":false}");
+    }
+}
 
 void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
@@ -61,11 +124,32 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     schedSvc_ = services.get<TimeSchedulerService>("time.scheduler");
     ioSvc_ = services.get<IOServiceV2>("io");
     poolSvc_ = services.get<PoolDeviceService>("pooldev");
+    haSvc_ = services.get<HAService>("ha");
+    cmdSvc_ = services.get<CommandService>("cmd");
     if (!ioSvc_) {
         LOGW("PoolLogic waiting for IOServiceV2");
     }
     if (!poolSvc_) {
         LOGW("PoolLogic waiting for PoolDeviceService");
+    }
+    if (haSvc_ && haSvc_->addSwitch) {
+        const HASwitchEntry autoModeSwitch{
+            "poollogic",
+            "pool_auto_mode",
+            "Pool Auto Mode",
+            "cfg/poollogic",
+            "{% if value_json.auto_mode %}ON{% else %}OFF{% endif %}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"auto_mode\\\":true}}",
+            "{\\\"poollogic\\\":{\\\"auto_mode\\\":false}}",
+            "mdi:calendar-clock",
+            "config"
+        };
+        (void)haSvc_->addSwitch(haSvc_->ctx, &autoModeSwitch);
+    }
+    if (cmdSvc_ && cmdSvc_->registerHandler) {
+        cmdSvc_->registerHandler(cmdSvc_->ctx, "poollogic.filtration.write", &PoolLogicModule::cmdFiltrationWriteStatic_, this);
+        cmdSvc_->registerHandler(cmdSvc_->ctx, "poollogic.auto_mode.set", &PoolLogicModule::cmdAutoModeSetStatic_, this);
     }
 
     if (eventBus_) {
@@ -87,6 +171,100 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
     LOGI("PoolLogic ready");
     (void)cfgStore_;
     (void)logHub_;
+}
+
+bool PoolLogicModule::cmdFiltrationWriteStatic_(void* userCtx,
+                                                const CommandRequest& req,
+                                                char* reply,
+                                                size_t replyLen)
+{
+    PoolLogicModule* self = static_cast<PoolLogicModule*>(userCtx);
+    if (!self) return false;
+    return self->cmdFiltrationWrite_(req, reply, replyLen);
+}
+
+bool PoolLogicModule::cmdAutoModeSetStatic_(void* userCtx,
+                                            const CommandRequest& req,
+                                            char* reply,
+                                            size_t replyLen)
+{
+    PoolLogicModule* self = static_cast<PoolLogicModule*>(userCtx);
+    if (!self) return false;
+    return self->cmdAutoModeSet_(req, reply, replyLen);
+}
+
+bool PoolLogicModule::cmdFiltrationWrite_(const CommandRequest& req, char* reply, size_t replyLen)
+{
+    if (!cfgStore_ || !poolSvc_ || !poolSvc_->writeDesired) {
+        writeCmdError_(reply, replyLen, "poollogic.filtration.write", ErrorCode::NotReady);
+        return false;
+    }
+
+    JsonObjectConst args;
+    if (!parseCmdArgsObject_(req, args)) {
+        writeCmdError_(reply, replyLen, "poollogic.filtration.write", ErrorCode::MissingArgs);
+        return false;
+    }
+    if (!args.containsKey("value")) {
+        writeCmdError_(reply, replyLen, "poollogic.filtration.write", ErrorCode::MissingValue);
+        return false;
+    }
+
+    bool requested = false;
+    if (!parseBoolValue_(args["value"], requested)) {
+        writeCmdError_(reply, replyLen, "poollogic.filtration.write", ErrorCode::MissingValue);
+        return false;
+    }
+
+    (void)cfgStore_->set(autoModeVar_, false);
+    autoMode_ = false;
+
+    const PoolDeviceSvcStatus st = poolSvc_->writeDesired(poolSvc_->ctx, filtrationDeviceSlot_, requested ? 1U : 0U);
+    if (st != POOLDEV_SVC_OK) {
+        ErrorCode code = ErrorCode::Failed;
+        if (st == POOLDEV_SVC_ERR_UNKNOWN_SLOT) code = ErrorCode::UnknownSlot;
+        else if (st == POOLDEV_SVC_ERR_NOT_READY) code = ErrorCode::NotReady;
+        else if (st == POOLDEV_SVC_ERR_DISABLED) code = ErrorCode::Disabled;
+        else if (st == POOLDEV_SVC_ERR_INTERLOCK) code = ErrorCode::InterlockBlocked;
+        else if (st == POOLDEV_SVC_ERR_IO) code = ErrorCode::IoError;
+        writeCmdError_(reply, replyLen, "poollogic.filtration.write", code);
+        return false;
+    }
+
+    snprintf(reply, replyLen, "{\"ok\":true,\"slot\":%u,\"value\":%s,\"auto_mode\":false}",
+             (unsigned)filtrationDeviceSlot_,
+             requested ? "true" : "false");
+    return true;
+}
+
+bool PoolLogicModule::cmdAutoModeSet_(const CommandRequest& req, char* reply, size_t replyLen)
+{
+    if (!cfgStore_) {
+        writeCmdError_(reply, replyLen, "poollogic.auto_mode.set", ErrorCode::NotReady);
+        return false;
+    }
+
+    JsonObjectConst args;
+    if (!parseCmdArgsObject_(req, args)) {
+        writeCmdError_(reply, replyLen, "poollogic.auto_mode.set", ErrorCode::MissingArgs);
+        return false;
+    }
+    if (!args.containsKey("value")) {
+        writeCmdError_(reply, replyLen, "poollogic.auto_mode.set", ErrorCode::MissingValue);
+        return false;
+    }
+
+    bool requested = false;
+    if (!parseBoolValue_(args["value"], requested)) {
+        writeCmdError_(reply, replyLen, "poollogic.auto_mode.set", ErrorCode::MissingValue);
+        return false;
+    }
+
+    (void)cfgStore_->set(autoModeVar_, requested);
+    autoMode_ = requested;
+
+    snprintf(reply, replyLen, "{\"ok\":true,\"auto_mode\":%s}", requested ? "true" : "false");
+    return true;
 }
 
 void PoolLogicModule::loop()
@@ -419,16 +597,21 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     windowActive = filtrationWindowActive_;
     portEXIT_CRITICAL(&pendingMux_);
 
-    bool filtrationDesired = false;
-    if (filtrationFsm_.on && haveAirTemp && airTemp <= freezeHoldTempC_) {
-        // Freeze hold: once running, never stop under freeze-hold threshold.
-        filtrationDesired = true;
-    } else if (psiError_) {
-        filtrationDesired = false;
+    bool filtrationDesired = filtrationFsm_.on;
+    if (!autoMode_) {
+        // Legacy-like manual mode: when auto_mode is off, keep filtration fully manual.
+        filtrationDesired = filtrationFsm_.on;
     } else {
-        const bool scheduleDemand = autoMode_ && windowActive;
-        const bool winterDemand = winterMode_ && haveAirTemp && (airTemp < winterStartTempC_);
-        filtrationDesired = (scheduleDemand || winterDemand);
+        if (filtrationFsm_.on && haveAirTemp && airTemp <= freezeHoldTempC_) {
+            // Freeze hold: once running, never stop under freeze-hold threshold.
+            filtrationDesired = true;
+        } else if (psiError_) {
+            filtrationDesired = false;
+        } else {
+            const bool scheduleDemand = windowActive;
+            const bool winterDemand = winterMode_ && haveAirTemp && (airTemp < winterStartTempC_);
+            filtrationDesired = (scheduleDemand || winterDemand);
+        }
     }
 
     bool robotDesired = false;

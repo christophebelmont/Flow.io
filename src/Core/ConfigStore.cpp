@@ -5,10 +5,14 @@
 #include "Core/ConfigStore.h"
 #include "Core/NvsKeys.h"
 #include "Core/Log.h"
+#include "Core/SnprintfCheck.h"
 #include <ArduinoJson.h>
 #include <stdio.h>
 
 #define LOG_TAG_CORE "CfgStore"
+#undef snprintf
+#define snprintf(OUT, LEN, FMT, ...) \
+    FLOW_SNPRINTF_CHECKED(LOG_TAG_CORE, OUT, LEN, FMT, ##__VA_ARGS__)
 
 static bool strEquals(const char* a, const char* b) {
     if (!a || !b) return false;

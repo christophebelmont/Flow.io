@@ -15,6 +15,7 @@ constexpr DataKey DATAKEY_MQTT_READY = DataKeys::MqttReady;
 constexpr DataKey DATAKEY_MQTT_RX_DROP = DataKeys::MqttRxDrop;
 constexpr DataKey DATAKEY_MQTT_PARSE_FAIL = DataKeys::MqttParseFail;
 constexpr DataKey DATAKEY_MQTT_HANDLER_FAIL = DataKeys::MqttHandlerFail;
+constexpr DataKey DATAKEY_MQTT_OVERSIZE_DROP = DataKeys::MqttOversizeDrop;
 
 static inline bool mqttReady(const DataStore& ds)
 {
@@ -34,6 +35,11 @@ static inline uint32_t mqttParseFail(const DataStore& ds)
 static inline uint32_t mqttHandlerFail(const DataStore& ds)
 {
     return ds.data().mqtt.handlerFail;
+}
+
+static inline uint32_t mqttOversizeDrop(const DataStore& ds)
+{
+    return ds.data().mqtt.oversizeDrop;
 }
 
 static inline void setMqttReady(DataStore& ds, bool ready)
@@ -66,4 +72,12 @@ static inline void setMqttHandlerFail(DataStore& ds, uint32_t v, bool notify = f
     if (rt.mqtt.handlerFail == v) return;
     rt.mqtt.handlerFail = v;
     if (notify) ds.notifyChanged(DATAKEY_MQTT_HANDLER_FAIL, DIRTY_MQTT);
+}
+
+static inline void setMqttOversizeDrop(DataStore& ds, uint32_t v, bool notify = false)
+{
+    RuntimeData& rt = ds.dataMutable();
+    if (rt.mqtt.oversizeDrop == v) return;
+    rt.mqtt.oversizeDrop = v;
+    if (notify) ds.notifyChanged(DATAKEY_MQTT_OVERSIZE_DROP, DIRTY_MQTT);
 }

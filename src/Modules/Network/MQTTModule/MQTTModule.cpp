@@ -4,11 +4,13 @@
  */
 #include "MQTTModule.h"
 #include "Core/Runtime.h"
+#include "Core/MqttTopics.h"
 #include "Core/SystemLimits.h"
 #include "Core/SystemStats.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <initializer_list>
 #include "Core/EventBus/EventPayloads.h"
 #define LOG_TAG "MqttModu"
 #include "Core/ModuleLog.h"
@@ -28,6 +30,34 @@ static uint32_t jitterMs(uint32_t baseMs, uint8_t pct) {
     int32_t out = (int32_t)baseMs + signedDelta;
     if (out < 0) out = 0;
     return (uint32_t)out;
+}
+
+static bool isAnyOf(const char* key, std::initializer_list<const char*> keys)
+{
+    if (!key || key[0] == '\0') return false;
+    for (const char* candidate : keys) {
+        if (candidate && strcmp(key, candidate) == 0) return true;
+    }
+    return false;
+}
+
+static bool isMqttConnKey(const char* key)
+{
+    return isAnyOf(key, {
+        NvsKeys::Mqtt::BaseTopic,
+        NvsKeys::Mqtt::Host,
+        NvsKeys::Mqtt::Port,
+        NvsKeys::Mqtt::User,
+        NvsKeys::Mqtt::Pass
+    });
+}
+
+static bool isTimeSchedKey(const char* key)
+{
+    return isAnyOf(key, {
+        NvsKeys::Time::ScheduleBlob,
+        NvsKeys::Time::WeekStartMonday
+    });
 }
 
 bool MQTTModule::svcPublish(void* ctx, const char* topic, const char* payload, int qos, bool retain)
@@ -64,11 +94,11 @@ static void makeDeviceId(char* out, size_t len) {
 }
 
 void MQTTModule::buildTopics() {
-    snprintf(topicCmd, sizeof(topicCmd), "%s/%s/cmd", cfgData.baseTopic, deviceId);
-    snprintf(topicAck, sizeof(topicAck), "%s/%s/ack", cfgData.baseTopic, deviceId);
-    snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status", cfgData.baseTopic, deviceId);
-    snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/cfg/set", cfgData.baseTopic, deviceId);
-    snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/cfg/ack", cfgData.baseTopic, deviceId);
+    snprintf(topicCmd, sizeof(topicCmd), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCmd);
+    snprintf(topicAck, sizeof(topicAck), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixAck);
+    snprintf(topicStatus, sizeof(topicStatus), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixStatus);
+    snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgSet);
+    snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgAck);
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
                  "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
@@ -112,24 +142,27 @@ void MQTTModule::onDisconnect(AsyncMqttClientDisconnectReason) {
 void MQTTModule::onMessage(char* topic, char* payload, AsyncMqttClientMessageProperties,
                            size_t len, size_t, size_t total) {
     if (!rxQ) return;
+    if (!topic || !payload) {
+        countRxDrop_();
+        return;
+    }
     if (len != total) {
         countRxDrop_();
         return;
     }
 
-    RxMsg m{};
-    size_t topicLen = strlen(topic);
-    if (topicLen >= sizeof(m.topic)) {
-        countRxDrop_();
+    const size_t topicCap = sizeof(RxMsg{}.topic);
+    const size_t payloadCap = sizeof(RxMsg{}.payload);
+    size_t topicLen = topic ? strlen(topic) : 0U;
+    if (topicLen >= topicCap || len >= payloadCap) {
+        countOversizeDrop_();
         return;
     }
+
+    RxMsg m{};
     memcpy(m.topic, topic, topicLen);
     m.topic[topicLen] = '\0';
 
-    if (len >= sizeof(m.payload)) {
-        countRxDrop_();
-        return;
-    }
     memcpy(m.payload, payload, len);
     size_t copyLen = len;
     m.payload[copyLen] = '\0';
@@ -303,6 +336,7 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
     doc.clear();
     DeserializationError err = deserializeJson(doc, msg.payload);
     if (err || !doc.is<JsonObjectConst>()) {
+        LOGW("processRxCmd: bad cmd json (topic=%s, payload=%s)", msg.topic, msg.payload);
         publishRxError_(topicAck, ErrorCode::BadCmdJson, "cmd", true);
         return;
     }
@@ -310,15 +344,18 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
     JsonObjectConst root = doc.as<JsonObjectConst>();
     JsonVariantConst cmdVar = root["cmd"];
     if (!cmdVar.is<const char*>()) {
+        LOGW("processRxCmd: missing cmd field");
         publishRxError_(topicAck, ErrorCode::MissingCmd, "cmd", true);
         return;
     }
     const char* cmdVal = cmdVar.as<const char*>();
     if (!cmdVal || cmdVal[0] == '\0') {
+        LOGW("processRxCmd: empty cmd value");
         publishRxError_(topicAck, ErrorCode::MissingCmd, "cmd", true);
         return;
     }
     if (!cmdSvc || !cmdSvc->execute) {
+        LOGW("processRxCmd: command service unavailable (cmd=%s)", cmdVal);
         publishRxError_(topicAck, ErrorCode::CmdServiceUnavailable, "cmd", false);
         return;
     }
@@ -335,6 +372,7 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
     if (!argsVar.isNull()) {
         const size_t written = serializeJson(argsVar, argsBuf, sizeof(argsBuf));
         if (written == 0 || written >= sizeof(argsBuf)) {
+            LOGW("processRxCmd: args too large (cmd=%s)", cmd);
             publishRxError_(topicAck, ErrorCode::ArgsTooLarge, "cmd", true);
             return;
         }
@@ -343,12 +381,14 @@ void MQTTModule::processRxCmd_(const RxMsg& msg)
 
     bool ok = cmdSvc->execute(cmdSvc->ctx, cmd, msg.payload, argsJson, replyBuf, sizeof(replyBuf));
     if (!ok) {
+        LOGW("processRxCmd: command handler failed (cmd=%s)", cmd);
         publishRxError_(topicAck, ErrorCode::CmdHandlerFailed, "cmd", false);
         return;
     }
 
     int wrote = snprintf(ackBuf, sizeof(ackBuf), "{\"ok\":true,\"cmd\":\"%s\",\"reply\":%s}", cmd, replyBuf);
     if (!(wrote > 0 && (size_t)wrote < sizeof(ackBuf))) {
+        LOGW("processRxCmd: ack overflow (cmd=%s, wrote=%d)", cmd, wrote);
         publishRxError_(topicAck, ErrorCode::InternalAckOverflow, "cmd", false);
         return;
     }
@@ -405,12 +445,20 @@ void MQTTModule::syncRxMetrics_()
 {
     if (!dataStore) return;
     setMqttRxDrop(*dataStore, rxDropCount_);
+    setMqttOversizeDrop(*dataStore, oversizeDropCount_);
     setMqttParseFail(*dataStore, parseFailCount_);
     setMqttHandlerFail(*dataStore, handlerFailCount_);
 }
 
 void MQTTModule::countRxDrop_()
 {
+    ++rxDropCount_;
+    syncRxMetrics_();
+}
+
+void MQTTModule::countOversizeDrop_()
+{
+    ++oversizeDropCount_;
     ++rxDropCount_;
     syncRxMetrics_();
 }
@@ -436,6 +484,7 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore = dsSvc ? dsSvc->store : nullptr;
     rxDropCount_ = 0;
+    oversizeDropCount_ = 0;
     parseFailCount_ = 0;
     handlerFailCount_ = 0;
     syncRxMetrics_();
@@ -629,18 +678,15 @@ void MQTTModule::onEvent(const Event& e)
         const char* key = p->nvsKey;
         if (!key || key[0] == '\0') return;
 
-        if (strcmp(key, "mq_base") == 0 ||
-            strcmp(key, "mq_host") == 0 ||
-            strcmp(key, "mq_port") == 0 ||
-            strcmp(key, "mq_user") == 0 ||
-            strcmp(key, "mq_pass") == 0)
-        {
+        if (isMqttConnKey(key)) {
             LOGI("MQTT config changed (%s) -> reconnect", key);
             client.disconnect();
             _netReadyTs = millis();
             setState(MQTTState::WaitingNetwork);
-        } else if (strcmp(key, "tm_sched") == 0 ||
-                   strcmp(key, "tm_wkmon") == 0) {
+        } else if (isTimeSchedKey(key)) {
+            _pendingPublish = true;
+        } else {
+            // Keep cfg/* topics in sync when config changes from command handlers.
             _pendingPublish = true;
         }
         return;

@@ -4,6 +4,7 @@
  */
 
 #include "IOModule.h"
+#include "Core/MqttTopics.h"
 #define LOG_TAG "IOModule"
 #include "Core/ModuleLog.h"
 #include "Modules/IOModule/IORuntime.h"
@@ -1416,18 +1417,40 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
             if (logical >= MAX_DIGITAL_OUTPUTS) continue;
 
             snprintf(haSwitchStateSuffix_[i], sizeof(haSwitchStateSuffix_[i]), "rt/io/output/d%u", (unsigned)logical);
-            snprintf(
-                haSwitchPayloadOn_[i],
-                sizeof(haSwitchPayloadOn_[i]),
-                "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":true}}",
-                (unsigned)b.slot
-            );
-            snprintf(
-                haSwitchPayloadOff_[i],
-                sizeof(haSwitchPayloadOff_[i]),
-                "{\\\"cmd\\\":\\\"pool.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":false}}",
-                (unsigned)b.slot
-            );
+            bool payloadOk = true;
+            if (b.slot == 0) {
+                int wrote = snprintf(
+                    haSwitchPayloadOn_[i],
+                    sizeof(haSwitchPayloadOn_[i]),
+                    "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":true}}"
+                );
+                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOn_[i]))) payloadOk = false;
+                wrote = snprintf(
+                    haSwitchPayloadOff_[i],
+                    sizeof(haSwitchPayloadOff_[i]),
+                    "{\\\"cmd\\\":\\\"poollogic.filtration.write\\\",\\\"args\\\":{\\\"value\\\":false}}"
+                );
+                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOff_[i]))) payloadOk = false;
+            } else {
+                int wrote = snprintf(
+                    haSwitchPayloadOn_[i],
+                    sizeof(haSwitchPayloadOn_[i]),
+                    "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":true}}",
+                    (unsigned)b.slot
+                );
+                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOn_[i]))) payloadOk = false;
+                wrote = snprintf(
+                    haSwitchPayloadOff_[i],
+                    sizeof(haSwitchPayloadOff_[i]),
+                    "{\\\"cmd\\\":\\\"pooldevice.write\\\",\\\"args\\\":{\\\"slot\\\":%u,\\\"value\\\":false}}",
+                    (unsigned)b.slot
+                );
+                if (!(wrote > 0 && wrote < (int)sizeof(haSwitchPayloadOff_[i]))) payloadOk = false;
+            }
+            if (!payloadOk) {
+                LOGW("HA switch command payload truncated slot=%u", (unsigned)b.slot);
+                continue;
+            }
 
             const HASwitchEntry sw{
                 "io",
@@ -1435,10 +1458,11 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 b.name,
                 haSwitchStateSuffix_[i],
                 "{% if value_json.value %}ON{% else %}OFF{% endif %}",
-                "cmd",
+                MqttTopics::SuffixCmd,
                 haSwitchPayloadOn_[i],
                 haSwitchPayloadOff_[i],
-                b.haIcon
+                b.haIcon,
+                nullptr
             };
             (void)haSvc_->addSwitch(haSvc_->ctx, &sw);
         }

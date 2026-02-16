@@ -39,6 +39,7 @@ struct HASwitchEntry {
     const char* payloadOn;
     const char* payloadOff;
     const char* icon;
+    const char* entityCategory;
 };
 
 /** @brief Static Home Assistant number discovery registration. */

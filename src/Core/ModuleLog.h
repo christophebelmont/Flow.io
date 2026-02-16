@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Core/Log.h"
+#include "Core/SnprintfCheck.h"
 
 // Ensure a default tag if not defined by the module.
 #ifndef LOG_TAG
@@ -20,3 +21,10 @@
 #define LOGI(...) ::Log::info(LOG_TAG, __VA_ARGS__)
 #define LOGW(...) ::Log::warn(LOG_TAG, __VA_ARGS__)
 #define LOGE(...) ::Log::error(LOG_TAG, __VA_ARGS__)
+
+#ifndef FLOW_SNPRINTF_WRAP_ACTIVE
+#define FLOW_SNPRINTF_WRAP_ACTIVE 1
+#undef snprintf
+#define snprintf(OUT, LEN, FMT, ...) \
+    FLOW_SNPRINTF_CHECKED(LOG_TAG, OUT, LEN, FMT, ##__VA_ARGS__)
+#endif

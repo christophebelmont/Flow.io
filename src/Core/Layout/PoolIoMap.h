@@ -8,7 +8,7 @@
 #include "Core/Services/IIO.h"
 
 struct PoolIoBinding {
-    /** Stable pool-device slot used by PoolDeviceService/pool.write. */
+    /** Stable pool-device slot used by PoolDeviceService/pooldevice.write. */
     uint8_t slot = 0;
     /** IOServiceV2 digital output id bound to this slot. */
     IoId ioId = IO_ID_INVALID;

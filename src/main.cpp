@@ -45,6 +45,7 @@
 #include "Core/Layout/PoolSensorMap.h"
 #include "Modules/IOModule/IORuntime.h"
 #include "Core/SystemStats.h"
+#include "Core/SnprintfCheck.h"
 #include "Board/BoardLayout.h"
 #include "Board/BoardPinMap.h"
 #include "Core/SystemLimits.h"
@@ -52,6 +53,9 @@
 #include <WiFi.h>
 #include <esp_system.h>
 #include <string.h>
+#undef snprintf
+#define snprintf(OUT, LEN, FMT, ...) \
+    FLOW_SNPRINTF_CHECKED("Main", OUT, LEN, FMT, ##__VA_ARGS__)
 
 /// Only necessary services (global)
 #include "Core/Services/iLogger.h"
@@ -267,17 +271,19 @@ static bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len) {
     const uint32_t rxDrop = ds ? mqttRxDrop(*ds) : 0U;
     const uint32_t parseFail = ds ? mqttParseFail(*ds) : 0U;
     const uint32_t handlerFail = ds ? mqttHandlerFail(*ds) : 0U;
+    const uint32_t oversizeDrop = ds ? mqttOversizeDrop(*ds) : 0U;
 
     int wrote = snprintf(
         out, len,
         "{\"upt_ms\":%lu,\"heap\":{\"free\":%lu,\"min\":%lu,\"largest\":%lu,\"frag\":%u},"
-        "\"mqtt_rx\":{\"rx_drop\":%lu,\"parse_fail\":%lu,\"handler_fail\":%lu},\"ts\":%lu}",
+        "\"mqtt_rx\":{\"rx_drop\":%lu,\"oversize_drop\":%lu,\"parse_fail\":%lu,\"handler_fail\":%lu},\"ts\":%lu}",
         (unsigned long)snap.uptimeMs,
         (unsigned long)snap.heap.freeBytes,
         (unsigned long)snap.heap.minFreeBytes,
         (unsigned long)snap.heap.largestFreeBlock,
         (unsigned int)snap.heap.fragPercent,
         (unsigned long)rxDrop,
+        (unsigned long)oversizeDrop,
         (unsigned long)parseFail,
         (unsigned long)handlerFail,
         (unsigned long)millis()

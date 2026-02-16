@@ -5,6 +5,7 @@
 
 #include "PoolDeviceModule.h"
 #include "Core/ErrorCodes.h"
+#include "Core/MqttTopics.h"
 #include "Core/NvsKeys.h"
 #include "Core/SystemLimits.h"
 #define LOG_TAG "PoolDevc"
@@ -354,26 +355,26 @@ bool PoolDeviceModule::handlePoolWrite_(const CommandRequest& req, char* reply, 
 {
     JsonObjectConst args;
     if (!parseCmdArgsObject_(req, args)) {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingArgs);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::MissingArgs);
         return false;
     }
 
     if (!args.containsKey("slot")) {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingSlot);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::MissingSlot);
         return false;
     }
     if (!args["slot"].is<uint8_t>()) {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::BadSlot);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::BadSlot);
         return false;
     }
     const uint8_t slot = args["slot"].as<uint8_t>();
     if (slot >= POOL_DEVICE_MAX) {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::BadSlot);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::BadSlot);
         return false;
     }
 
     if (!args.containsKey("value")) {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingValue);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::MissingValue);
         return false;
     }
 
@@ -390,7 +391,7 @@ bool PoolDeviceModule::handlePoolWrite_(const CommandRequest& req, char* reply, 
         else if (strcmp(s, "false") == 0) requested = false;
         else requested = (atoi(s) != 0);
     } else {
-        writeCmdError_(reply, replyLen, "pool.write", ErrorCode::MissingValue);
+        writeCmdError_(reply, replyLen, "pooldevice.write", ErrorCode::MissingValue);
         return false;
     }
 
@@ -402,7 +403,7 @@ bool PoolDeviceModule::handlePoolWrite_(const CommandRequest& req, char* reply, 
         else if (st == POOLDEV_SVC_ERR_DISABLED) code = ErrorCode::Disabled;
         else if (st == POOLDEV_SVC_ERR_INTERLOCK) code = ErrorCode::InterlockBlocked;
         else if (st == POOLDEV_SVC_ERR_IO) code = ErrorCode::IoError;
-        writeCmdErrorSlot_(reply, replyLen, "pool.write", code, slot);
+        writeCmdErrorSlot_(reply, replyLen, "pooldevice.write", code, slot);
         return false;
     }
 
@@ -822,7 +823,8 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     }
 
     if (cmdSvc_ && cmdSvc_->registerHandler) {
-        cmdSvc_->registerHandler(cmdSvc_->ctx, "pool.write", cmdPoolWrite_, this);
+        cmdSvc_->registerHandler(cmdSvc_->ctx, "pooldevice.write", cmdPoolWrite_, this);
+        cmdSvc_->registerHandler(cmdSvc_->ctx, "pool.write", cmdPoolWrite_, this); // backward compatibility
         cmdSvc_->registerHandler(cmdSvc_->ctx, "pool.refill", cmdPoolRefill_, this);
     }
     if (haSvc_ && haSvc_->addNumber) {
@@ -830,7 +832,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
             const HANumberEntry n0{
                 "pooldev", "pd0_flow_l_h", "Filtration Pump Flowrate",
                 "cfg/pdm/pd0", "{{ value_json.flow_l_h }}",
-                "cfg/set", "{\\\"pdm/pd0\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd0\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
                 0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n0);
@@ -839,7 +841,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
             const HANumberEntry n1{
                 "pooldev", "pd1_flow_l_h", "pH Pump Flowrate",
                 "cfg/pdm/pd1", "{{ value_json.flow_l_h }}",
-                "cfg/set", "{\\\"pdm/pd1\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd1\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
                 0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n1);
@@ -848,7 +850,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
             const HANumberEntry n2{
                 "pooldev", "pd2_flow_l_h", "Chlorine Pump Flowrate",
                 "cfg/pdm/pd2", "{{ value_json.flow_l_h }}",
-                "cfg/set", "{\\\"pdm/pd2\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd2\\\":{\\\"flow_l_h\\\":{{ value | float(0) }}}}",
                 0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n2);

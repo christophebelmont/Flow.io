@@ -5,6 +5,7 @@
 
 #include "HAModule.h"
 #include "Modules/Network/HAModule/HARuntime.h"
+#include "Core/MqttTopics.h"
 #include <esp_system.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -24,7 +25,7 @@ static void buildAvailabilityField(const MqttService* mqttSvc, char* out, size_t
     if (!mqttSvc || !mqttSvc->formatTopic) return;
 
     char availabilityTopic[192] = {0};
-    mqttSvc->formatTopic(mqttSvc->ctx, "status", availabilityTopic, sizeof(availabilityTopic));
+    mqttSvc->formatTopic(mqttSvc->ctx, MqttTopics::SuffixStatus, availabilityTopic, sizeof(availabilityTopic));
     if (availabilityTopic[0] == '\0') return;
 
     snprintf(
@@ -344,7 +345,8 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
                              const char* stateTopic, const char* valueTemplate,
                              const char* commandTopic,
                              const char* payloadOn, const char* payloadOff,
-                             const char* icon)
+                             const char* icon,
+                             const char* entityCategory)
 {
     if (!objectId || !name || !stateTopic || !valueTemplate || !commandTopic || !payloadOn || !payloadOff) return false;
     char defaultEntityId[224] = {0};
@@ -353,19 +355,23 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
     if (!buildUniqueId(objectId, name, uniqueId, sizeof(uniqueId))) return false;
     char availabilityField[384] = {0};
     buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField));
+    char entityCategoryField[64] = {0};
+    if (entityCategory && entityCategory[0] != '\0') {
+        snprintf(entityCategoryField, sizeof(entityCategoryField), ",\"entity_category\":\"%s\"", entityCategory);
+    }
 
     if (icon && icon[0] != '\0') {
         if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"state_on\":\"ON\",\"state_off\":\"OFF\","
                  "\"command_topic\":\"%s\",\"payload_on\":\"%s\",\"payload_off\":\"%s\","
-                 "\"icon\":\"%s\"%s,"
+                 "\"icon\":\"%s\"%s%s,"
                  "\"origin\":{\"name\":\"Flow.IO\"},"
                  "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"%s\","
                  "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
                  commandTopic, payloadOn, payloadOff, icon,
-                 availabilityField,
+                 entityCategoryField, availabilityField,
                  deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
             LOGW("HA switch payload truncated object=%s", objectId);
             return false;
@@ -374,12 +380,12 @@ bool HAModule::publishSwitch(const char* objectId, const char* name,
         if (!formatChecked(payloadBuf, sizeof(payloadBuf),
                  "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
                  "\"value_template\":\"%s\",\"state_on\":\"ON\",\"state_off\":\"OFF\","
-                 "\"command_topic\":\"%s\",\"payload_on\":\"%s\",\"payload_off\":\"%s\"%s,"
+                 "\"command_topic\":\"%s\",\"payload_on\":\"%s\",\"payload_off\":\"%s\"%s%s,"
                  "\"origin\":{\"name\":\"Flow.IO\"},"
                  "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"%s\","
                  "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
                  name, objectId, defaultEntityId, uniqueId, stateTopic, valueTemplate,
-                 commandTopic, payloadOn, payloadOff, availabilityField,
+                 commandTopic, payloadOn, payloadOff, entityCategoryField, availabilityField,
                  deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
             LOGW("HA switch payload truncated object=%s", objectId);
             return false;
@@ -487,7 +493,7 @@ bool HAModule::publishRegisteredEntities()
         mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
         mqttSvc->formatTopic(mqttSvc->ctx, e.commandTopicSuffix, commandTopicBuf, sizeof(commandTopicBuf));
         if (!publishSwitch(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate,
-                           commandTopicBuf, e.payloadOn, e.payloadOff, e.icon)) {
+                           commandTopicBuf, e.payloadOn, e.payloadOff, e.icon, e.entityCategory)) {
             okAll = false;
         }
     }

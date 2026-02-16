@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "Core/Log.h"
 
 enum class ErrorCode : uint16_t {
     UnknownCmd = 0,
@@ -125,7 +126,12 @@ static inline bool writeErrorJson(char* out, size_t outLen, ErrorCode code, cons
         w,
         errorCodeRetryable(code) ? "true" : "false"
     );
-    return (wrote > 0) && ((size_t)wrote < outLen);
+    const bool ok = (wrote > 0) && ((size_t)wrote < outLen);
+    if (!ok) {
+        Log::warn("ErrCodes", "writeErrorJson truncated (len=%u wrote=%d where=%s)",
+                  (unsigned)outLen, wrote, w);
+    }
+    return ok;
 }
 
 static inline bool writeErrorJsonWithSlot(char* out, size_t outLen, ErrorCode code, const char* where, uint8_t slot)
@@ -141,5 +147,10 @@ static inline bool writeErrorJsonWithSlot(char* out, size_t outLen, ErrorCode co
         w,
         errorCodeRetryable(code) ? "true" : "false"
     );
-    return (wrote > 0) && ((size_t)wrote < outLen);
+    const bool ok = (wrote > 0) && ((size_t)wrote < outLen);
+    if (!ok) {
+        Log::warn("ErrCodes", "writeErrorJsonWithSlot truncated (len=%u wrote=%d where=%s slot=%u)",
+                  (unsigned)outLen, wrote, w, (unsigned)slot);
+    }
+    return ok;
 }

@@ -4,6 +4,11 @@
  */
 #include "LogSerialSinkModule.h"
 #include <Arduino.h>
+#include "Core/SnprintfCheck.h"
+
+#undef snprintf
+#define snprintf(OUT, LEN, FMT, ...) \
+    FLOW_SNPRINTF_CHECKED("LogSerial", OUT, LEN, FMT, ##__VA_ARGS__)
 
 struct SerialSinkCtx {
     ServiceRegistry* services = nullptr;

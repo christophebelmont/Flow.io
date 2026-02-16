@@ -54,5 +54,7 @@ constexpr uint32_t MqttLoopDelayMs = 50;
 constexpr uint8_t MaxRuntimeRoutes = 32;
 /** @brief Default momentary digital output pulse duration in ms (`IOModule`). */
 constexpr uint16_t MomentaryPulseMs = 500;
+/** @brief HA command payload buffer length for IO output switches (`IOModule::haSwitchPayloadOn_/Off_`). */
+constexpr size_t IoHaSwitchPayloadBuf = 128;
 
 }  // namespace Limits

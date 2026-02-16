@@ -6,6 +6,7 @@
 
 #include "Core/Module.h"
 #include "Core/NvsKeys.h"
+#include "Core/SystemLimits.h"
 #include "Core/Layout/PoolIoMap.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/Services/Services.h"
@@ -319,8 +320,8 @@ private:
     bool haPrecisionLastInit_ = false;
     char haValueTpl_[ANALOG_CFG_SLOTS][64]{};
     char haSwitchStateSuffix_[FLOW_POOL_IO_BINDING_COUNT][24]{};
-    char haSwitchPayloadOn_[FLOW_POOL_IO_BINDING_COUNT][64]{};
-    char haSwitchPayloadOff_[FLOW_POOL_IO_BINDING_COUNT][64]{};
+    char haSwitchPayloadOn_[FLOW_POOL_IO_BINDING_COUNT][Limits::IoHaSwitchPayloadBuf]{};
+    char haSwitchPayloadOff_[FLOW_POOL_IO_BINDING_COUNT][Limits::IoHaSwitchPayloadBuf]{};
 
     ConfigVariable<bool,0> enabledVar_ { NVS_KEY(NvsKeys::Io::IO_EN),"enabled","io",ConfigType::Bool,&cfgData_.enabled,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> i2cSdaVar_ { NVS_KEY(NvsKeys::Io::IO_SDA),"i2c_sda","io",ConfigType::Int32,&cfgData_.i2cSda,ConfigPersistence::Persistent,0 };

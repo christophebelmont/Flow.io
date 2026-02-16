@@ -20,13 +20,15 @@ public:
     const char* moduleId() const override { return "poollogic"; }
     const char* taskName() const override { return "poollogic"; }
 
-    uint8_t dependencyCount() const override { return 5; }
+    uint8_t dependencyCount() const override { return 7; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "eventbus";
         if (i == 2) return "time";
         if (i == 3) return "io";
         if (i == 4) return "pooldev";
+        if (i == 5) return "ha";
+        if (i == 6) return "cmd";
         return nullptr;
     }
 
@@ -122,6 +124,8 @@ private:
     const TimeSchedulerService* schedSvc_ = nullptr;
     const IOServiceV2* ioSvc_ = nullptr;
     const PoolDeviceService* poolSvc_ = nullptr;
+    const HAService* haSvc_ = nullptr;
+    const CommandService* cmdSvc_ = nullptr;
     const LogHubService* logHub_ = nullptr;
 
     ConfigVariable<bool,0> enabledVar_{NVS_KEY(NvsKeys::PoolLogic::Enabled), "enabled", "poollogic", ConfigType::Bool,
@@ -197,6 +201,10 @@ private:
 
     static void onEventStatic_(const Event& e, void* user);
     void onEvent_(const Event& e);
+    static bool cmdFiltrationWriteStatic_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
+    static bool cmdAutoModeSetStatic_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
+    bool cmdFiltrationWrite_(const CommandRequest& req, char* reply, size_t replyLen);
+    bool cmdAutoModeSet_(const CommandRequest& req, char* reply, size_t replyLen);
 
     void ensureDailySlot_();
     bool computeFiltrationWindow_(float waterTemp, uint8_t& startHourOut, uint8_t& stopHourOut, uint8_t& durationOut);

@@ -17,7 +17,7 @@ struct MQTTConfig {
     int32_t port = 1883;
     char user[32] = "";
     char pass[32] = "";
-    char baseTopic[64] = "flowio";
+    char baseTopic[64] = "flowio"; // Default value
     uint32_t sensorMinPublishMs = 10000;
     // reserved for future runtime publisher config
 };
@@ -188,10 +188,12 @@ private:
     uint32_t rxDropCount_ = 0;
     uint32_t parseFailCount_ = 0;
     uint32_t handlerFailCount_ = 0;
+    uint32_t oversizeDropCount_ = 0;
 
     void processRxCmd_(const RxMsg& msg);
     void processRxCfgSet_(const RxMsg& msg);
     void publishRxError_(const char* ackTopic, ErrorCode code, const char* where, bool parseFailure);
     void syncRxMetrics_();
     void countRxDrop_();
+    void countOversizeDrop_();
 };

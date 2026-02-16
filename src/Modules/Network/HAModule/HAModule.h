@@ -130,7 +130,8 @@ private:
                        const char* stateTopic, const char* valueTemplate,
                        const char* commandTopic,
                        const char* payloadOn, const char* payloadOff,
-                       const char* icon = nullptr);
+                       const char* icon = nullptr,
+                       const char* entityCategory = nullptr);
     bool publishNumber(const char* objectId, const char* name,
                        const char* stateTopic, const char* valueTemplate,
                        const char* commandTopic, const char* commandTemplate,
