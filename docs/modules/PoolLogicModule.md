@@ -1,30 +1,52 @@
-# PoolLogicModule
 
-## Summary
+# PoolLogicModule – API Reference
 
-**Module ID:** `poollogic`  
-**Type:** Active (FreeRTOS task)  
-**Declared dependencies:** `loghub`, `datastore`, `eventbus`, `time.scheduler`, `pooldev`, `io`  
-**Consumes services:** `datastore`, `eventbus`, `time.scheduler`, `pooldev`, `io`, `loghub`  
+## Services
 
-## Configuration
+### Exposed
+- None
 
-ConfigStore keys:
+### Consumed
+- TimeSchedulerService, IOService, PoolDeviceService, DataStoreService
 
-- `NvsKeys::PoolLogic::*`
+---
 
-## Purpose
+## Config Keys (NvsKeys)
 
-PoolLogicModule implements the automation policies for filtration, electrolysis, robot, and filling.
+- PoolLogic::* (thresholds, delays, slot ids)
 
-Example: react to scheduler start edge:
+---
+
+## DataKeys
+
+- PoolFiltrationActive
+- PoolElectroActive
+- PoolPsiError
+- PoolMode
+
+---
+
+## EventBus
+
+### Subscribed
+- SchedulerEventTriggered
+- DataChanged
+- ConfigChanged
+
+### Emitted
+- None (writes intents via services)
+
+---
+
+## SystemLimits
+
+- Domain thresholds
+- Delay timers
+
+---
+
+## Code Example
 
 ```cpp
-if (payload.edge == (uint8_t)SchedulerEdge::Start && payload.slot == cfgData_.filtrationSlot) {
-  filtrationWindowActive_ = true;
-}
+// Example usage snippet
 ```
-
-## Quality Gate Score
-
-See `docs/README.md` for the full quality-gate table.

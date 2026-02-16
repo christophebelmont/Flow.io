@@ -1,44 +1,38 @@
-# Core Services
 
-This page describes the foundational services used by modules.
+# Core Services – API Reference
 
-## Service Registry
-
-`ServiceRegistry` acts as the dependency injection container.
-
-Typical usage:
+## ServiceRegistry
 
 ```cpp
-void MyModule::init(ConfigStore& cfg, ServiceRegistry& services) {
-  auto log = services.get<LogHubService>("loghub");
-  auto bus = services.get<EventBusService>("eventbus");
-}
+services.add("serviceId", &serviceStruct);
+auto svc = services.get<ServiceType>("serviceId");
 ```
 
-Services are small C-style structs (function pointers + context pointer) defined under `include/Core/Services/` and aggregated in `Core/Services/Services.h`.
-
-## Module base classes
-
-### Active modules (`Module`)
-
-`Module` owns a FreeRTOS task. It repeatedly calls `loop()` and enforces a short delay:
+## DataStoreService
 
 ```cpp
-while (true) {
-  self->loop();
-  vTaskDelay(pdMS_TO_TICKS(10));
-}
+RuntimeData& dataMutable();
+void notifyChanged(DataKey key, DirtyFlags flags);
 ```
 
-### Passive modules (`ModulePassive`)
+## ConfigStoreService
 
-`ModulePassive` provides initialization only and does not create a task.
+```cpp
+bool applyJson(const char* json, char* errBuf, size_t errLen);
+void registerVar(ConfigVariableBase* var);
+```
 
-## Core building blocks
+## EventBusService
 
-- **EventBus**: bounded internal event dispatch
-- **DataStore**: runtime data model and notifications
-- **ConfigStore**: typed configuration registry and NVS persistence
-- **LogHub + sinks**: structured logging pipeline
-- **ErrorCodes**: common error code enum + JSON encoding helper
-- **SystemLimits**: shared compile-time constraints
+```cpp
+void publish(EventType type, const void* payload, size_t size);
+void subscribe(EventType type, Callback cb, void* ctx);
+```
+
+## LogHubService
+
+```cpp
+LOGI("message");
+LOGW("warning");
+LOGE("error");
+```
