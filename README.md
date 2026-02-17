@@ -6,7 +6,7 @@ Flow.IO est une plateforme de pilotage piscine connectée orientée fiabilité: 
 
 ## Pourquoi Flow.IO
 
-Une piscine est un système physico-chimique vivant. Sans orchestration continue, on observe vite:
+Sans orchestration continue, on observe vite:
 - dérive pH / ORP
 - filtration mal dimensionnée par rapport à la température
 - surconsommation de produits et d'énergie
