@@ -31,15 +31,16 @@ Ordre d'enregistrement dans `main.cpp`:
 6. `datastore`
 7. `cmd`
 8. `alarms`
-9. `wifi`
-10. `time`
-11. `mqtt`
-12. `ha`
-13. `system`
-14. `io`
-15. `poollogic`
-16. `pooldev`
-17. `sysmon`
+9. `log.sink.alarm`
+10. `wifi`
+11. `time`
+12. `mqtt`
+13. `ha`
+14. `system`
+15. `io`
+16. `poollogic`
+17. `pooldev`
+18. `sysmon`
 
 Puis:
 1. init de tous les modules (ordre topologique)
@@ -58,6 +59,7 @@ Puis:
 - [LogHubModule](modules/LogHubModule.md)
 - [LogDispatcherModule](modules/LogDispatcherModule.md)
 - [LogSerialSinkModule](modules/LogSerialSinkModule.md)
+- [LogAlarmSinkModule](modules/LogAlarmSinkModule.md)
 - [EventBusModule](modules/EventBusModule.md)
 - [ConfigStoreModule](modules/ConfigStoreModule.md)
 - [DataStoreModule](modules/DataStoreModule.md)

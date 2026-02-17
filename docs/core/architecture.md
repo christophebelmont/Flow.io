@@ -16,6 +16,14 @@ Flow.IO suit une architecture modulaire orientée contrats:
 - `DataStore`: état runtime centralisé + `DataChanged` / `DataSnapshotAvailable`
 - `ConfigStore`: variables de config déclarées, chargement/sauvegarde NVS, JSON import/export
 
+## Chaîne de logs
+
+Pipeline logs:
+- `LogHubModule`: buffer central des entrées log
+- `LogDispatcherModule`: redistribue vers les sinks enregistrés
+- `LogSerialSinkModule`: sortie `Serial`
+- `LogAlarmSinkModule` (`log.sink.alarm`): convertit les logs `Warn/Error` en conditions d'alarme (`AlarmModule`)
+
 ## Flux principal
 
 ```mermaid
@@ -47,7 +55,7 @@ flowchart LR
 ## Runtime publisher multiplexé
 
 Dans `main.cpp`, un multiplexeur runtime:
-- enregistre les providers `IRuntimeSnapshotProvider` (`io`, `pooldev`)
+- enregistre les providers `IRuntimeSnapshotProvider` (`io`, `pooldev`, `poollogic`)
 - construit des routes `rt/io/...`, `rt/pdm/state/...`, `rt/pdm/metrics/...`
 - publie seulement les routes changées selon timestamp + dirty mask
 - publie des snapshots système supplémentaires:

@@ -31,6 +31,7 @@ Cette page donne une note de qualité par module selon 10 critères homogènes.
 | [LogHubModule](../modules/LogHubModule.md) | 88 | Conforme |
 | [LogDispatcherModule](../modules/LogDispatcherModule.md) | 85 | Conforme |
 | [LogSerialSinkModule](../modules/LogSerialSinkModule.md) | 83 | À renforcer |
+| [LogAlarmSinkModule](../modules/LogAlarmSinkModule.md) | 86 | Conforme |
 | [EventBusModule](../modules/EventBusModule.md) | 84 | À renforcer |
 | [ConfigStoreModule](../modules/ConfigStoreModule.md) | 91 | Conforme |
 | [DataStoreModule](../modules/DataStoreModule.md) | 89 | Conforme |
