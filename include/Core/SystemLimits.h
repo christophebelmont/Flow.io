@@ -45,7 +45,7 @@ constexpr uint8_t RxQueueLen = 8;
 /** @brief Maximum number of runtime publishers stored in `MQTTModule::publishers`. */
 constexpr uint8_t MaxPublishers = 8;
 /** @brief Maximum number of `cfg/<module>` blocks tracked by `MQTTModule::cfgModules/topicCfgBlocks`. */
-constexpr uint8_t CfgTopicMax = 40;
+constexpr uint8_t CfgTopicMax = 48;
 }  // namespace Capacity
 
 /** @brief MQTT default configuration values. */

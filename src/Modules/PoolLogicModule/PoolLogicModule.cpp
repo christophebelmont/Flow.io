@@ -154,7 +154,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         const HASwitchEntry autoModeSwitch{
             "poollogic",
             "pool_auto_mode",
-            "Pool Auto Mode",
+            "Pool Auto-regulation",
             "cfg/poollogic",
             "{% if value_json.auto_mode %}ON{% else %}OFF{% endif %}",
             MqttTopics::SuffixCfgSet,
@@ -175,8 +175,34 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "mdi:snowflake",
             "config"
         };
+        const HASwitchEntry phAutoModeSwitch{
+            "poollogic",
+            "pool_ph_auto_mode",
+            "pH Auto-regulation",
+            "cfg/poollogic",
+            "{% if value_json.ph_auto_mode %}ON{% else %}OFF{% endif %}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"ph_auto_mode\\\":true}}",
+            "{\\\"poollogic\\\":{\\\"ph_auto_mode\\\":false}}",
+            "mdi:beaker-check-outline",
+            "config"
+        };
+        const HASwitchEntry orpAutoModeSwitch{
+            "poollogic",
+            "pool_orp_auto_mode",
+            "Orp Auto-regulation",
+            "cfg/poollogic",
+            "{% if value_json.orp_auto_mode %}ON{% else %}OFF{% endif %}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"orp_auto_mode\\\":true}}",
+            "{\\\"poollogic\\\":{\\\"orp_auto_mode\\\":false}}",
+            "mdi:water-check-outline",
+            "config"
+        };
         (void)haSvc_->addSwitch(haSvc_->ctx, &autoModeSwitch);
         (void)haSvc_->addSwitch(haSvc_->ctx, &winterModeSwitch);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &phAutoModeSwitch);
+        (void)haSvc_->addSwitch(haSvc_->ctx, &orpAutoModeSwitch);
     }
     if (haSvc_ && haSvc_->addSensor) {
         const HASensorEntry filtrationStart{
