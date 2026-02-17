@@ -72,9 +72,75 @@ Le callback multiplex (`rt/runtime/mux`) publie directement les routes détaill�
 
 ## Débit et throttling
 
-- `sensorMinPublishMs` (config MQTT) limite la fréquence de publication des snapshots runtime.
-- Dirty flags `DIRTY_SENSORS`/`DIRTY_ACTUATORS` pilotent la publication sélective.
-- Les routes d'actionneurs peuvent être forcées pendant la fenêtre startup/reconnect pour éviter un état domotique stale.
+### Pourquoi ce mécanisme existe
+
+Le throttling n'est pas seulement une optimisation réseau.
+Il sert à:
+- réduire la charge CPU/JSON côté ESP32
+- limiter le trafic WiFi et les bursts MQTT
+- protéger le broker et le client domotique d'un flux trop fin
+- conserver une réactivité élevée sur les actionneurs (priorité sécurité/état réel)
+
+### Paramètre principal
+
+- `mqtt.sens_min_pub_ms` (`sensorMinPublishMs`)
+- défaut: `20000 ms`
+- effet: période minimale entre deux publications runtime "complètes" capteurs/actionneurs
+- cas particulier: `0` désactive la fenêtre de throttling (publish dès qu'il y a du pending)
+
+### Pipeline runtime réel
+
+1. un module runtime écrit dans `DataStore` (`setIoEndpoint*`, `setPoolDeviceRuntime*`, etc.)
+2. `DataStore::notifyChanged()` publie `DataSnapshotAvailable` avec `dirtyFlags`
+3. `MQTTModule` OR ces flags dans `sensorsPendingDirtyMask` et marque `sensorsPending=true`
+4. la boucle MQTT décide quand déclencher le callback mux runtime
+5. le callback `publishRuntimeStates()` publie route par route (`rt/io/*`, `rt/pdm/*`)
+
+### Sélection des routes (dirty mask + timestamp)
+
+Le mux runtime applique deux filtres:
+- filtre catégorie: une route n'est évaluée que si son `dirtyMask` intersecte `activeSensorsDirtyMask`
+- filtre anti-duplicate: si `ts <= lastPublishedTs` la route est ignorée
+
+Conséquence:
+- même si `DataSnapshotAvailable` transporte un masque large/cumulatif, les routes inchangées ne sont pas republiées
+
+### Priorité actionneurs pendant la fenêtre throttle
+
+Si la fenêtre `sensorMinPublishMs` est encore active:
+- et qu'il y a `DIRTY_ACTUATORS`, MQTT publie immédiatement un passage "actionneurs only"
+- les capteurs peuvent attendre la fin de fenêtre
+
+Raison:
+- éviter un état HA obsolète sur des sorties critiques (pompes, relais)
+
+### Exceptions startup/reconnect
+
+À la reconnexion MQTT:
+- `sensorsPendingDirtyMask` est forcé à `DIRTY_SENSORS | DIRTY_ACTUATORS`
+- `lastSensorsPublishMs` est remis à `0`
+- publication config `cfg/*` est volontairement différée pour laisser passer d'abord le runtime actionneurs
+
+Cas particulier supplémentaire:
+- pendant `StartupActuatorRetryMs` (`3000 ms`), les actionneurs peuvent être republiés plusieurs fois (best effort) pour recoller l'état domotique
+
+Au niveau des routes:
+- `rt/io/output/*` et `rt/pdm/state/*` ont aussi un `startupForce` (au moins une publication forcée même hors logique dirty standard)
+
+### Cas particuliers importants
+
+- le callback mux est attaché au topic `rt/runtime/mux` mais ne publie pas de payload sur ce topic; il publie directement les routes détaillées
+- si `sensorsPendingDirtyMask` ne contient aucun bit utile, MQTT réarme un masque par défaut `DIRTY_SENSORS | DIRTY_ACTUATORS` (garde-fou)
+- les publications runtime périodiques (`rt/runtime/state`, `rt/network/state`, `rt/system/state`) ne dépendent pas de `sensorMinPublishMs`
+- les alarmes (`rt/alarms/*`) suivent leur propre file pending/full-sync, indépendamment du throttling runtime capteurs/actionneurs
+- `cfg/*` suit une logique dédiée avec ramp au pas fixe (`CfgRampStepMs = 100 ms`) pour lisser la charge
+- `cfg/*` est aussi publié en incrémental via `ConfigChanged` (routing par branch)
+
+### Comportement en surcharge et limites
+
+- EventBus est non bloquant (post best effort), donc des événements peuvent être perdus si la queue est saturée
+- les `publish()` MQTT sont best effort; un échec n'arrête pas la boucle
+- la robustesse globale repose sur les nouveaux événements dirty, les retries startup/reconnect actionneurs et les snapshots périodiques de supervision
 
 ## Commandes MQTT (payload type)
 

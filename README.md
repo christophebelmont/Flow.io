@@ -1,26 +1,58 @@
 # Flow.IO
 
-Flow.IO transforme une installation piscine classique en système industriel connecté: mesure continue de la qualité d'eau, pilotage intelligent des équipements, supervision temps réel et intégration domotique.
+Flow.IO est une plateforme de pilotage piscine connectée orientée fiabilité: elle automatise la qualité d'eau, réduit les opérations manuelles, et donne une supervision claire des équipements en local comme à distance.
 
-## Pourquoi un système de gestion qualité de l'eau piscine
+![Flow.IO Ecosystem](docs/pictures/PoolMasterIntegration.png)
 
-Une piscine n'est pas seulement un volume d'eau: c'est un équilibre physico-chimique fragile qui doit rester stable dans le temps.
+## Pourquoi Flow.IO
 
-Sans pilotage structuré, les dérives sont fréquentes:
-- désinfection irrégulière (ORP/chlore)
-- pH hors plage de confort/efficacité
-- filtration sur- ou sous-dimensionnée selon la température et l'usage
+Une piscine est un système physico-chimique vivant. Sans orchestration continue, on observe vite:
+- dérive pH / ORP
+- filtration mal dimensionnée par rapport à la température
 - surconsommation de produits et d'énergie
-- usure prématurée des équipements
+- usure prématurée des pompes et actionneurs
 
-Flow.IO adresse ces points avec une approche orientée fiabilité:
-- acquisition continue des capteurs (pH, ORP, pression, températures, niveau)
-- contrôle coordonné des actionneurs (pompes, électrolyse, robot, remplissage, etc.)
-- scénarios automatiques (fenêtre de filtration, modes, interlocks)
-- télémétrie MQTT et auto-discovery Home Assistant
-- architecture modulaire robuste (services typés, EventBus, DataStore, ConfigStore/NVS)
+Flow.IO apporte un pilotage cohérent de bout en bout.
 
-Résultat: eau plus stable, exploitation plus simple, coûts mieux maîtrisés, et meilleure traçabilité opérationnelle.
+![Flow.IO Hardware](docs/pictures/PoolMasterBox_pf.jpg)
+
+## Mesure et contrôle en continu
+
+Mesures suivies en continu:
+- température d'eau et d'air
+- pression de filtration
+- pH
+- ORP
+- niveau bassin
+- métriques de fonctionnement des équipements (temps de marche, volumes injectés estimés, niveau cuves estimé)
+
+Actionneurs pilotés:
+- pompe de filtration
+- pompes péristaltiques pH / chlore liquide
+- électrolyse (SWG)
+- pompe robot
+- pompe de remplissage
+- relais auxiliaires (ex: éclairage, chauffage, équipements externes)
+
+## Automatisation utile au quotidien
+
+- calcul automatique de la fenêtre de filtration selon la température d'eau
+- priorisation sécurité/actionneurs avec interlocks de dépendance
+- gestion temporelle (jour/semaine/mois) persistante, y compris après reboot
+- modes d'exploitation (auto, manuel, hiver, protection gel)
+- supervision alarmes (pression, états critiques)
+
+## Intégration et exploitation
+
+- publication MQTT structurée (`cfg/*`, `rt/*`, `cmd`, `ack`)
+- auto-discovery Home Assistant
+- intégration possible avec Jeedom/Node-RED/InfluxDB/Grafana via MQTT
+- architecture modulaire robuste (FreeRTOS + services Core + EventBus + DataStore + ConfigStore/NVS)
+
+![Home Automation Integration](docs/pictures/Grafana%20and%20App.png)
+![Phone Interface](docs/pictures/Phone%20Interface.jpg)
+
+Résultat: une eau plus stable, une maintenance plus prévisible et une meilleure maîtrise des coûts d'exploitation.
 
 ## Documentation développeur
 

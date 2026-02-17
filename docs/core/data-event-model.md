@@ -12,6 +12,9 @@ Cette séparation évite de mélanger:
 - ce qui change en continu (`DataStore`)
 - la façon d’annoncer ces changements (`EventBus`)
 
+Référence rapide:
+- voir aussi l'[Annexe DataKeys complets](#annexe-datakeys-complets) en bas de page.
+
 ## Les “registres” à connaître
 
 Quand on parle de registres dans ce firmware, il faut distinguer les registres de routage, pas des registres CPU.
@@ -68,6 +71,10 @@ Plages réservées:
 
 Utilité:
 - décoder rapidement quel sous-système a changé sans parser un gros objet
+- garder un contrat stable entre producteurs runtime et consommateurs d’événements
+
+Référence:
+- liste exhaustive en [Annexe DataKeys complets](#annexe-datakeys-complets)
 
 ### 4) Registre d’événements (`EventId` + payloads)
 
@@ -123,6 +130,39 @@ Dans l’état actuel du code, `_dirtyFlags` est cumulatif tant que personne n�
 
 Conséquence:
 - `DataSnapshotAvailable` est un hint de type “au moins ces classes ont changé”, pas un delta strict “depuis le dernier publish MQTT”.
+
+### Focus: `DataSnapshotAvailable` en détail
+
+`DataSnapshotAvailable` n’envoie pas une clé précise, il envoie un masque de classes modifiées (`dirtyFlags`).
+
+Différence avec `DataChanged`:
+- `DataChanged`: granularité fine (une `DataKey` précise)
+- `DataSnapshotAvailable`: granularité macro (catégorie(s) de changement)
+
+Séquence réelle dans `notifyChanged()`:
+1. `_dirtyFlags |= dirtyMask`
+2. publication `DataChanged(key)`
+3. publication `DataSnapshotAvailable(dirtyFlags = _dirtyFlags courant)`
+
+Exemple:
+- changement capteur: `_dirtyFlags = DIRTY_SENSORS`
+- puis changement actionneur: `_dirtyFlags = DIRTY_SENSORS | DIRTY_ACTUATORS`
+- le second `DataSnapshotAvailable` transporte ce masque combiné
+
+À quoi ça sert:
+- éviter aux consommateurs de réagir à chaque clé unitairement
+- permettre un traitement par “famille de données” (ex: capteurs vs actionneurs)
+- faciliter le throttling côté sortie MQTT (publish sélectif par type)
+
+Cas concret Flow.IO:
+- `MQTTModule` écoute `DataSnapshotAvailable`
+- il OR le masque reçu dans `sensorsPendingDirtyMask`
+- puis le runtime mux publie uniquement les routes dont le `dirtyMask` est pertinent
+
+Limite actuelle à connaître:
+- comme `_dirtyFlags` n’est pas consommé/réinitialisé dans le flux courant, le masque est cumulatif
+- c’est volontairement un signal de “travail possiblement nécessaire”, pas une preuve que chaque route doit republier
+- le filtrage final est assuré par les timestamps des snapshots (`lastPublishedTs`) et le throttling MQTT
 
 ## EventBus: mécanique exacte
 
@@ -264,3 +304,40 @@ Il n’existe pas de journal d’événements persistant dédié.
 - `EventBus`: RAM, volatile, temps réel, potentiellement pertes sous surcharge
 - `ConfigStore`: durable (NVS), source de vérité de la configuration
 - `DataStore`: RAM, état courant partagé, non durable
+
+## Annexe DataKeys complets
+
+Source: `include/Core/DataKeys.h`.
+
+### Clés unitaires
+
+- `1` `DataKeys::WifiReady`
+- `2` `DataKeys::WifiIp`
+- `3` `DataKeys::TimeReady`
+- `4` `DataKeys::MqttReady`
+- `5` `DataKeys::MqttRxDrop`
+- `6` `DataKeys::MqttParseFail`
+- `7` `DataKeys::MqttHandlerFail`
+- `8` `DataKeys::MqttOversizeDrop`
+- `10` `DataKeys::HaPublished`
+- `11` `DataKeys::HaVendor`
+- `12` `DataKeys::HaDeviceId`
+
+### Bornes et plages réservées
+
+- `DataKeys::IoBase = 40`
+- `DataKeys::IoReservedCount = 24`
+- `DataKeys::IoEndExclusive = 64`
+- `DataKeys::PoolDeviceStateBase = 80`
+- `DataKeys::PoolDeviceStateReservedCount = 8`
+- `DataKeys::PoolDeviceStateEndExclusive = 88`
+- `DataKeys::PoolDeviceMetricsBase = 88`
+- `DataKeys::PoolDeviceMetricsReservedCount = 8`
+- `DataKeys::PoolDeviceMetricsEndExclusive = 96`
+- `DataKeys::ReservedMax = 127`
+
+### Mapping explicite des plages
+
+- `40..63`: IO runtime (`DataKeys::IoBase + idx`, `idx=0..23`)
+- `80..87`: pool-device state (`DataKeys::PoolDeviceStateBase + slot`, `slot=0..7`)
+- `88..95`: pool-device metrics (`DataKeys::PoolDeviceMetricsBase + slot`, `slot=0..7`)
