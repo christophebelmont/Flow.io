@@ -1250,7 +1250,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (haSvc_ && haSvc_->addSensor) {
         if (slots_[POOL_IO_SLOT_CHLORINE_PUMP].used) {
             const HASensorEntry s0{
-                "pooldev", "chlorine_pump_uptime_s", "Chlorine Pump uptime",
+                "pooldev", "chlorine_pump_uptime_s", "Pump uptime Chlorine",
                 "rt/pdm/metrics/pd2", "{{ value_json.running.day_s | int(0) }}",
                 nullptr, "mdi:timer-outline", "s"
             };
@@ -1258,7 +1258,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_PH_PUMP].used) {
             const HASensorEntry s1{
-                "pooldev", "ph_pump_uptime_s", "pH Pump uptime",
+                "pooldev", "ph_pump_uptime_s", "Pump uptime pH",
                 "rt/pdm/metrics/pd1", "{{ value_json.running.day_s | int(0) }}",
                 nullptr, "mdi:timer-outline", "s"
             };
@@ -1266,7 +1266,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_FILL_PUMP].used) {
             const HASensorEntry s2{
-                "pooldev", "fill_pump_uptime_mn", "Fill Pump uptime",
+                "pooldev", "fill_pump_uptime_mn", "Pump uptime Fill",
                 "rt/pdm/metrics/pd4", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };
@@ -1274,7 +1274,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_FILTRATION_PUMP].used) {
             const HASensorEntry s3{
-                "pooldev", "filtration_uptime_mn", "Filtration uptime",
+                "pooldev", "filtration_uptime_mn", "Pump uptime Filtration",
                 "rt/pdm/metrics/pd0", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };
@@ -1282,7 +1282,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         }
         if (slots_[POOL_IO_SLOT_CHLORINE_GENERATOR].used) {
             const HASensorEntry s4{
-                "pooldev", "chlorine_generator_uptime_mn", "Chlorine Generator uptime",
+                "pooldev", "chlorine_generator_uptime_mn", "Pump uptime Chlorine Generator",
                 "rt/pdm/metrics/pd5", "{{ ((value_json.running.day_s | float(0)) / 60) | round(0) | int(0) }}",
                 nullptr, "mdi:timer-outline", "mn"
             };
