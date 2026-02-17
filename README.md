@@ -1,74 +1,38 @@
-# Flow.IO - Pool Monitoring and Control on ESP32
+# Flow.IO
 
-Flow.IO is an ESP32 firmware designed to operate a pool with reliable, production-oriented control: continuous sensor acquisition (pH, ORP, pressure, temperatures), equipment control (pumps, chlorinator, lighting, heater, filling), runtime supervision, and metrics publishing to MQTT/Home Assistant. The product goal is straightforward: turn a pool installation into a connected, controllable, and observable real-time system with a robust, extensible architecture.
+Flow.IO transforme une installation piscine classique en système industriel connecté: mesure continue de la qualité d'eau, pilotage intelligent des équipements, supervision temps réel et intégration domotique.
 
-## Fully Modular ESP32 Architecture
+## Pourquoi un système de gestion qualité de l'eau piscine
 
-The program is fully modular:
+Une piscine n'est pas seulement un volume d'eau: c'est un équilibre physico-chimique fragile qui doit rester stable dans le temps.
 
-- each capability is implemented as an isolated module (`Module` or `ModulePassive`)
-- module dependencies are explicit (`dependencyCount`, `dependency`)
-- inter-module contracts are typed services registered in `ServiceRegistry`
-- shared runtime state is centralized in `DataStore` (with dirty flags and events)
-- persistent configuration is centralized in `ConfigStore` (NVS + JSON import/export)
-- active modules run in dedicated FreeRTOS tasks
+Sans pilotage structuré, les dérives sont fréquentes:
+- désinfection irrégulière (ORP/chlore)
+- pH hors plage de confort/efficacité
+- filtration sur- ou sous-dimensionnée selon la température et l'usage
+- surconsommation de produits et d'énergie
+- usure prématurée des équipements
 
-This model fits ESP32 constraints well: low coupling, controlled evolution, and incremental integration of new sensors and actuators.
+Flow.IO adresse ces points avec une approche orientée fiabilité:
+- acquisition continue des capteurs (pH, ORP, pression, températures, niveau)
+- contrôle coordonné des actionneurs (pompes, électrolyse, robot, remplissage, etc.)
+- scénarios automatiques (fenêtre de filtration, modes, interlocks)
+- télémétrie MQTT et auto-discovery Home Assistant
+- architecture modulaire robuste (services typés, EventBus, DataStore, ConfigStore/NVS)
 
-## Global Project Structure
+Résultat: eau plus stable, exploitation plus simple, coûts mieux maîtrisés, et meilleure traçabilité opérationnelle.
 
-```text
-src/
-  Core/
-    Module*.h/.cpp                 # module manager + services + runtime foundations
-    Services/                      # service interfaces (IWifi, IMqtt, ITime, ...)
-    DataStore/                     # runtime state + EventBus notifications
-    EventBus/                      # inter-module event bus
-  Modules/
-    Logs/                          # log hub + dispatcher + serial sink
-    Stores/                        # ConfigStoreModule + DataStoreModule
-    System/                        # system commands + monitoring
-    Network/                       # Wi-Fi, Time, MQTT, Home Assistant
-    IOModule/                      # sensors/actuators, buses, drivers, endpoints
-    PoolDeviceModule/              # pool equipment domain layer
-    EventBusModule/                # event bus service host
-    CommandModule/                 # command registry service
-docs/
-  en/                              # English documentation
-  fr/                              # French documentation
-  modules/                         # module documentation
-```
+## Documentation développeur
 
-## Available Modules
+La documentation complète (architecture, services Core, flux EventBus/DataStore/MQTT, et fiche détaillée par module) est disponible ici:
 
-- Logs: `loghub`, `log.dispatcher`, `log.sink.serial`
-- Core runtime: `eventbus`, `config`, `datastore`, `cmd`
-- System: `system`, `sysmon`
-- Network: `wifi`, `time`, `mqtt`, `ha`
-- Pool domain: `io`, `pooldev`
+- [Documentation complète](docs/README.md)
 
-## Complete Documentation
+## Référence rapide
 
-### Module Documentation (same structure for every module)
-
-- [LogHubModule](docs/en/modules/LogHubModule.md)
-- [LogDispatcherModule](docs/en/modules/LogDispatcherModule.md)
-- [LogSerialSinkModule](docs/en/modules/LogSerialSinkModule.md)
-- [EventBusModule](docs/en/modules/EventBusModule.md)
-- [CommandModule](docs/en/modules/CommandModule.md)
-- [ConfigStoreModule](docs/en/modules/ConfigStoreModule.md)
-- [DataStoreModule](docs/en/modules/DataStoreModule.md)
-- [SystemModule](docs/en/modules/SystemModule.md)
-- [SystemMonitorModule](docs/en/modules/SystemMonitorModule.md)
-- [WifiModule](docs/en/modules/WifiModule.md)
-- [TimeModule](docs/en/modules/TimeModule.md)
-- [MQTTModule](docs/en/modules/MQTTModule.md)
-- [HAModule](docs/en/modules/HAModule.md)
-- [IOModule](docs/en/IOModule.md)
-- [PoolDeviceModule](docs/en/modules/PoolDeviceModule.md)
-
-### Cross-Cutting Guides
-
-- [CoreServicesGuidelines](docs/en/CoreServicesGuidelines.md)
-- [ModuleDevGuide](docs/en/ModuleDevGuide.md)
-- [Module Quality Gates](docs/en/QualityGates.md)
+- Firmware: ESP32 + FreeRTOS
+- Configuration persistante: `ConfigStore` sur NVS (`Preferences`)
+- Runtime partagé: `DataStore`
+- Bus d'événements: `EventBus`
+- Transport externe: MQTT
+- Intégration domotique: Home Assistant discovery
