@@ -27,6 +27,7 @@ struct PoolDeviceDefinition {
     float tankCapacityMl = 0.0f;   // 0 means "not tracked"
     float tankInitialMl = 0.0f;    // <=0 means "use capacity"
     uint8_t dependsOnMask = 0;     // bit per pool-device slot
+    int32_t maxUptimeDaySec = 0;   // 0 means "unlimited"
 };
 
 class PoolDeviceModule : public Module, public IRuntimeSnapshotProvider {
@@ -139,6 +140,7 @@ private:
     bool buildStateSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildMetricsSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
     bool dependenciesSatisfied_(uint8_t slotIdx) const;
+    static bool maxUptimeReached_(const PoolDeviceSlot& slot);
     bool readIoState_(const PoolDeviceSlot& slot, bool& onOut) const;
     bool writeIo_(IoId ioId, bool on);
     static uint32_t toSeconds_(uint64_t ms);
@@ -173,6 +175,7 @@ private:
     char nvsFlowKey_[POOL_DEVICE_MAX][16]{};
     char nvsTankCapKey_[POOL_DEVICE_MAX][16]{};
     char nvsTankInitKey_[POOL_DEVICE_MAX][16]{};
+    char nvsMaxUptimeKey_[POOL_DEVICE_MAX][16]{};
     char nvsRuntimeKey_[POOL_DEVICE_MAX][16]{};
     char runtimePersistBuf_[POOL_DEVICE_MAX][192]{};
     ConfigVariable<bool,0> cfgEnabledVar_[POOL_DEVICE_MAX]{};
@@ -181,6 +184,7 @@ private:
     ConfigVariable<float,0> cfgFlowVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<float,0> cfgTankCapVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<float,0> cfgTankInitVar_[POOL_DEVICE_MAX]{};
+    ConfigVariable<int32_t,0> cfgMaxUptimeVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<char,0> cfgRuntimeVar_[POOL_DEVICE_MAX]{};
 
     PoolDeviceSlot slots_[POOL_DEVICE_MAX]{};

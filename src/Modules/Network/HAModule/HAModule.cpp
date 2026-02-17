@@ -766,6 +766,18 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     };
     (void)addSensorEntry(uptimeSeconds);
 
+    const HASensorEntry heapFreeBytes{
+        "system",
+        "heap_free_bytes",
+        "Heap Free",
+        "rt/system/state",
+        "{{ value_json.heap.free | int(0) }}",
+        "diagnostic",
+        "mdi:memory",
+        "B"
+    };
+    (void)addSensorEntry(heapFreeBytes);
+
     if (dsSvc && dsSvc->store) {
         setHaAutoconfigPublished(*dsSvc->store, false);
     }

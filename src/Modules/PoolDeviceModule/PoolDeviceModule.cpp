@@ -87,6 +87,9 @@ bool PoolDeviceModule::defineDevice(const PoolDeviceDefinition& def)
             s.used = false;
             return false;
         }
+        if (s.def.maxUptimeDaySec < 0) {
+            s.def.maxUptimeDaySec = 0;
+        }
         s.ioId = s.def.ioId;
         s.desiredOn = false;
         s.actualOn = false;
@@ -132,6 +135,7 @@ const char* PoolDeviceModule::blockReasonStr_(uint8_t reason)
     if (reason == POOL_DEVICE_BLOCK_DISABLED) return "disabled";
     if (reason == POOL_DEVICE_BLOCK_INTERLOCK) return "interlock";
     if (reason == POOL_DEVICE_BLOCK_IO_ERROR) return "io_error";
+    if (reason == POOL_DEVICE_BLOCK_MAX_UPTIME) return "max_uptime";
     return "none";
 }
 
@@ -339,10 +343,15 @@ PoolDeviceSvcStatus PoolDeviceModule::svcWriteDesiredImpl_(uint8_t slot, uint8_t
     if (!runtimeReady_) return POOLDEV_SVC_ERR_NOT_READY;
 
     const bool requested = (on != 0U);
+    const bool maxUptimeReached = maxUptimeReached_(s);
     if (requested) {
         if (!s.def.enabled) {
             s.blockReason = POOL_DEVICE_BLOCK_DISABLED;
             return POOLDEV_SVC_ERR_DISABLED;
+        }
+        if (maxUptimeReached) {
+            s.blockReason = POOL_DEVICE_BLOCK_MAX_UPTIME;
+            return POOLDEV_SVC_ERR_INTERLOCK;
         }
         if (!dependenciesSatisfied_(slot)) {
             s.blockReason = POOL_DEVICE_BLOCK_INTERLOCK;
@@ -351,7 +360,7 @@ PoolDeviceSvcStatus PoolDeviceModule::svcWriteDesiredImpl_(uint8_t slot, uint8_t
     }
 
     s.desiredOn = requested;
-    if (!requested) s.blockReason = POOL_DEVICE_BLOCK_NONE;
+    if (!requested && !maxUptimeReached) s.blockReason = POOL_DEVICE_BLOCK_NONE;
 
     if (s.actualOn != requested) {
         if (writeIo_(s.ioId, requested)) {
@@ -970,6 +979,30 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
             stateChanged = true;
         }
 
+        const bool maxUptimeReached = maxUptimeReached_(s);
+        if (s.def.enabled && maxUptimeReached) {
+            if (s.desiredOn) {
+                s.desiredOn = false;
+                stateChanged = true;
+            }
+            if (s.actualOn) {
+                if (writeIo_(s.ioId, false)) {
+                    s.actualOn = false;
+                    s.blockReason = POOL_DEVICE_BLOCK_MAX_UPTIME;
+                } else {
+                    s.blockReason = POOL_DEVICE_BLOCK_IO_ERROR;
+                }
+                stateChanged = true;
+            } else if (s.blockReason != POOL_DEVICE_BLOCK_IO_ERROR &&
+                       s.blockReason != POOL_DEVICE_BLOCK_MAX_UPTIME) {
+                s.blockReason = POOL_DEVICE_BLOCK_MAX_UPTIME;
+                stateChanged = true;
+            }
+        } else if (s.blockReason == POOL_DEVICE_BLOCK_MAX_UPTIME) {
+            s.blockReason = POOL_DEVICE_BLOCK_NONE;
+            stateChanged = true;
+        }
+
         if (s.actualOn && !dependenciesSatisfied_(i)) {
             s.desiredOn = false;
             if (writeIo_(s.ioId, false)) {
@@ -998,7 +1031,7 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
         } else if (!s.desiredOn && s.actualOn) {
             if (writeIo_(s.ioId, false)) {
                 s.actualOn = false;
-                s.blockReason = POOL_DEVICE_BLOCK_NONE;
+                s.blockReason = maxUptimeReached_(s) ? POOL_DEVICE_BLOCK_MAX_UPTIME : POOL_DEVICE_BLOCK_NONE;
             } else {
                 s.blockReason = POOL_DEVICE_BLOCK_IO_ERROR;
             }
@@ -1118,6 +1151,13 @@ bool PoolDeviceModule::dependenciesSatisfied_(uint8_t slotIdx) const
     return true;
 }
 
+bool PoolDeviceModule::maxUptimeReached_(const PoolDeviceSlot& slot)
+{
+    if (slot.def.maxUptimeDaySec <= 0) return false;
+    const uint64_t limitMs = (uint64_t)(uint32_t)slot.def.maxUptimeDaySec * 1000ULL;
+    return slot.runningMsDay >= limitMs;
+}
+
 bool PoolDeviceModule::readIoState_(const PoolDeviceSlot& slot, bool& onOut) const
 {
     if (!ioSvc_ || !ioSvc_->readDigital) return false;
@@ -1175,6 +1215,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         snprintf(nvsFlowKey_[i], sizeof(nvsFlowKey_[i]), NvsKeys::PoolDevice::FlowFmt, (unsigned)i);
         snprintf(nvsTankCapKey_[i], sizeof(nvsTankCapKey_[i]), NvsKeys::PoolDevice::TankCapFmt, (unsigned)i);
         snprintf(nvsTankInitKey_[i], sizeof(nvsTankInitKey_[i]), NvsKeys::PoolDevice::TankInitFmt, (unsigned)i);
+        snprintf(nvsMaxUptimeKey_[i], sizeof(nvsMaxUptimeKey_[i]), NvsKeys::PoolDevice::MaxUptimeFmt, (unsigned)i);
         snprintf(nvsRuntimeKey_[i], sizeof(nvsRuntimeKey_[i]), NvsKeys::PoolDevice::RuntimeFmt, (unsigned)i);
         snprintf(cfgRuntimeModuleName_[i], sizeof(cfgRuntimeModuleName_[i]), "pdmrt/pd%u", (unsigned)i);
 
@@ -1231,6 +1272,15 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgTankInitVar_[i].persistence = ConfigPersistence::Persistent;
         cfgTankInitVar_[i].size = 0;
         cfg.registerVar(cfgTankInitVar_[i], kCfgModuleId, branchId);
+
+        cfgMaxUptimeVar_[i].nvsKey = nvsMaxUptimeKey_[i];
+        cfgMaxUptimeVar_[i].jsonName = "max_uptime_day_s";
+        cfgMaxUptimeVar_[i].moduleName = cfgModuleName_[i];
+        cfgMaxUptimeVar_[i].type = ConfigType::Int32;
+        cfgMaxUptimeVar_[i].value = &s.def.maxUptimeDaySec;
+        cfgMaxUptimeVar_[i].persistence = ConfigPersistence::Persistent;
+        cfgMaxUptimeVar_[i].size = 0;
+        cfg.registerVar(cfgMaxUptimeVar_[i], kCfgModuleId, branchId);
 
         cfgRuntimeVar_[i].nvsKey = nvsRuntimeKey_[i];
         cfgRuntimeVar_[i].jsonName = "metrics_blob";
@@ -1317,6 +1367,33 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 0.0f, 3.0f, 0.1f, "slider", "config", "mdi:water-sync", "L/h"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n2);
+        }
+        if (slots_[POOL_IO_SLOT_PH_PUMP].used) {
+            const HANumberEntry n3{
+                "pooldev", "pd1_max_uptime_min", "Max uptime pH Pump",
+                "cfg/pdm/pd1", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd1\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
+                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n3);
+        }
+        if (slots_[POOL_IO_SLOT_CHLORINE_PUMP].used) {
+            const HANumberEntry n4{
+                "pooldev", "pd2_max_uptime_min", "Max uptime Chlorine Pump",
+                "cfg/pdm/pd2", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd2\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
+                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n4);
+        }
+        if (slots_[POOL_IO_SLOT_CHLORINE_GENERATOR].used) {
+            const HANumberEntry n5{
+                "pooldev", "pd5_max_uptime_min", "Max uptime Chlorine Generator",
+                "cfg/pdm/pd5", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
+                MqttTopics::SuffixCfgSet, "{\\\"pdm/pd5\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
+                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+            };
+            (void)haSvc_->addNumber(haSvc_->ctx, &n5);
         }
     }
 

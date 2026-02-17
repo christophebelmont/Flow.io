@@ -226,6 +226,8 @@ constexpr char FlowFmt[] = "pd%uflh"; // Pool device module key template; `%u` i
 constexpr char TankCapFmt[] = "pd%utc"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
 /** @brief printf format for per-slot tank initial value key (example `pd0ti`). */
 constexpr char TankInitFmt[] = "pd%uti"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
+/** @brief printf format for per-slot max daily uptime in seconds (example `pd0mu`). */
+constexpr char MaxUptimeFmt[] = "pd%umu"; // Pool device module key template; `%u` is replaced by slot index before NVS access.
 /** @brief printf format for per-slot runtime metrics blob key (example `pd0rt`). */
 constexpr char RuntimeFmt[] = "pd%urt"; // Pool device module runtime metrics key template; `%u` is replaced by slot index before NVS access.
 }  // namespace PoolDevice

@@ -559,8 +559,14 @@ void setup() {
             pd.tankCapacityMl = 20000.0f;
             pd.tankInitialMl = 20000.0f;
             pd.dependsOnMask = (uint8_t)(1u << POOL_IO_SLOT_FILTRATION_PUMP);
+            pd.maxUptimeDaySec = 30 * 60;
         } else if (slot == POOL_IO_SLOT_CHLORINE_GENERATOR || slot == POOL_IO_SLOT_ROBOT) {
             pd.dependsOnMask = (uint8_t)(1u << POOL_IO_SLOT_FILTRATION_PUMP);
+            if (slot == POOL_IO_SLOT_CHLORINE_GENERATOR) {
+                pd.maxUptimeDaySec = 600 * 60;
+            }
+        } else if (slot == POOL_IO_SLOT_FILL_PUMP) {
+            pd.maxUptimeDaySec = 30 * 60;
         }
 
         requireSetup(poolDeviceModule.defineDevice(pd), "define pool device");
