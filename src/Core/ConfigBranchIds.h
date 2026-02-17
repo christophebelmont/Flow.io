@@ -42,13 +42,28 @@ enum class ConfigBranchId : uint16_t {
     PoolDevicePd4 = 68,
     PoolDevicePd5 = 69,
     PoolDevicePd6 = 70,
-    PoolDevicePd7 = 71
+    PoolDevicePd7 = 71,
+
+    PoolDeviceRuntimePd0 = 80,
+    PoolDeviceRuntimePd1 = 81,
+    PoolDeviceRuntimePd2 = 82,
+    PoolDeviceRuntimePd3 = 83,
+    PoolDeviceRuntimePd4 = 84,
+    PoolDeviceRuntimePd5 = 85,
+    PoolDeviceRuntimePd6 = 86,
+    PoolDeviceRuntimePd7 = 87
 };
 
 constexpr ConfigBranchId configBranchFromPoolDeviceSlot(uint8_t slot)
 {
     if (slot > 7U) return ConfigBranchId::Unknown;
     return static_cast<ConfigBranchId>((uint16_t)ConfigBranchId::PoolDevicePd0 + slot);
+}
+
+constexpr ConfigBranchId configBranchFromPoolDeviceRuntimeSlot(uint8_t slot)
+{
+    if (slot > 7U) return ConfigBranchId::Unknown;
+    return static_cast<ConfigBranchId>((uint16_t)ConfigBranchId::PoolDeviceRuntimePd0 + slot);
 }
 
 inline const char* configBranchModuleName(ConfigBranchId id)
@@ -86,6 +101,14 @@ inline const char* configBranchModuleName(ConfigBranchId id)
         case ConfigBranchId::PoolDevicePd5: return "pdm/pd5";
         case ConfigBranchId::PoolDevicePd6: return "pdm/pd6";
         case ConfigBranchId::PoolDevicePd7: return "pdm/pd7";
+        case ConfigBranchId::PoolDeviceRuntimePd0: return "pdmrt/pd0";
+        case ConfigBranchId::PoolDeviceRuntimePd1: return "pdmrt/pd1";
+        case ConfigBranchId::PoolDeviceRuntimePd2: return "pdmrt/pd2";
+        case ConfigBranchId::PoolDeviceRuntimePd3: return "pdmrt/pd3";
+        case ConfigBranchId::PoolDeviceRuntimePd4: return "pdmrt/pd4";
+        case ConfigBranchId::PoolDeviceRuntimePd5: return "pdmrt/pd5";
+        case ConfigBranchId::PoolDeviceRuntimePd6: return "pdmrt/pd6";
+        case ConfigBranchId::PoolDeviceRuntimePd7: return "pdmrt/pd7";
         case ConfigBranchId::Unknown:
         default:
             return nullptr;

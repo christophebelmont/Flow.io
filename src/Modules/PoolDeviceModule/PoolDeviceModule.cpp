@@ -11,9 +11,11 @@
 #include "Core/SystemLimits.h"
 #define LOG_TAG "PoolDevc"
 #include "Core/ModuleLog.h"
+#include "Modules/Network/TimeModule/TimeRuntime.h"
 #include "Modules/PoolDeviceModule/PoolDeviceRuntime.h"
 #include <ArduinoJson.h>
 #include <Arduino.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -61,6 +63,11 @@ static void writeCmdErrorSlot_(char* reply, size_t replyLen, const char* where, 
     }
 }
 
+static bool isFiniteNonNegative_(float value)
+{
+    return isfinite(value) && value >= 0.0f;
+}
+
 bool PoolDeviceModule::defineDevice(const PoolDeviceDefinition& def)
 {
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
@@ -93,6 +100,12 @@ bool PoolDeviceModule::defineDevice(const PoolDeviceDefinition& def)
         } else {
             s.tankRemainingMl = 0.0f;
         }
+        s.dayKey = 0;
+        s.weekKey = 0;
+        s.monthKey = 0;
+        s.hasPersistedMetrics = false;
+        s.persistDirty = false;
+        s.persistImmediate = false;
 
         return true;
     }
@@ -369,6 +382,8 @@ PoolDeviceSvcStatus PoolDeviceModule::svcRefillTankImpl_(uint8_t slot, float rem
 
     s.tankRemainingMl = remaining;
     s.forceMetricsCommit = true;
+    s.persistDirty = true;
+    s.persistImmediate = true;
     if (runtimeReady_) tickDevices_(millis());
     return POOLDEV_SVC_OK;
 }
@@ -497,6 +512,247 @@ bool PoolDeviceModule::handlePoolRefill_(const CommandRequest& req, char* reply,
     return true;
 }
 
+void PoolDeviceModule::requestPeriodReconcile_()
+{
+    portENTER_CRITICAL(&resetMux_);
+    periodReconcilePending_ = true;
+    portEXIT_CRITICAL(&resetMux_);
+}
+
+bool PoolDeviceModule::currentPeriodKeys_(PeriodKeys& out) const
+{
+    if (!dataStore_) return false;
+    if (!timeReady(*dataStore_)) return false;
+
+    time_t now = 0;
+    time(&now);
+    if (now < (time_t)MIN_VALID_EPOCH_SEC) return false;
+
+    struct tm localNow{};
+    if (!localtime_r(&now, &localNow)) return false;
+
+    const uint32_t year = (uint32_t)(localNow.tm_year + 1900);
+    const uint32_t month = (uint32_t)(localNow.tm_mon + 1);
+    const uint32_t day = (uint32_t)localNow.tm_mday;
+    out.day = (year * 10000UL) + (month * 100UL) + day;
+    out.month = (year * 100UL) + month;
+
+    const bool weekStartMonday = weekStartMondayFromConfig_();
+    const int weekOffset = weekStartMonday ? ((localNow.tm_wday + 6) % 7) : localNow.tm_wday;
+
+    struct tm weekStart = localNow;
+    weekStart.tm_hour = 12;
+    weekStart.tm_min = 0;
+    weekStart.tm_sec = 0;
+    weekStart.tm_mday -= weekOffset;
+    time_t weekEpoch = mktime(&weekStart);
+    if (weekEpoch < (time_t)MIN_VALID_EPOCH_SEC) return false;
+
+    struct tm weekTm{};
+    if (!localtime_r(&weekEpoch, &weekTm)) return false;
+
+    const uint32_t weekYear = (uint32_t)(weekTm.tm_year + 1900);
+    const uint32_t weekMonth = (uint32_t)(weekTm.tm_mon + 1);
+    const uint32_t weekDay = (uint32_t)weekTm.tm_mday;
+    out.week = (weekYear * 10000UL) + (weekMonth * 100UL) + weekDay;
+    return true;
+}
+
+bool PoolDeviceModule::weekStartMondayFromConfig_() const
+{
+    if (!cfgStore_) return true;
+
+    char timeCfg[160] = {0};
+    bool truncated = false;
+    if (!cfgStore_->toJsonModule("time", timeCfg, sizeof(timeCfg), &truncated)) return true;
+    if (truncated) return true;
+
+    StaticJsonDocument<192> doc;
+    const DeserializationError err = deserializeJson(doc, timeCfg);
+    if (err || !doc.is<JsonObjectConst>()) return true;
+    const JsonVariantConst v = doc["week_start_mon"];
+    if (v.is<bool>()) return v.as<bool>();
+    if (v.is<int32_t>()) return v.as<int32_t>() != 0;
+    if (v.is<uint32_t>()) return v.as<uint32_t>() != 0U;
+    return true;
+}
+
+bool PoolDeviceModule::loadPersistedMetrics_(uint8_t slotIdx, PoolDeviceSlot& slot)
+{
+    if (slotIdx >= POOL_DEVICE_MAX) return false;
+    if (!slot.used) return false;
+    if (runtimePersistBuf_[slotIdx][0] == '\0') return false;
+
+    char parseBuf[sizeof(runtimePersistBuf_[0])] = {0};
+    strncpy(parseBuf, runtimePersistBuf_[slotIdx], sizeof(parseBuf) - 1);
+    parseBuf[sizeof(parseBuf) - 1] = '\0';
+
+    char* save = nullptr;
+    auto nextTok = [&save](char* s) -> char* { return strtok_r(s, ",", &save); };
+
+    char* tok = nextTok(parseBuf);
+    if (!tok || strcmp(tok, "v1") != 0) {
+        LOGW("Pool device %s runtime blob invalid header", slot.id);
+        return false;
+    }
+
+    auto parseU64 = [&](uint64_t& out) -> bool {
+        char* t = nextTok(nullptr);
+        if (!t || t[0] == '\0') return false;
+        char* end = nullptr;
+        out = strtoull(t, &end, 10);
+        return end && *end == '\0';
+    };
+    auto parseU32 = [&](uint32_t& out) -> bool {
+        char* t = nextTok(nullptr);
+        if (!t || t[0] == '\0') return false;
+        char* end = nullptr;
+        out = (uint32_t)strtoul(t, &end, 10);
+        return end && *end == '\0';
+    };
+    auto parseF32 = [&](float& out) -> bool {
+        char* t = nextTok(nullptr);
+        if (!t || t[0] == '\0') return false;
+        char* end = nullptr;
+        out = strtof(t, &end);
+        return end && *end == '\0';
+    };
+
+    uint64_t runningDay = 0ULL;
+    uint64_t runningWeek = 0ULL;
+    uint64_t runningMonth = 0ULL;
+    uint64_t runningTotal = 0ULL;
+    float injectedDay = 0.0f;
+    float injectedWeek = 0.0f;
+    float injectedMonth = 0.0f;
+    float injectedTotal = 0.0f;
+    float tank = 0.0f;
+    uint32_t dayKey = 0U;
+    uint32_t weekKey = 0U;
+    uint32_t monthKey = 0U;
+
+    if (!parseU64(runningDay) ||
+        !parseU64(runningWeek) ||
+        !parseU64(runningMonth) ||
+        !parseU64(runningTotal) ||
+        !parseF32(injectedDay) ||
+        !parseF32(injectedWeek) ||
+        !parseF32(injectedMonth) ||
+        !parseF32(injectedTotal) ||
+        !parseF32(tank) ||
+        !parseU32(dayKey) ||
+        !parseU32(weekKey) ||
+        !parseU32(monthKey)) {
+        LOGW("Pool device %s runtime blob parse failed", slot.id);
+        return false;
+    }
+
+    if (nextTok(nullptr) != nullptr) {
+        LOGW("Pool device %s runtime blob has trailing fields", slot.id);
+        return false;
+    }
+
+    slot.runningMsDay = runningDay;
+    slot.runningMsWeek = runningWeek;
+    slot.runningMsMonth = runningMonth;
+    slot.runningMsTotal = runningTotal;
+    slot.injectedMlDay = isFiniteNonNegative_(injectedDay) ? injectedDay : 0.0f;
+    slot.injectedMlWeek = isFiniteNonNegative_(injectedWeek) ? injectedWeek : 0.0f;
+    slot.injectedMlMonth = isFiniteNonNegative_(injectedMonth) ? injectedMonth : 0.0f;
+    slot.injectedMlTotal = isFiniteNonNegative_(injectedTotal) ? injectedTotal : 0.0f;
+    slot.tankRemainingMl = isFiniteNonNegative_(tank) ? tank : 0.0f;
+    slot.dayKey = dayKey;
+    slot.weekKey = weekKey;
+    slot.monthKey = monthKey;
+    slot.hasPersistedMetrics = true;
+    slot.persistDirty = false;
+    slot.persistImmediate = false;
+    return true;
+}
+
+bool PoolDeviceModule::persistMetrics_(uint8_t slotIdx, PoolDeviceSlot& slot, uint32_t nowMs)
+{
+    if (slotIdx >= POOL_DEVICE_MAX) return false;
+    if (!slot.used) return false;
+    if (!cfgStore_) return false;
+
+    char encoded[sizeof(runtimePersistBuf_[0])] = {0};
+    const int wrote = snprintf(
+        encoded, sizeof(encoded),
+        "v1,%llu,%llu,%llu,%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%lu,%lu,%lu",
+        (unsigned long long)slot.runningMsDay,
+        (unsigned long long)slot.runningMsWeek,
+        (unsigned long long)slot.runningMsMonth,
+        (unsigned long long)slot.runningMsTotal,
+        (double)(isFiniteNonNegative_(slot.injectedMlDay) ? slot.injectedMlDay : 0.0f),
+        (double)(isFiniteNonNegative_(slot.injectedMlWeek) ? slot.injectedMlWeek : 0.0f),
+        (double)(isFiniteNonNegative_(slot.injectedMlMonth) ? slot.injectedMlMonth : 0.0f),
+        (double)(isFiniteNonNegative_(slot.injectedMlTotal) ? slot.injectedMlTotal : 0.0f),
+        (double)(isFiniteNonNegative_(slot.tankRemainingMl) ? slot.tankRemainingMl : 0.0f),
+        (unsigned long)slot.dayKey,
+        (unsigned long)slot.weekKey,
+        (unsigned long)slot.monthKey);
+    if (wrote <= 0 || (size_t)wrote >= sizeof(encoded)) {
+        LOGW("Pool device %s runtime persist failed", slot.id);
+        return false;
+    }
+    if (!cfgStore_->set(cfgRuntimeVar_[slotIdx], encoded)) return false;
+
+    slot.lastPersistMs = nowMs;
+    slot.persistDirty = false;
+    slot.persistImmediate = false;
+    slot.hasPersistedMetrics = true;
+    return true;
+}
+
+bool PoolDeviceModule::reconcilePeriodCountersFromClock_()
+{
+    PeriodKeys keys{};
+    if (!currentPeriodKeys_(keys)) return false;
+
+    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
+        PoolDeviceSlot& s = slots_[i];
+        if (!s.used) continue;
+
+        bool changed = false;
+        if (s.dayKey == 0U) {
+            s.dayKey = keys.day;
+            changed = true;
+        } else if (s.dayKey != keys.day) {
+            s.runningMsDay = 0;
+            s.injectedMlDay = 0.0f;
+            s.dayKey = keys.day;
+            changed = true;
+        }
+        if (s.weekKey == 0U) {
+            s.weekKey = keys.week;
+            changed = true;
+        } else if (s.weekKey != keys.week) {
+            s.runningMsWeek = 0;
+            s.injectedMlWeek = 0.0f;
+            s.weekKey = keys.week;
+            changed = true;
+        }
+        if (s.monthKey == 0U) {
+            s.monthKey = keys.month;
+            changed = true;
+        } else if (s.monthKey != keys.month) {
+            s.runningMsMonth = 0;
+            s.injectedMlMonth = 0.0f;
+            s.monthKey = keys.month;
+            changed = true;
+        }
+
+        if (changed) {
+            s.forceMetricsCommit = true;
+            s.persistDirty = true;
+            s.persistImmediate = true;
+        }
+    }
+
+    return true;
+}
+
 bool PoolDeviceModule::configureRuntime_()
 {
     if (runtimeReady_) return true;
@@ -517,19 +773,23 @@ bool PoolDeviceModule::configureRuntime_()
             return false;
         }
 
-        if (s.def.tankCapacityMl > 0.0f) {
+        if (s.def.tankCapacityMl <= 0.0f) {
+            s.tankRemainingMl = 0.0f;
+        } else if (!s.hasPersistedMetrics) {
             float initial = (s.def.tankInitialMl > 0.0f) ? s.def.tankInitialMl : s.def.tankCapacityMl;
             if (initial > s.def.tankCapacityMl) initial = s.def.tankCapacityMl;
             if (initial < 0.0f) initial = 0.0f;
             s.tankRemainingMl = initial;
         } else {
-            s.tankRemainingMl = 0.0f;
+            if (!isFiniteNonNegative_(s.tankRemainingMl)) s.tankRemainingMl = 0.0f;
+            if (s.tankRemainingMl > s.def.tankCapacityMl) s.tankRemainingMl = s.def.tankCapacityMl;
         }
 
         s.lastTickMs = now;
         s.stateTsMs = now;
         s.metricsTsMs = now;
         s.lastRuntimeCommitMs = now;
+        s.lastPersistMs = now;
 
         PoolDeviceRuntimeStateEntry rtState{};
         rtState.valid = true;
@@ -570,6 +830,24 @@ void PoolDeviceModule::onEventStatic_(const Event& e, void* user)
 
 void PoolDeviceModule::onEvent_(const Event& e)
 {
+    if (e.id == EventId::DataChanged) {
+        if (!e.payload || e.len < sizeof(DataChangedPayload)) return;
+        const DataChangedPayload* p = (const DataChangedPayload*)e.payload;
+        if (p->id != DATAKEY_TIME_READY) return;
+        if (!dataStore_) return;
+        if (timeReady(*dataStore_)) requestPeriodReconcile_();
+        return;
+    }
+
+    if (e.id == EventId::ConfigChanged) {
+        if (!e.payload || e.len < sizeof(ConfigChangedPayload)) return;
+        const ConfigChangedPayload* p = (const ConfigChangedPayload*)e.payload;
+        if ((ConfigBranchId)p->branchId == ConfigBranchId::Time) {
+            requestPeriodReconcile_();
+        }
+        return;
+    }
+
     if (e.id != EventId::SchedulerEventTriggered) return;
     if (!e.payload || e.len < sizeof(SchedulerEventTriggeredPayload)) return;
 
@@ -594,49 +872,74 @@ void PoolDeviceModule::onEvent_(const Event& e)
 
 void PoolDeviceModule::resetDailyCounters_()
 {
+    PeriodKeys keys{};
+    const bool hasKeys = currentPeriodKeys_(keys);
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
         if (!s.used) continue;
         s.runningMsDay = 0;
         s.injectedMlDay = 0.0f;
+        if (hasKeys) s.dayKey = keys.day;
+        s.forceMetricsCommit = true;
+        s.persistDirty = true;
+        s.persistImmediate = true;
     }
 }
 
 void PoolDeviceModule::resetWeeklyCounters_()
 {
+    PeriodKeys keys{};
+    const bool hasKeys = currentPeriodKeys_(keys);
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
         if (!s.used) continue;
         s.runningMsWeek = 0;
         s.injectedMlWeek = 0.0f;
+        if (hasKeys) s.weekKey = keys.week;
+        s.forceMetricsCommit = true;
+        s.persistDirty = true;
+        s.persistImmediate = true;
     }
 }
 
 void PoolDeviceModule::resetMonthlyCounters_()
 {
+    PeriodKeys keys{};
+    const bool hasKeys = currentPeriodKeys_(keys);
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
         if (!s.used) continue;
         s.runningMsMonth = 0;
         s.injectedMlMonth = 0.0f;
+        if (hasKeys) s.monthKey = keys.month;
+        s.forceMetricsCommit = true;
+        s.persistDirty = true;
+        s.persistImmediate = true;
     }
 }
 
 void PoolDeviceModule::tickDevices_(uint32_t nowMs)
 {
     uint8_t pending = 0;
+    bool reconcilePending = false;
     portENTER_CRITICAL(&resetMux_);
     pending = resetPendingMask_;
     resetPendingMask_ = 0;
+    reconcilePending = periodReconcilePending_;
+    periodReconcilePending_ = false;
     portEXIT_CRITICAL(&resetMux_);
 
     if (pending & RESET_PENDING_DAY) resetDailyCounters_();
     if (pending & RESET_PENDING_WEEK) resetWeeklyCounters_();
     if (pending & RESET_PENDING_MONTH) resetMonthlyCounters_();
+    if (reconcilePending && !reconcilePeriodCountersFromClock_()) {
+        requestPeriodReconcile_();
+    }
 
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
         PoolDeviceSlot& s = slots_[i];
         if (!s.used) continue;
+        const bool wasActualOn = s.actualOn;
         bool stateChanged = false;
         bool metricsChanged = (pending != 0U) || s.forceMetricsCommit;
         s.forceMetricsCommit = false;
@@ -726,6 +1029,10 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
                 metricsChanged = true;
             }
         }
+        if (wasActualOn && !s.actualOn) {
+            s.persistDirty = true;
+            s.persistImmediate = true;
+        }
 
         if (dataStore_) {
             PoolDeviceRuntimeStateEntry prevState{};
@@ -748,6 +1055,7 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
         if (metricsChanged) {
             s.metricsTsMs = nowMs;
             s.lastRuntimeCommitMs = nowMs;
+            s.persistDirty = true;
         }
 
         if (dataStore_) {
@@ -776,6 +1084,20 @@ void PoolDeviceModule::tickDevices_(uint32_t nowMs)
                 rtMetrics.tsMs = s.metricsTsMs;
                 (void)setPoolDeviceRuntimeMetrics(*dataStore_, i, rtMetrics);
             }
+        }
+
+        bool shouldPersist = false;
+        if (s.persistDirty) {
+            if (s.persistImmediate) {
+                shouldPersist = true;
+            } else if (!s.actualOn) {
+                shouldPersist = true;
+            } else if ((uint32_t)(nowMs - s.lastPersistMs) >= RUNTIME_PERSIST_INTERVAL_MS) {
+                shouldPersist = true;
+            }
+        }
+        if (shouldPersist) {
+            (void)persistMetrics_(i, s, nowMs);
         }
     }
 }
@@ -820,6 +1142,7 @@ uint32_t PoolDeviceModule::toSeconds_(uint64_t ms)
 void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::PoolDevice;
+    cfgStore_ = &cfg;
     logHub_ = services.get<LogHubService>("loghub");
     ioSvc_ = services.get<IOServiceV2>("io");
     (void)services.add("pooldev", &poolSvc_);
@@ -836,6 +1159,8 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
     if (eventBus_) {
         eventBus_->subscribe(EventId::SchedulerEventTriggered, &PoolDeviceModule::onEventStatic_, this);
+        eventBus_->subscribe(EventId::DataChanged, &PoolDeviceModule::onEventStatic_, this);
+        eventBus_->subscribe(EventId::ConfigChanged, &PoolDeviceModule::onEventStatic_, this);
     }
 
     for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
@@ -850,6 +1175,8 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         snprintf(nvsFlowKey_[i], sizeof(nvsFlowKey_[i]), NvsKeys::PoolDevice::FlowFmt, (unsigned)i);
         snprintf(nvsTankCapKey_[i], sizeof(nvsTankCapKey_[i]), NvsKeys::PoolDevice::TankCapFmt, (unsigned)i);
         snprintf(nvsTankInitKey_[i], sizeof(nvsTankInitKey_[i]), NvsKeys::PoolDevice::TankInitFmt, (unsigned)i);
+        snprintf(nvsRuntimeKey_[i], sizeof(nvsRuntimeKey_[i]), NvsKeys::PoolDevice::RuntimeFmt, (unsigned)i);
+        snprintf(cfgRuntimeModuleName_[i], sizeof(cfgRuntimeModuleName_[i]), "pdmrt/pd%u", (unsigned)i);
 
         cfgEnabledVar_[i].nvsKey = nvsEnabledKey_[i];
         cfgEnabledVar_[i].jsonName = "enabled";
@@ -904,6 +1231,15 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfgTankInitVar_[i].persistence = ConfigPersistence::Persistent;
         cfgTankInitVar_[i].size = 0;
         cfg.registerVar(cfgTankInitVar_[i], kCfgModuleId, branchId);
+
+        cfgRuntimeVar_[i].nvsKey = nvsRuntimeKey_[i];
+        cfgRuntimeVar_[i].jsonName = "metrics_blob";
+        cfgRuntimeVar_[i].moduleName = cfgRuntimeModuleName_[i];
+        cfgRuntimeVar_[i].type = ConfigType::CharArray;
+        cfgRuntimeVar_[i].value = runtimePersistBuf_[i];
+        cfgRuntimeVar_[i].persistence = ConfigPersistence::Persistent;
+        cfgRuntimeVar_[i].size = sizeof(runtimePersistBuf_[i]);
+        cfg.registerVar(cfgRuntimeVar_[i], kCfgModuleId, (uint16_t)configBranchFromPoolDeviceRuntimeSlot(i));
     }
 
     if (cmdSvc_ && cmdSvc_->registerHandler) {
@@ -990,6 +1326,16 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     }
     LOGI("PoolDevice module ready (devices=%u)", (unsigned)count);
     (void)logHub_;
+}
+
+void PoolDeviceModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
+{
+    for (uint8_t i = 0; i < POOL_DEVICE_MAX; ++i) {
+        PoolDeviceSlot& s = slots_[i];
+        if (!s.used) continue;
+        (void)loadPersistedMetrics_(i, s);
+    }
+    requestPeriodReconcile_();
 }
 
 void PoolDeviceModule::loop()

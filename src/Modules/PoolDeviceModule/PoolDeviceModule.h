@@ -48,6 +48,7 @@ public:
     }
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
+    void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
 
     bool defineDevice(const PoolDeviceDefinition& def);
@@ -60,6 +61,8 @@ private:
     static constexpr uint8_t RESET_PENDING_DAY = (1u << 0);
     static constexpr uint8_t RESET_PENDING_WEEK = (1u << 1);
     static constexpr uint8_t RESET_PENDING_MONTH = (1u << 2);
+    static constexpr uint32_t RUNTIME_PERSIST_INTERVAL_MS = 60000U;
+    static constexpr uint32_t MIN_VALID_EPOCH_SEC = 1609459200U; // 2021-01-01
 
     struct PoolDeviceSlot {
         bool used = false;
@@ -82,10 +85,23 @@ private:
         float injectedMlMonth = 0.0f;
         float injectedMlTotal = 0.0f;
         float tankRemainingMl = 0.0f;
+        uint32_t dayKey = 0;
+        uint32_t weekKey = 0;
+        uint32_t monthKey = 0;
         uint32_t stateTsMs = 0;
         uint32_t metricsTsMs = 0;
         uint32_t lastRuntimeCommitMs = 0;
+        uint32_t lastPersistMs = 0;
+        bool hasPersistedMetrics = false;
+        bool persistDirty = false;
+        bool persistImmediate = false;
         bool forceMetricsCommit = false;
+    };
+
+    struct PeriodKeys {
+        uint32_t day = 0;
+        uint32_t week = 0;
+        uint32_t month = 0;
     };
 
     static bool cmdPoolWrite_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
@@ -112,6 +128,12 @@ private:
     void resetDailyCounters_();
     void resetWeeklyCounters_();
     void resetMonthlyCounters_();
+    void requestPeriodReconcile_();
+    bool weekStartMondayFromConfig_() const;
+    bool currentPeriodKeys_(PeriodKeys& out) const;
+    bool reconcilePeriodCountersFromClock_();
+    bool loadPersistedMetrics_(uint8_t slotIdx, PoolDeviceSlot& slot);
+    bool persistMetrics_(uint8_t slotIdx, PoolDeviceSlot& slot, uint32_t nowMs);
     bool snapshotRouteFromIndex_(uint8_t snapshotIdx, uint8_t& slotIdxOut, bool& metricsOut) const;
     bool buildStateSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
     bool buildMetricsSnapshot_(uint8_t slotIdx, char* out, size_t len, uint32_t& maxTsOut) const;
@@ -136,23 +158,29 @@ private:
     };
     EventBus* eventBus_ = nullptr;
     DataStore* dataStore_ = nullptr;
+    ConfigStore* cfgStore_ = nullptr;
     bool runtimeReady_ = false;
     portMUX_TYPE resetMux_ = portMUX_INITIALIZER_UNLOCKED;
     uint8_t resetPendingMask_ = 0;
+    bool periodReconcilePending_ = true;
 
     char cfgModuleName_[POOL_DEVICE_MAX][16]{};
+    char cfgRuntimeModuleName_[POOL_DEVICE_MAX][16]{};
     char nvsEnabledKey_[POOL_DEVICE_MAX][16]{};
     char nvsTypeKey_[POOL_DEVICE_MAX][16]{};
     char nvsDependsKey_[POOL_DEVICE_MAX][16]{};
     char nvsFlowKey_[POOL_DEVICE_MAX][16]{};
     char nvsTankCapKey_[POOL_DEVICE_MAX][16]{};
     char nvsTankInitKey_[POOL_DEVICE_MAX][16]{};
+    char nvsRuntimeKey_[POOL_DEVICE_MAX][16]{};
+    char runtimePersistBuf_[POOL_DEVICE_MAX][192]{};
     ConfigVariable<bool,0> cfgEnabledVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<uint8_t,0> cfgTypeVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<uint8_t,0> cfgDependsVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<float,0> cfgFlowVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<float,0> cfgTankCapVar_[POOL_DEVICE_MAX]{};
     ConfigVariable<float,0> cfgTankInitVar_[POOL_DEVICE_MAX]{};
+    ConfigVariable<char,0> cfgRuntimeVar_[POOL_DEVICE_MAX]{};
 
     PoolDeviceSlot slots_[POOL_DEVICE_MAX]{};
 };
