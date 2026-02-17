@@ -13,6 +13,10 @@ enum class AlarmId : uint16_t {
     // PoolLogic domain
     PoolPsiLow = 1000,
     PoolPsiHigh = 1001,
+
+    // Log pipeline domain
+    LogWarningSeen = 1100,
+    LogErrorSeen = 1101,
 };
 
 /** Alarm severity used for prioritization and summaries. */

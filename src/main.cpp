@@ -33,6 +33,7 @@
 #include "Modules/Logs/LogHubModule/LogHubModule.h"
 #include "Modules/Logs/LogSerialSinkModule/LogSerialSinkModule.h"
 #include "Modules/Logs/LogDispatcherModule/LogDispatcherModule.h"
+#include "Modules/Logs/LogAlarmSinkModule/LogAlarmSinkModule.h"
 
 #include "Modules/IOModule/IOModule.h"
 #include "Modules/IOModule/IOBus/OneWireBus.h"
@@ -78,6 +79,7 @@ static HAModule             haModule;
 static SystemModule         systemModule;
 static SystemMonitorModule  systemMonitorModule;
 static LogSerialSinkModule  logSerialSinkModule;
+static LogAlarmSinkModule   logAlarmSinkModule;
 static LogDispatcherModule  logDispatcherModule;
 static LogHubModule         logHubModule;
 static EventBusModule       eventBusModule;
@@ -100,6 +102,7 @@ struct BootOrchestratorState {
     bool active = false;
     bool mqttReleased = false;
     bool haReleased = false;
+    bool poolLogicReleased = false;
     uint32_t t0Ms = 0;
 };
 static BootOrchestratorState gBootOrchestrator{};
@@ -322,14 +325,17 @@ static void startBootOrchestrator()
     gBootOrchestrator.active = true;
     gBootOrchestrator.mqttReleased = false;
     gBootOrchestrator.haReleased = false;
+    gBootOrchestrator.poolLogicReleased = false;
     gBootOrchestrator.t0Ms = millis();
 
     // Stage gates: keep local control active immediately, delay network-heavy phases.
     mqttModule.setStartupReady(false);
     haModule.setStartupReady(false);
-    Serial.printf("[BOOT] staged startup armed (mqtt=%lums ha=%lums)\n",
+    poolLogicModule.setStartupReady(false);
+    Serial.printf("[BOOT] staged startup armed (mqtt=%lums ha=%lums poollogic=%lums)\n",
                   (unsigned long)Limits::Boot::MqttStartDelayMs,
-                  (unsigned long)Limits::Boot::HaStartDelayMs);
+                  (unsigned long)Limits::Boot::HaStartDelayMs,
+                  (unsigned long)Limits::Boot::PoolLogicStartDelayMs);
 }
 
 static void runBootOrchestrator()
@@ -351,7 +357,13 @@ static void runBootOrchestrator()
         Serial.printf("[BOOT] ha stage released at %lums\n", (unsigned long)elapsed);
     }
 
-    if (gBootOrchestrator.mqttReleased && gBootOrchestrator.haReleased) {
+    if (!gBootOrchestrator.poolLogicReleased && elapsed >= Limits::Boot::PoolLogicStartDelayMs) {
+        poolLogicModule.setStartupReady(true);
+        gBootOrchestrator.poolLogicReleased = true;
+        Serial.printf("[BOOT] poollogic stage released at %lums\n", (unsigned long)elapsed);
+    }
+
+    if (gBootOrchestrator.mqttReleased && gBootOrchestrator.haReleased && gBootOrchestrator.poolLogicReleased) {
         gBootOrchestrator.active = false;
         Serial.println("[BOOT] staged startup completed");
     }
@@ -378,6 +390,7 @@ void setup() {
     registry.runMigrations(CURRENT_CFG_VERSION, steps, MIGRATION_COUNT);
     mqttModule.setStartupReady(false);
     haModule.setStartupReady(false);
+    poolLogicModule.setStartupReady(false);
 
     moduleManager.add(&logHubModule);
     moduleManager.add(&logDispatcherModule);
@@ -388,6 +401,7 @@ void setup() {
     moduleManager.add(&dataStoreModule);
     moduleManager.add(&commandModule);
     moduleManager.add(&alarmModule);
+    moduleManager.add(&logAlarmSinkModule);
     moduleManager.add(&wifiModule);
     moduleManager.add(&timeModule);
     moduleManager.add(&mqttModule);

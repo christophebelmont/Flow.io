@@ -38,6 +38,7 @@ public:
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
+    void setStartupReady(bool ready) { startupReady_ = ready; }
 
 private:
     struct DeviceFsm {
@@ -63,6 +64,7 @@ private:
         (uint8_t)FLOW_POOL_SENSOR_BINDINGS[POOL_SENSOR_SLOT_POOL_LEVEL].ioId;
 
     bool enabled_ = true;
+    volatile bool startupReady_ = true;
 
     // Modes
     bool autoMode_ = true;

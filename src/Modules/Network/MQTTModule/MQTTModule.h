@@ -103,6 +103,7 @@ private:
     char topicCfgSet[Limits::Mqtt::Buffers::Topic] = {0};
     char topicCfgAck[Limits::Mqtt::Buffers::Topic] = {0};
     char topicRtAlarmsMeta[Limits::Mqtt::Buffers::Topic] = {0};
+    char topicRtAlarmsPack[Limits::Mqtt::Buffers::Topic] = {0};
     RuntimePublisher publishers[Limits::Mqtt::Capacity::MaxPublishers] = {};
     uint8_t publisherCount = 0;
     const char* cfgModules[Limits::Mqtt::Capacity::CfgTopicMax] = {nullptr};
@@ -206,6 +207,7 @@ private:
     portMUX_TYPE pendingAlarmMux_ = portMUX_INITIALIZER_UNLOCKED;
     bool alarmsMetaPending_ = false;
     bool alarmsFullSyncPending_ = false;
+    bool alarmsPackPending_ = false;
 
     uint32_t rxDropCount_ = 0;
     uint32_t parseFailCount_ = 0;
@@ -216,6 +218,7 @@ private:
     void processRxCfgSet_(const RxMsg& msg);
     bool publishAlarmState_(AlarmId id);
     bool publishAlarmMeta_();
+    bool publishAlarmPack_();
     void enqueuePendingAlarmId_(AlarmId id);
     uint8_t takePendingAlarmIds_(AlarmId* out, uint8_t maxItems);
     bool publishConfigModuleByName_(const char* module, bool retained);

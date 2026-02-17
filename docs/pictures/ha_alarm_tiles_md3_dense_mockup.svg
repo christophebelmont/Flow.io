@@ -1,0 +1,132 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flow.IO alarms dense MD3 mockup">
+  <defs>
+    <style>
+      .title { font: 700 24px 'Segoe UI', Roboto, Arial, sans-serif; fill: #1f1f1f; }
+      .sub { font: 400 13px 'Segoe UI', Roboto, Arial, sans-serif; fill: #505965; }
+      .id { font: 700 12px 'Segoe UI', Roboto, Arial, sans-serif; fill: #1f1f1f; }
+      .sev { font: 600 11px 'Segoe UI', Roboto, Arial, sans-serif; fill: #212121; }
+      .tiny { font: 600 9px 'Segoe UI', Roboto, Arial, sans-serif; fill: #212121; }
+      .legend { font: 500 12px 'Segoe UI', Roboto, Arial, sans-serif; fill: #323232; }
+    </style>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="520" fill="#f5f7fa"/>
+  <text x="40" y="46" class="title">Flow.IO - Variante Dense (MD3)</text>
+  <text x="40" y="70" class="sub">Format compact pour afficher 8 alarmes avec action ack au tap.</text>
+
+  <!-- Dense card size: 170x92, gap 16, grid 4x2 -->
+  <!-- Row 1 -->
+  <g transform="translate(40,96)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#dcecff" stroke="#cdd8ea"/>
+    <text x="12" y="20" class="id">A1 PSI</text>
+    <text x="12" y="38" class="sev">Info</text>
+    <circle cx="18" cy="68" r="5" fill="#d32f2f"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#f57c00"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(226,96)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#ffe8c2" stroke="#dfc99e"/>
+    <text x="12" y="20" class="id">A2 PSI+</text>
+    <text x="12" y="38" class="sev">Warning</text>
+    <circle cx="18" cy="68" r="5" fill="#d32f2f"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#f57c00"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#2e7d32"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(412,96)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#ffd9d6" stroke="#e0b9b5"/>
+    <text x="12" y="20" class="id">A3 LOG</text>
+    <text x="12" y="38" class="sev">Alarm</text>
+    <circle cx="18" cy="68" r="5" fill="#d32f2f"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#9aa0a6"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(598,96)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#ffc9c2" stroke="#dfaba4"/>
+    <text x="12" y="20" class="id">A4 OVP</text>
+    <text x="12" y="38" class="sev">Critical</text>
+    <circle cx="18" cy="68" r="5" fill="#d32f2f"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#f57c00"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g transform="translate(40,204)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#eceff3" stroke="#d8dde6"/>
+    <text x="12" y="20" class="id">A5 FLOW</text>
+    <text x="12" y="38" class="sev">Info</text>
+    <circle cx="18" cy="68" r="5" fill="#9aa0a6"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#9aa0a6"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(226,204)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#eceff3" stroke="#d8dde6"/>
+    <text x="12" y="20" class="id">A6 pH UP</text>
+    <text x="12" y="38" class="sev">Warning</text>
+    <circle cx="18" cy="68" r="5" fill="#9aa0a6"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#9aa0a6"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#2e7d32"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(412,204)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#eceff3" stroke="#d8dde6"/>
+    <text x="12" y="20" class="id">A7 ORP</text>
+    <text x="12" y="38" class="sev">Alarm</text>
+    <circle cx="18" cy="68" r="5" fill="#9aa0a6"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#9aa0a6"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <g transform="translate(598,204)" filter="url(#shadow)">
+    <rect width="170" height="92" rx="14" fill="#eceff3" stroke="#d8dde6"/>
+    <text x="12" y="20" class="id">A8 SNS</text>
+    <text x="12" y="38" class="sev">Critical</text>
+    <circle cx="18" cy="68" r="5" fill="#9aa0a6"/><text x="28" y="71" class="tiny">A</text>
+    <circle cx="60" cy="68" r="5" fill="#9aa0a6"/><text x="70" y="71" class="tiny">C</text>
+    <circle cx="102" cy="68" r="5" fill="#9aa0a6"/><text x="112" y="71" class="tiny">K</text>
+    <text x="12" y="86" class="tiny">tap: ack</text>
+  </g>
+
+  <rect x="40" y="324" width="728" height="156" rx="14" fill="#ffffff" stroke="#d8dde6"/>
+  <text x="58" y="350" class="legend">Densification appliquée :</text>
+  <text x="58" y="372" class="legend">- ID court (A1..A8), labels réduits, indicateurs A/C/K en ligne.</text>
+  <text x="58" y="394" class="legend">- Format tuile 170x92 (vs 220x150), padding et typo optimisés.</text>
+  <text x="58" y="416" class="legend">- Interaction conservée: tap pour acknowledge, hold pour détails.</text>
+  <text x="58" y="452" class="legend">Palette sévérité: Info (bleu), Warning (ambre), Alarm (rouge), Critical (rouge soutenu).</text>
+
+  <!-- Phone preview -->
+  <g transform="translate(850,96)">
+    <rect width="280" height="384" rx="28" fill="#101218"/>
+    <rect x="16" y="20" width="248" height="344" rx="18" fill="#f5f7fa"/>
+    <text x="36" y="48" class="sub">Mobile 2 colonnes</text>
+    <g transform="translate(34,64)">
+      <rect width="108" height="74" rx="12" fill="#ffd9d6" stroke="#e0b9b5"/>
+      <text x="8" y="18" class="tiny">A3 LOG</text>
+      <text x="8" y="34" class="tiny">Alarm</text>
+      <circle cx="12" cy="56" r="4" fill="#d32f2f"/><text x="20" y="59" class="tiny">A</text>
+      <circle cx="44" cy="56" r="4" fill="#9aa0a6"/><text x="52" y="59" class="tiny">C</text>
+      <circle cx="76" cy="56" r="4" fill="#9aa0a6"/><text x="84" y="59" class="tiny">K</text>
+    </g>
+    <g transform="translate(156,64)">
+      <rect width="108" height="74" rx="12" fill="#ffe8c2" stroke="#dfc99e"/>
+      <text x="8" y="18" class="tiny">A2 PSI+</text>
+      <text x="8" y="34" class="tiny">Warn</text>
+      <circle cx="12" cy="56" r="4" fill="#d32f2f"/><text x="20" y="59" class="tiny">A</text>
+      <circle cx="44" cy="56" r="4" fill="#f57c00"/><text x="52" y="59" class="tiny">C</text>
+      <circle cx="76" cy="56" r="4" fill="#2e7d32"/><text x="84" y="59" class="tiny">K</text>
+    </g>
+  </g>
+</svg>

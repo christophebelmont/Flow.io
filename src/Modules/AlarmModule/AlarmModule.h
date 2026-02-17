@@ -56,9 +56,11 @@ private:
     static bool svcBuildSnapshot_(void* ctx, char* out, size_t len);
     static uint8_t svcListIds_(void* ctx, AlarmId* out, uint8_t max);
     static bool svcBuildAlarmState_(void* ctx, AlarmId id, char* out, size_t len);
+    static bool svcBuildPacked_(void* ctx, char* out, size_t len, uint8_t slotCount);
 
     static bool cmdList_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
     static bool cmdAck_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
+    static bool cmdAckSlot_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
     static bool cmdAckAll_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
 
     bool registerAlarm_(const AlarmRegistration& def, AlarmCondFn condFn, void* condCtx);
@@ -71,7 +73,10 @@ private:
     bool buildSnapshot_(char* out, size_t len) const;
     uint8_t listIds_(AlarmId* out, uint8_t max) const;
     bool buildAlarmState_(AlarmId id, char* out, size_t len) const;
+    bool buildPacked_(char* out, size_t len, uint8_t slotCount) const;
     bool handleCmdAck_(const CommandRequest& req, char* reply, size_t replyLen);
+    bool handleCmdAckSlot_(const CommandRequest& req, char* reply, size_t replyLen);
+    bool slotAlarmId_(uint8_t slot, AlarmId& outId) const;
     void evaluateOnce_(uint32_t nowMs);
 
     int16_t findSlotById_(AlarmId id) const;
@@ -91,6 +96,7 @@ private:
         svcBuildSnapshot_,
         svcListIds_,
         svcBuildAlarmState_,
+        svcBuildPacked_,
         this
     };
 

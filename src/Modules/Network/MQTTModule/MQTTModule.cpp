@@ -93,6 +93,7 @@ void MQTTModule::buildTopics() {
     snprintf(topicCfgSet, sizeof(topicCfgSet), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgSet);
     snprintf(topicCfgAck, sizeof(topicCfgAck), "%s/%s/%s", cfgData.baseTopic, deviceId, MqttTopics::SuffixCfgAck);
     snprintf(topicRtAlarmsMeta, sizeof(topicRtAlarmsMeta), "%s/%s/rt/alarms/m", cfgData.baseTopic, deviceId);
+    snprintf(topicRtAlarmsPack, sizeof(topicRtAlarmsPack), "%s/%s/rt/alarms/p", cfgData.baseTopic, deviceId);
     for (size_t i = 0; i < cfgModuleCount; ++i) {
         snprintf(topicCfgBlocks[i], sizeof(topicCfgBlocks[i]),
                  "%s/%s/cfg/%s", cfgData.baseTopic, deviceId, cfgModules[i]);
@@ -132,6 +133,7 @@ void MQTTModule::onConnect(bool) {
     _pendingPublish = true;
     alarmsMetaPending_ = true;
     alarmsFullSyncPending_ = true;
+    alarmsPackPending_ = true;
 }
 
 void MQTTModule::onDisconnect(AsyncMqttClientDisconnectReason) {
@@ -497,6 +499,17 @@ bool MQTTModule::publishAlarmMeta_()
     return publish(topicRtAlarmsMeta, publishBuf, 0, false);
 }
 
+bool MQTTModule::publishAlarmPack_()
+{
+    if (!alarmSvc || !alarmSvc->buildPacked) return false;
+    if (topicRtAlarmsPack[0] == '\0') return false;
+    if (!alarmSvc->buildPacked(alarmSvc->ctx, publishBuf, sizeof(publishBuf), 8)) {
+        LOGW("alarm pack build failed (buffer=%u)", (unsigned)sizeof(publishBuf));
+        return false;
+    }
+    return publish(topicRtAlarmsPack, publishBuf, 0, false);
+}
+
 void MQTTModule::enqueuePendingAlarmId_(AlarmId id)
 {
     if (id == AlarmId::None) return;
@@ -725,6 +738,7 @@ void MQTTModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     pendingAlarmCount_ = 0;
     alarmsMetaPending_ = false;
     alarmsFullSyncPending_ = false;
+    alarmsPackPending_ = false;
     syncRxMetrics_();
 
     mqttSvc.publish = MQTTModule::svcPublish;
@@ -823,6 +837,11 @@ void MQTTModule::loop() {
                 if (publishAlarmMeta_()) {
                     alarmsMetaPending_ = false;
                 }
+            }
+        }
+        if (alarmsPackPending_) {
+            if (publishAlarmPack_()) {
+                alarmsPackPending_ = false;
             }
         }
         if (sensorsPending && sensorsTopic && sensorsBuild) {
@@ -987,6 +1006,7 @@ void MQTTModule::onEvent(const Event& e)
             alarmsFullSyncPending_ = true;
         }
         alarmsMetaPending_ = true;
+        alarmsPackPending_ = true;
         return;
     }
 }

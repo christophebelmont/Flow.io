@@ -742,6 +742,18 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
     haSvc.ctx = this;
     services.add("ha", &haSvc);
 
+    const HASensorEntry alarmsPack{
+        "alarms",
+        "alarms_pack",
+        "Alarms Pack",
+        "rt/alarms/p",
+        "{{ value_json.p | int(0) }}",
+        "diagnostic",
+        "mdi:alarm-light-outline",
+        nullptr
+    };
+    (void)addSensorEntry(alarmsPack);
+
     if (dsSvc && dsSvc->store) {
         setHaAutoconfigPublished(*dsSvc->store, false);
     }

@@ -88,6 +88,21 @@ int16_t AlarmModule::findFreeSlot_() const
     return -1;
 }
 
+bool AlarmModule::slotAlarmId_(uint8_t slot, AlarmId& outId) const
+{
+    outId = AlarmId::None;
+    if (slot >= Limits::Alarm::MaxAlarms) return false;
+
+    bool ok = false;
+    portENTER_CRITICAL(&slotsMux_);
+    if (slots_[slot].used) {
+        outId = slots_[slot].id;
+        ok = true;
+    }
+    portEXIT_CRITICAL(&slotsMux_);
+    return ok;
+}
+
 bool AlarmModule::registerAlarm_(const AlarmRegistration& def, AlarmCondFn condFn, void* condCtx)
 {
     if (!condFn) return false;
@@ -306,10 +321,12 @@ bool AlarmModule::buildAlarmState_(AlarmId id, char* out, size_t len) const
 
     AlarmSlot snap{};
     bool found = false;
+    uint16_t slotIndex = 0;
     portENTER_CRITICAL(&slotsMux_);
     const int16_t idx = findSlotById_(id);
     if (idx >= 0) {
         snap = slots_[(uint16_t)idx];
+        slotIndex = (uint16_t)idx;
         found = true;
     }
     portEXIT_CRITICAL(&slotsMux_);
@@ -318,13 +335,49 @@ bool AlarmModule::buildAlarmState_(AlarmId id, char* out, size_t len) const
     const int wrote = snprintf(
         out,
         len,
-        "{\"id\":%u,\"a\":%u,\"k\":%u,\"c\":%u,\"s\":%u,\"lc\":%lu}",
+        "{\"id\":%u,\"slot\":%u,\"a\":%u,\"k\":%u,\"c\":%u,\"s\":%u,\"lc\":%lu}",
         (unsigned)snap.id,
+        (unsigned)slotIndex,
         snap.active ? 1u : 0u,
         snap.acked ? 1u : 0u,
         (unsigned)((uint8_t)snap.lastCond),
         (unsigned)((uint8_t)snap.def.severity),
         (unsigned long)snap.lastChangeMs);
+    return (wrote > 0) && ((size_t)wrote < len);
+}
+
+bool AlarmModule::buildPacked_(char* out, size_t len, uint8_t slotCount) const
+{
+    if (!out || len == 0) return false;
+
+    uint8_t n = slotCount;
+    if (n == 0) n = 8;
+    if (n > 8) n = 8;
+    if (n > (uint8_t)Limits::Alarm::MaxAlarms) n = (uint8_t)Limits::Alarm::MaxAlarms;
+
+    uint64_t pack = 0ULL;
+    portENTER_CRITICAL(&slotsMux_);
+    for (uint8_t i = 0; i < n; ++i) {
+        const AlarmSlot& s = slots_[i];
+        uint8_t bits = 0;
+        if (s.used) {
+            if (s.active) bits |= 0x01U;
+            if (s.acked) bits |= 0x02U;
+            if (s.lastCond == AlarmCondState::True) bits |= 0x04U;
+            bits |= (uint8_t)(((uint8_t)s.def.severity & 0x03U) << 3);
+        }
+        pack |= ((uint64_t)bits) << ((uint64_t)i * 5ULL);
+    }
+    portEXIT_CRITICAL(&slotsMux_);
+
+    const int wrote = snprintf(
+        out,
+        len,
+        "{\"v\":1,\"slots\":%u,\"p\":%llu,\"h\":\"%010llX\",\"ts\":%lu}",
+        (unsigned)n,
+        (unsigned long long)pack,
+        (unsigned long long)pack,
+        (unsigned long)millis());
     return (wrote > 0) && ((size_t)wrote < len);
 }
 
@@ -389,6 +442,12 @@ bool AlarmModule::svcBuildAlarmState_(void* ctx, AlarmId id, char* out, size_t l
     return self ? self->buildAlarmState_(id, out, len) : false;
 }
 
+bool AlarmModule::svcBuildPacked_(void* ctx, char* out, size_t len, uint8_t slotCount)
+{
+    AlarmModule* self = static_cast<AlarmModule*>(ctx);
+    return self ? self->buildPacked_(out, len, slotCount) : false;
+}
+
 bool AlarmModule::cmdList_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen)
 {
     AlarmModule* self = static_cast<AlarmModule*>(userCtx);
@@ -437,11 +496,70 @@ bool AlarmModule::handleCmdAck_(const CommandRequest& req, char* reply, size_t r
     return true;
 }
 
+bool AlarmModule::handleCmdAckSlot_(const CommandRequest& req, char* reply, size_t replyLen)
+{
+    JsonObjectConst args;
+    if (!parseCmdArgsObject_(req, args)) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::MissingArgs, "alarms.ack_slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+    if (!args.containsKey("slot")) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::MissingSlot, "alarms.ack_slot.slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+    if (!args["slot"].is<uint8_t>() && !args["slot"].is<uint16_t>() &&
+        !args["slot"].is<uint32_t>() && !args["slot"].is<int32_t>()) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::InvalidSlot, "alarms.ack_slot.slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+
+    const uint32_t slotRaw = args["slot"].as<uint32_t>();
+    if (slotRaw >= 8U || slotRaw >= (uint32_t)Limits::Alarm::MaxAlarms) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::InvalidSlot, "alarms.ack_slot.slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+    const uint8_t slot = (uint8_t)slotRaw;
+
+    AlarmId id = AlarmId::None;
+    if (!slotAlarmId_(slot, id)) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::UnusedSlot, "alarms.ack_slot.slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+
+    if (!ack_(id)) {
+        if (!writeErrorJson(reply, replyLen, ErrorCode::Failed, "alarms.ack_slot")) {
+            snprintf(reply, replyLen, "{\"ok\":false}");
+        }
+        return false;
+    }
+
+    snprintf(reply, replyLen, "{\"ok\":true,\"slot\":%u,\"id\":%u}",
+             (unsigned)slot, (unsigned)((uint16_t)id));
+    return true;
+}
+
 bool AlarmModule::cmdAck_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen)
 {
     AlarmModule* self = static_cast<AlarmModule*>(userCtx);
     if (!self) return false;
     return self->handleCmdAck_(req, reply, replyLen);
+}
+
+bool AlarmModule::cmdAckSlot_(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen)
+{
+    AlarmModule* self = static_cast<AlarmModule*>(userCtx);
+    if (!self) return false;
+    return self->handleCmdAckSlot_(req, reply, replyLen);
 }
 
 bool AlarmModule::cmdAckAll_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen)
@@ -470,6 +588,7 @@ void AlarmModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (cmdSvc_ && cmdSvc_->registerHandler) {
         cmdSvc_->registerHandler(cmdSvc_->ctx, "alarms.list", &AlarmModule::cmdList_, this);
         cmdSvc_->registerHandler(cmdSvc_->ctx, "alarms.ack", &AlarmModule::cmdAck_, this);
+        cmdSvc_->registerHandler(cmdSvc_->ctx, "alarms.ack_slot", &AlarmModule::cmdAckSlot_, this);
         cmdSvc_->registerHandler(cmdSvc_->ctx, "alarms.ack_all", &AlarmModule::cmdAckAll_, this);
     }
 
@@ -580,7 +699,7 @@ void AlarmModule::evaluateOnce_(uint32_t nowMs)
             emitAlarmEvent_(EventId::AlarmConditionChanged, id);
         }
         if (postRaised) {
-            LOGW("Alarm raised id=%u code=%s cond=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?", condStateStr_(cond));
+            LOGI("Alarm raised id=%u code=%s cond=%s", (unsigned)id, alarmCode[0] ? alarmCode : "?", condStateStr_(cond));
             emitAlarmEvent_(EventId::AlarmRaised, id);
         }
         if (postCleared) {

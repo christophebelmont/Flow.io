@@ -427,6 +427,10 @@ void PoolLogicModule::loop()
         vTaskDelay(pdMS_TO_TICKS(500));
         return;
     }
+    if (!startupReady_) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+        return;
+    }
 
     bool doRecalc = false;
     bool doDayReset = false;

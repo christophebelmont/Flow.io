@@ -1,0 +1,112 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flow.IO ultra dense alarm tiles">
+  <defs>
+    <style>
+      .title { font: 700 22px 'Segoe UI', Roboto, Arial, sans-serif; fill:#1f1f1f; }
+      .sub { font: 400 12px 'Segoe UI', Roboto, Arial, sans-serif; fill:#56606d; }
+      .txt { font: 700 9px 'Segoe UI', Roboto, Arial, sans-serif; fill:#1f1f1f; }
+      .legend { font: 500 12px 'Segoe UI', Roboto, Arial, sans-serif; fill:#2a2a2a; }
+    </style>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="420" fill="#f5f7fa"/>
+  <text x="36" y="42" class="title">Flow.IO - Ultra Dense Alarm Tiles (MD3)</text>
+  <text x="36" y="64" class="sub">Tuile 132x68 | tap = ack | hold = details</text>
+
+  <!-- 4x2 grid, card = 132x68, gap 12 -->
+  <!-- Row 1 -->
+  <g transform="translate(36,88)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#dcecff" stroke="#cbd7ea"/>
+    <circle cx="18" cy="20" r="7" fill="#1565C0"/>
+    <text x="12" y="38" class="txt">A1</text>
+    <circle cx="52" cy="22" r="4.5" fill="#d32f2f"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#f57c00"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(180,88)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#ffe8c2" stroke="#e0cb9f"/>
+    <circle cx="18" cy="20" r="7" fill="#B26A00"/>
+    <text x="12" y="38" class="txt">A2</text>
+    <circle cx="52" cy="22" r="4.5" fill="#d32f2f"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#f57c00"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#2e7d32"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(324,88)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#ffd9d6" stroke="#e1b9b5"/>
+    <circle cx="18" cy="20" r="7" fill="#B3261E"/>
+    <text x="12" y="38" class="txt">A3</text>
+    <circle cx="52" cy="22" r="4.5" fill="#d32f2f"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#9aa0a6"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(468,88)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#ffc9c2" stroke="#e2ada5"/>
+    <circle cx="18" cy="20" r="7" fill="#8E1B14"/>
+    <text x="12" y="38" class="txt">A4</text>
+    <circle cx="52" cy="22" r="4.5" fill="#d32f2f"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#f57c00"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g transform="translate(36,168)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#eceff3" stroke="#d7dce5"/>
+    <circle cx="18" cy="20" r="7" fill="#7d8794"/>
+    <text x="12" y="38" class="txt">A5</text>
+    <circle cx="52" cy="22" r="4.5" fill="#9aa0a6"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#9aa0a6"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(180,168)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#eceff3" stroke="#d7dce5"/>
+    <circle cx="18" cy="20" r="7" fill="#7d8794"/>
+    <text x="12" y="38" class="txt">A6</text>
+    <circle cx="52" cy="22" r="4.5" fill="#9aa0a6"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#9aa0a6"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#2e7d32"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(324,168)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#eceff3" stroke="#d7dce5"/>
+    <circle cx="18" cy="20" r="7" fill="#7d8794"/>
+    <text x="12" y="38" class="txt">A7</text>
+    <circle cx="52" cy="22" r="4.5" fill="#9aa0a6"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#9aa0a6"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+  <g transform="translate(468,168)" filter="url(#s)">
+    <rect width="132" height="68" rx="12" fill="#eceff3" stroke="#d7dce5"/>
+    <circle cx="18" cy="20" r="7" fill="#7d8794"/>
+    <text x="12" y="38" class="txt">A8</text>
+    <circle cx="52" cy="22" r="4.5" fill="#9aa0a6"/><text x="60" y="25" class="txt">A</text>
+    <circle cx="82" cy="22" r="4.5" fill="#9aa0a6"/><text x="90" y="25" class="txt">C</text>
+    <circle cx="112" cy="22" r="4.5" fill="#9aa0a6"/><text x="120" y="25" class="txt">K</text>
+  </g>
+
+  <rect x="36" y="262" width="564" height="126" rx="14" fill="#fff" stroke="#d7dce5"/>
+  <text x="54" y="288" class="legend">Mode ultra-dense:</text>
+  <text x="54" y="312" class="legend">- pas de label long, uniquement ID + points A/C/K</text>
+  <text x="54" y="334" class="legend">- couleur de fond = severity quand active, sinon neutre</text>
+  <text x="54" y="356" class="legend">- parfait pour 8 alarms sur une seule vue</text>
+
+  <g transform="translate(660,88)">
+    <rect width="500" height="300" rx="18" fill="#fff" stroke="#d7dce5"/>
+    <text x="22" y="34" class="legend">Prévisualisation mobile (2 colonnes)</text>
+
+    <g transform="translate(22,52)">
+      <rect width="110" height="60" rx="10" fill="#ffd9d6" stroke="#e1b9b5"/>
+      <circle cx="16" cy="16" r="6" fill="#B3261E"/><text x="11" y="31" class="txt">A3</text>
+      <circle cx="48" cy="18" r="4" fill="#d32f2f"/><text x="55" y="21" class="txt">A</text>
+      <circle cx="72" cy="18" r="4" fill="#9aa0a6"/><text x="79" y="21" class="txt">C</text>
+      <circle cx="96" cy="18" r="4" fill="#9aa0a6"/><text x="103" y="21" class="txt">K</text>
+    </g>
+    <g transform="translate(142,52)">
+      <rect width="110" height="60" rx="10" fill="#ffe8c2" stroke="#e0cb9f"/>
+      <circle cx="16" cy="16" r="6" fill="#B26A00"/><text x="11" y="31" class="txt">A2</text>
+      <circle cx="48" cy="18" r="4" fill="#d32f2f"/><text x="55" y="21" class="txt">A</text>
+      <circle cx="72" cy="18" r="4" fill="#f57c00"/><text x="79" y="21" class="txt">C</text>
+      <circle cx="96" cy="18" r="4" fill="#2e7d32"/><text x="103" y="21" class="txt">K</text>
+    </g>
+  </g>
+</svg>
