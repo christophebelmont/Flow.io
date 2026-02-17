@@ -145,59 +145,59 @@ private:
                                           &phAutoMode_, ConfigPersistence::Persistent, 0};
     ConfigVariable<bool,0> orpAutoModeVar_{NVS_KEY(NvsKeys::PoolLogic::OrpAutoMode), "orp_auto_mode", "poollogic", ConfigType::Bool,
                                            &orpAutoMode_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<bool,0> electrolyseModeVar_{NVS_KEY(NvsKeys::PoolLogic::ElectrolyseMode), "electrolyse_mode", "poollogic", ConfigType::Bool,
+    ConfigVariable<bool,0> electrolyseModeVar_{NVS_KEY(NvsKeys::PoolLogic::ElectrolyseMode), "electrolys_mode", "poollogic", ConfigType::Bool,
                                                &electrolyseMode_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<bool,0> electroRunModeVar_{NVS_KEY(NvsKeys::PoolLogic::ElectroRunMode), "electro_run_mode", "poollogic", ConfigType::Bool,
+    ConfigVariable<bool,0> electroRunModeVar_{NVS_KEY(NvsKeys::PoolLogic::ElectroRunMode), "electro_run_md", "poollogic", ConfigType::Bool,
                                               &electroRunMode_, ConfigPersistence::Persistent, 0};
 
-    ConfigVariable<float,0> tempLowVar_{NVS_KEY(NvsKeys::PoolLogic::TempLow), "water_temp_low_threshold", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> tempLowVar_{NVS_KEY(NvsKeys::PoolLogic::TempLow), "wat_temp_lo_th", "poollogic", ConfigType::Float,
                                         &waterTempLowThreshold_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<float,0> tempSetpointVar_{NVS_KEY(NvsKeys::PoolLogic::TempSetpoint), "water_temp_setpoint", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> tempSetpointVar_{NVS_KEY(NvsKeys::PoolLogic::TempSetpoint), "wat_temp_setpt", "poollogic", ConfigType::Float,
                                              &waterTempSetpoint_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> startMinVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationStartMin), "filtration_start_min", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> startMinVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationStartMin), "filtr_start_min", "poollogic", ConfigType::UInt8,
                                            &filtrationStartMin_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> stopMaxVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationStopMax), "filtration_stop_max", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> stopMaxVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationStopMax), "filtr_stop_max", "poollogic", ConfigType::UInt8,
                                           &filtrationStopMax_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> calcStartVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStart), "filtration_start_calc", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> calcStartVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStart), "filtr_start_clc", "poollogic", ConfigType::UInt8,
                                             &filtrationCalcStart_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> calcStopVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStop), "filtration_stop_calc", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> calcStopVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationCalcStop), "filtr_stop_clc", "poollogic", ConfigType::UInt8,
                                            &filtrationCalcStop_, ConfigPersistence::Persistent, 0};
 
     ConfigVariable<uint8_t,0> orpIdVar_{NVS_KEY(NvsKeys::PoolLogic::OrpIoId), "orp_io_id", "poollogic", ConfigType::UInt8,
                                         &orpIoId_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> psiIdVar_{NVS_KEY(NvsKeys::PoolLogic::PsiIoId), "psi_io_id", "poollogic", ConfigType::UInt8,
                                         &psiIoId_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> waterTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::WaterTempIoId), "water_temp_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> waterTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::WaterTempIoId), "wat_temp_io_id", "poollogic", ConfigType::UInt8,
                                               &waterTempIoId_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> airTempIdVar_{NVS_KEY(NvsKeys::PoolLogic::AirTempIoId), "air_temp_io_id", "poollogic", ConfigType::UInt8,
                                             &airTempIoId_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> levelIdVar_{NVS_KEY(NvsKeys::PoolLogic::LevelIoId), "pool_level_io_id", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> levelIdVar_{NVS_KEY(NvsKeys::PoolLogic::LevelIoId), "pool_lvl_io_id", "poollogic", ConfigType::UInt8,
                                           &levelIoId_, ConfigPersistence::Persistent, 0};
 
-    ConfigVariable<float,0> psiLowVar_{NVS_KEY(NvsKeys::PoolLogic::PsiLow), "psi_low_threshold", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> psiLowVar_{NVS_KEY(NvsKeys::PoolLogic::PsiLow), "psi_low_th", "poollogic", ConfigType::Float,
                                        &psiLowThreshold_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<float,0> psiHighVar_{NVS_KEY(NvsKeys::PoolLogic::PsiHigh), "psi_high_threshold", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> psiHighVar_{NVS_KEY(NvsKeys::PoolLogic::PsiHigh), "psi_high_th", "poollogic", ConfigType::Float,
                                         &psiHighThreshold_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<float,0> winterStartVar_{NVS_KEY(NvsKeys::PoolLogic::WinterStart), "winter_start_temp", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> winterStartVar_{NVS_KEY(NvsKeys::PoolLogic::WinterStart), "winter_start_t", "poollogic", ConfigType::Float,
                                             &winterStartTempC_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<float,0> freezeHoldVar_{NVS_KEY(NvsKeys::PoolLogic::FreezeHold), "freeze_hold_temp", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> freezeHoldVar_{NVS_KEY(NvsKeys::PoolLogic::FreezeHold), "freeze_hold_t", "poollogic", ConfigType::Float,
                                            &freezeHoldTempC_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<float,0> secureElectroVar_{NVS_KEY(NvsKeys::PoolLogic::SecureElectro), "secure_electro_temp", "poollogic", ConfigType::Float,
+    ConfigVariable<float,0> secureElectroVar_{NVS_KEY(NvsKeys::PoolLogic::SecureElectro), "secure_elec_t", "poollogic", ConfigType::Float,
                                               &secureElectroTempC_, ConfigPersistence::Persistent, 0};
     ConfigVariable<float,0> orpSetpointVar_{NVS_KEY(NvsKeys::PoolLogic::OrpSetpoint), "orp_setpoint", "poollogic", ConfigType::Float,
                                             &orpSetpoint_, ConfigPersistence::Persistent, 0};
 
-    ConfigVariable<uint8_t,0> psiDelayVar_{NVS_KEY(NvsKeys::PoolLogic::PsiDelay), "psi_startup_delay_sec", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> psiDelayVar_{NVS_KEY(NvsKeys::PoolLogic::PsiDelay), "psi_start_dly_s", "poollogic", ConfigType::UInt8,
                                            &psiStartupDelaySec_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> delayPidsVar_{NVS_KEY(NvsKeys::PoolLogic::DelayPids), "delay_pids_min", "poollogic", ConfigType::UInt8,
                                             &delayPidsMin_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> delayElectroVar_{NVS_KEY(NvsKeys::PoolLogic::DelayElectro), "delay_electro_min", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> delayElectroVar_{NVS_KEY(NvsKeys::PoolLogic::DelayElectro), "dly_electro_min", "poollogic", ConfigType::UInt8,
                                                &delayElectroMin_, ConfigPersistence::Persistent, 0};
     ConfigVariable<uint8_t,0> robotDelayVar_{NVS_KEY(NvsKeys::PoolLogic::RobotDelay), "robot_delay_min", "poollogic", ConfigType::UInt8,
                                              &robotDelayMin_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> robotDurationVar_{NVS_KEY(NvsKeys::PoolLogic::RobotDuration), "robot_duration_min", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> robotDurationVar_{NVS_KEY(NvsKeys::PoolLogic::RobotDuration), "robot_dur_min", "poollogic", ConfigType::UInt8,
                                                 &robotDurationMin_, ConfigPersistence::Persistent, 0};
-    ConfigVariable<uint8_t,0> fillingMinOnVar_{NVS_KEY(NvsKeys::PoolLogic::FillingMinOn), "filling_min_on_sec", "poollogic", ConfigType::UInt8,
+    ConfigVariable<uint8_t,0> fillingMinOnVar_{NVS_KEY(NvsKeys::PoolLogic::FillingMinOn), "fill_min_on_s", "poollogic", ConfigType::UInt8,
                                                &fillingMinOnSec_, ConfigPersistence::Persistent, 0};
 
     ConfigVariable<uint8_t,0> filtrationDeviceVar_{NVS_KEY(NvsKeys::PoolLogic::FiltrationSlot), "filtration_slot", "poollogic", ConfigType::UInt8,

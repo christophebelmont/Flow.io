@@ -109,7 +109,7 @@ private:
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
     ConfigVariable<bool,0> weekStartMondayVar {
-        NVS_KEY(NvsKeys::Time::WeekStartMonday),"week_start_monday","time",ConfigType::Bool,
+        NVS_KEY(NvsKeys::Time::WeekStartMonday),"week_start_mon","time",ConfigType::Bool,
         &cfgData.weekStartMonday,ConfigPersistence::Persistent,0
     };
     ConfigVariable<char,0> scheduleBlobVar {

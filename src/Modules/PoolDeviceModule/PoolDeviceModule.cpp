@@ -888,7 +888,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfg.registerVar(cfgFlowVar_[i], kCfgModuleId, branchId);
 
         cfgTankCapVar_[i].nvsKey = nvsTankCapKey_[i];
-        cfgTankCapVar_[i].jsonName = "tank_capacity_ml";
+        cfgTankCapVar_[i].jsonName = "tank_cap_ml";
         cfgTankCapVar_[i].moduleName = cfgModuleName_[i];
         cfgTankCapVar_[i].type = ConfigType::Float;
         cfgTankCapVar_[i].value = &s.def.tankCapacityMl;
@@ -897,7 +897,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
         cfg.registerVar(cfgTankCapVar_[i], kCfgModuleId, branchId);
 
         cfgTankInitVar_[i].nvsKey = nvsTankInitKey_[i];
-        cfgTankInitVar_[i].jsonName = "tank_initial_ml";
+        cfgTankInitVar_[i].jsonName = "tank_init_ml";
         cfgTankInitVar_[i].moduleName = cfgModuleName_[i];
         cfgTankInitVar_[i].type = ConfigType::Float;
         cfgTankInitVar_[i].value = &s.def.tankInitialMl;

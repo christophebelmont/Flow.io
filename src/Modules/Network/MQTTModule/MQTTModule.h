@@ -150,7 +150,7 @@ private:
         &cfgData.enabled,ConfigPersistence::Persistent,0
     };
     ConfigVariable<int32_t,0> sensorMinVar {
-        NVS_KEY(NvsKeys::Mqtt::SensorMinPublishMs),"sensor_min_publish_ms","mqtt",ConfigType::Int32,
+        NVS_KEY(NvsKeys::Mqtt::SensorMinPublishMs),"sens_min_pub_ms","mqtt",ConfigType::Int32,
         (int32_t*)&cfgData.sensorMinPublishMs,ConfigPersistence::Persistent,0
     };
 

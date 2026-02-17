@@ -250,9 +250,9 @@ static bool buildRuntimeMuxState(MQTTModule* mqtt, char* out, size_t len) {
     const RuntimeMuxStats& st = gRuntimeMuxStats;
     int wrote = snprintf(
         out, len,
-        "{\"v\":1,\"ts\":%lu,\"seq\":%lu,\"routes_total\":%u,\"routes_published\":%u,"
-        "\"routes_skipped_nochange\":%u,\"routes_skipped_mask\":%u,"
-        "\"build_errors\":%u,\"publish_errors\":%u,\"dirty_active_mask\":%lu}",
+        "{\"v\":1,\"ts\":%lu,\"seq\":%lu,\"routes_total\":%u,\"routes_pub\":%u,"
+        "\"routes_skip_nc\":%u,\"routes_skip_m\":%u,"
+        "\"build_errors\":%u,\"publish_errors\":%u,\"dirty_act_m\":%lu}",
         (unsigned long)millis(),
         (unsigned long)st.seq,
         (unsigned)st.routesTotal,

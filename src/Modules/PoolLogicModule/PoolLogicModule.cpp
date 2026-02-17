@@ -171,7 +171,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "calculated_filtration_start",
             "Calculated Filtration Start",
             "cfg/poollogic",
-            "{{ value_json.filtration_start_calc | int(0) }}",
+            "{{ value_json.filtr_start_clc | int(0) }}",
             nullptr,
             "mdi:clock-start",
             "h"
@@ -181,7 +181,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "calculated_filtration_stop",
             "Calculated Filtration Stop",
             "cfg/poollogic",
-            "{{ value_json.filtration_stop_calc | int(0) }}",
+            "{{ value_json.filtr_stop_clc | int(0) }}",
             nullptr,
             "mdi:clock-end",
             "h"

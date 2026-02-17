@@ -416,7 +416,7 @@ void MQTTModule::publishTimeSchedulerSlots(bool retained, const char* rootTopic)
         const char* mode = (def.mode == TimeSchedulerMode::OneShotEpoch) ? "one_shot_epoch" : "recurring_clock";
         snprintf(stateCfgBuf, sizeof(stateCfgBuf),
                  "{\"slot\":%u,\"used\":true,\"event_id\":%u,\"label\":\"%s\",\"enabled\":%s,"
-                 "\"mode\":\"%s\",\"has_end\":%s,\"replay_start_on_boot\":%s,"
+                 "\"mode\":\"%s\",\"has_end\":%s,\"replay_on_boot\":%s,"
                  "\"weekday_mask\":%u,"
                  "\"start\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu},"
                  "\"end\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu}}",

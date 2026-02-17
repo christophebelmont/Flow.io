@@ -97,7 +97,7 @@ private:
         (char*)cfgData.deviceId,ConfigPersistence::Persistent,sizeof(cfgData.deviceId)
     };
     ConfigVariable<char,0> prefixVar {
-        NVS_KEY(NvsKeys::Ha::DiscoveryPrefix),"discovery_prefix","ha",ConfigType::CharArray,
+        NVS_KEY(NvsKeys::Ha::DiscoveryPrefix),"disc_prefix","ha",ConfigType::CharArray,
         (char*)cfgData.discoveryPrefix,ConfigPersistence::Persistent,sizeof(cfgData.discoveryPrefix)
     };
     ConfigVariable<char,0> modelVar {

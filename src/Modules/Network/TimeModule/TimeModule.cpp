@@ -636,7 +636,7 @@ bool TimeModule::handleCmdSchedGet_(const CommandRequest& req, char* reply, size
     const char* mode = (def.mode == TimeSchedulerMode::OneShotEpoch) ? "one_shot_epoch" : "recurring_clock";
     snprintf(reply, replyLen,
              "{\"ok\":true,\"slot\":%u,\"event_id\":%u,\"label\":\"%s\",\"enabled\":%s,"
-             "\"mode\":\"%s\",\"has_end\":%s,\"replay_start_on_boot\":%s,"
+             "\"mode\":\"%s\",\"has_end\":%s,\"replay_on_boot\":%s,"
              "\"weekday_mask\":%u,\"start\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu},"
              "\"end\":{\"hour\":%u,\"minute\":%u,\"epoch\":%llu}}",
              (unsigned)def.slot,
@@ -731,7 +731,15 @@ bool TimeModule::handleCmdSchedSet_(const CommandRequest& req, char* reply, size
     }
 
     if (!parseBoolField_(args, "enabled", def.enabled, false) ||
-        !parseBoolField_(args, "has_end", def.hasEnd, false) ||
+        !parseBoolField_(args, "has_end", def.hasEnd, false)) {
+        writeCmdError_(reply, replyLen, "time.scheduler.set", ErrorCode::InvalidBool);
+        return false;
+    }
+    if (!parseBoolField_(args, "replay_on_boot", def.replayStartOnBoot, false)) {
+        writeCmdError_(reply, replyLen, "time.scheduler.set", ErrorCode::InvalidBool);
+        return false;
+    }
+    if (!args.containsKey("replay_on_boot") &&
         !parseBoolField_(args, "replay_start_on_boot", def.replayStartOnBoot, false)) {
         writeCmdError_(reply, replyLen, "time.scheduler.set", ErrorCode::InvalidBool);
         return false;
