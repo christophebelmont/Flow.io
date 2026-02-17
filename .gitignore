@@ -6,3 +6,5 @@
 .vscode
 .DS_Store
 .vscode/c_cpp_properties.json
+.pio-core
+.pio-core-local
