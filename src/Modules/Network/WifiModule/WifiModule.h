@@ -24,6 +24,8 @@ public:
     const char* moduleId() const override { return "wifi"; }
     /** @brief Task name. */
     const char* taskName() const override { return "wifi"; }
+    /** @brief Pin network module on core 0. */
+    BaseType_t taskCore() const override { return 0; }
 
     /** @brief Depends on log hub and datastore. */
     uint8_t dependencyCount() const override { return 2; }

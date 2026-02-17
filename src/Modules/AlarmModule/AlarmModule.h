@@ -15,6 +15,7 @@ class AlarmModule : public Module {
 public:
     const char* moduleId() const override { return "alarms"; }
     const char* taskName() const override { return "alarms"; }
+    BaseType_t taskCore() const override { return 1; }
 
     uint8_t dependencyCount() const override { return 3; }
     const char* dependency(uint8_t i) const override {

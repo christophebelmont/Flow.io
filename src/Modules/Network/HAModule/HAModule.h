@@ -19,6 +19,7 @@ class HAModule : public Module {
 public:
     const char* moduleId() const override { return "ha"; }
     const char* taskName() const override { return "ha"; }
+    BaseType_t taskCore() const override { return 0; }
     uint16_t taskStackSize() const override { return 4096; }
     void loop() override;
     void setStartupReady(bool ready);

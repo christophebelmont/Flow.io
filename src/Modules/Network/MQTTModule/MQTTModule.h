@@ -34,6 +34,8 @@ public:
     const char* moduleId() const override { return "mqtt"; }
     /** @brief Task name. */
     const char* taskName() const override { return "mqtt"; }
+    /** @brief Pin network module on core 0. */
+    BaseType_t taskCore() const override { return 0; }
 
     /** @brief MQTT depends on log hub, WiFi, command service, time service and alarms service. */
     uint8_t dependencyCount() const override { return 5; }

@@ -33,6 +33,7 @@ class PoolDeviceModule : public Module, public IRuntimeSnapshotProvider {
 public:
     const char* moduleId() const override { return "pooldev"; }
     const char* taskName() const override { return "pooldev"; }
+    BaseType_t taskCore() const override { return 1; }
 
     uint8_t dependencyCount() const override { return 8; }
     const char* dependency(uint8_t i) const override {

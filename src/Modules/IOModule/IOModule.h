@@ -121,6 +121,7 @@ class IOModule : public Module, public IRuntimeSnapshotProvider {
 public:
     const char* moduleId() const override { return "io"; }
     const char* taskName() const override { return "io"; }
+    BaseType_t taskCore() const override { return 1; }
 
     uint8_t dependencyCount() const override { return 4; }
     const char* dependency(uint8_t i) const override {

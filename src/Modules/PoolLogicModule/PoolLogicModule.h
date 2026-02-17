@@ -20,6 +20,7 @@ class PoolLogicModule : public Module {
 public:
     const char* moduleId() const override { return "poollogic"; }
     const char* taskName() const override { return "poollogic"; }
+    BaseType_t taskCore() const override { return 1; }
 
     uint8_t dependencyCount() const override { return 8; }
     const char* dependency(uint8_t i) const override {

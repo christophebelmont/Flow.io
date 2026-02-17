@@ -146,8 +146,16 @@ bool ModuleManager::initAll(ConfigStore& cfg, ServiceRegistry& services) {
         if (!ordered[i]->hasTask()) {
         continue;
     }
-        Log::debug(LOG_TAG_CORE, "startTask: %s", ordered[i]->moduleId());
+        Log::info(LOG_TAG_CORE, "startTask module=%s task=%s core=%ld prio=%u stack=%u",
+                  ordered[i]->moduleId(),
+                  ordered[i]->taskName(),
+                  (long)ordered[i]->taskCore(),
+                  (unsigned)ordered[i]->taskPriority(),
+                  (unsigned)ordered[i]->taskStackSize());
         ordered[i]->startTask();
+        if (!ordered[i]->getTaskHandle()) {
+            Log::error(LOG_TAG_CORE, "startTask failed module=%s", ordered[i]->moduleId());
+        }
     }
 
     wireCoreServices(services, cfg);

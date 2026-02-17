@@ -97,8 +97,11 @@ void SystemMonitorModule::logTaskStacks() {
         if (isLow) hasLow = true;
 
         if (off < sizeof(line)) {
-            w = snprintf(line + off, sizeof(line) - off, " %s=%u%s",
-                         m->moduleId(), (unsigned)hw, isLow ? "!" : "");
+            w = snprintf(line + off, sizeof(line) - off, " %s@c%ld=%u%s",
+                         m->moduleId(),
+                         (long)m->taskCore(),
+                         (unsigned)hw,
+                         isLow ? "!" : "");
             if (w < 0) break;
             if ((size_t)w >= (sizeof(line) - off)) {
                 off = sizeof(line) - 1;

@@ -20,6 +20,8 @@ public:
     const char* moduleId() const override { return "sysmon"; }
     /** @brief Task name. */
     const char* taskName() const override { return "sysmon"; }
+    /** @brief Pin monitoring module on core 0. */
+    BaseType_t taskCore() const override { return 0; }
 
     // Only logger is mandatory
     /** @brief Depends on log hub. */
