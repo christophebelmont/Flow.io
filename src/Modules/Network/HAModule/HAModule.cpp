@@ -771,12 +771,36 @@ void HAModule::init(ConfigStore& cfg, ServiceRegistry& services)
         "heap_free_bytes",
         "Heap Free",
         "rt/system/state",
-        "{{ value_json.heap.free | int(0) }}",
+        "{{ ((value_json.heap.free | float(0)) / 1024) | round(1) }}",
         "diagnostic",
         "mdi:memory",
-        "B"
+        "ko"
     };
     (void)addSensorEntry(heapFreeBytes);
+
+    const HASensorEntry heapMinFreeBytes{
+        "system",
+        "heap_min_free_bytes",
+        "Heap Min Free",
+        "rt/system/state",
+        "{{ ((value_json.heap.min | float(0)) / 1024) | round(1) }}",
+        "diagnostic",
+        "mdi:memory",
+        "ko"
+    };
+    (void)addSensorEntry(heapMinFreeBytes);
+
+    const HASensorEntry heapFragPercent{
+        "system",
+        "heap_fragmentation",
+        "Heap Fragmentation",
+        "rt/system/state",
+        "{{ value_json.heap.frag | int(0) }}",
+        "diagnostic",
+        "mdi:chart-donut",
+        "%"
+    };
+    (void)addSensorEntry(heapFragPercent);
 
     if (dsSvc && dsSvc->store) {
         setHaAutoconfigPublished(*dsSvc->store, false);
