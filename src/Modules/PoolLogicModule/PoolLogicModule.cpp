@@ -228,6 +228,127 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
         (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStart);
         (void)haSvc_->addSensor(haSvc_->ctx, &filtrationStop);
     }
+    if (haSvc_ && haSvc_->addNumber) {
+        const HANumberEntry delayPidsMin{
+            "poollogic",
+            "delay_pids_min",
+            "Delay PIDs",
+            "cfg/poollogic",
+            "{{ value_json.delay_pids_min | int(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"delay_pids_min\\\":{{ value | int(0) }}}}",
+            0.0f,
+            180.0f,
+            1.0f,
+            "slider",
+            "config",
+            "mdi:timer-sand",
+            "min"
+        };
+        const HANumberEntry phSetpoint{
+            "poollogic",
+            "ph_setpoint",
+            "pH Setpoint",
+            "cfg/poollogic",
+            "{{ value_json.ph_setpoint | float(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"ph_setpoint\\\":{{ value | float(0) }}}}",
+            6.0f,
+            8.0f,
+            0.01f,
+            "slider",
+            "config",
+            "mdi:beaker-outline",
+            nullptr
+        };
+        const HANumberEntry orpSetpoint{
+            "poollogic",
+            "orp_setpoint",
+            "Orp Setpoint",
+            "cfg/poollogic",
+            "{{ value_json.orp_setpoint | float(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"orp_setpoint\\\":{{ value | float(0) }}}}",
+            300.0f,
+            900.0f,
+            1.0f,
+            "slider",
+            "config",
+            "mdi:water-outline",
+            "mV"
+        };
+        const HANumberEntry phWindowMin{
+            "poollogic",
+            "ph_pid_window_min",
+            "pH PID Window Size",
+            "cfg/poollogic",
+            "{{ ((value_json.ph_window_ms | float(0)) / 60000) | round(0) | int(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"ph_window_ms\\\":{{ (value | float(0) * 60000) | round(0) | int(0) }}}}",
+            1.0f,
+            180.0f,
+            1.0f,
+            "slider",
+            "config",
+            "mdi:timeline-clock-outline",
+            "min"
+        };
+        const HANumberEntry orpWindowMin{
+            "poollogic",
+            "orp_pid_window_min",
+            "Orp PID Window Size",
+            "cfg/poollogic",
+            "{{ ((value_json.orp_window_ms | float(0)) / 60000) | round(0) | int(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"orp_window_ms\\\":{{ (value | float(0) * 60000) | round(0) | int(0) }}}}",
+            1.0f,
+            180.0f,
+            1.0f,
+            "slider",
+            "config",
+            "mdi:timeline-clock-outline",
+            "min"
+        };
+        const HANumberEntry psiLowThreshold{
+            "poollogic",
+            "psi_low_threshold",
+            "PSI Low Threshold",
+            "cfg/poollogic",
+            "{{ value_json.psi_low_th | float(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"psi_low_th\\\":{{ value | float(0) }}}}",
+            0.0f,
+            5.0f,
+            0.01f,
+            "slider",
+            "config",
+            "mdi:gauge-low",
+            "bar"
+        };
+        const HANumberEntry psiHighThreshold{
+            "poollogic",
+            "psi_high_threshold",
+            "PSI High Threshold",
+            "cfg/poollogic",
+            "{{ value_json.psi_high_th | float(0) }}",
+            MqttTopics::SuffixCfgSet,
+            "{\\\"poollogic\\\":{\\\"psi_high_th\\\":{{ value | float(0) }}}}",
+            0.0f,
+            5.0f,
+            0.01f,
+            "slider",
+            "config",
+            "mdi:gauge-full",
+            "bar"
+        };
+        (void)haSvc_->addNumber(haSvc_->ctx, &delayPidsMin);
+        (void)haSvc_->addNumber(haSvc_->ctx, &phSetpoint);
+        (void)haSvc_->addNumber(haSvc_->ctx, &orpSetpoint);
+        (void)haSvc_->addNumber(haSvc_->ctx, &phWindowMin);
+        (void)haSvc_->addNumber(haSvc_->ctx, &orpWindowMin);
+        (void)haSvc_->addNumber(haSvc_->ctx, &psiLowThreshold);
+        (void)haSvc_->addNumber(haSvc_->ctx, &psiHighThreshold);
+    }
     if (haSvc_ && haSvc_->addButton) {
         const HAButtonEntry filtrationRecalc{
             "poollogic",

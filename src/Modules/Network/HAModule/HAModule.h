@@ -127,7 +127,8 @@ private:
                        const char* stateTopic, const char* valueTemplate,
                        const char* entityCategory = nullptr,
                        const char* icon = nullptr,
-                       const char* unit = nullptr);
+                       const char* unit = nullptr,
+                       bool hasEntityName = false);
     bool publishBinarySensor(const char* objectId, const char* name,
                              const char* stateTopic, const char* valueTemplate,
                              const char* deviceClass = nullptr,

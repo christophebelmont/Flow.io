@@ -1305,6 +1305,12 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 nullptr, "mdi:timer-outline", "s"
             };
             (void)haSvc_->addSensor(haSvc_->ctx, &s0);
+            const HASensorEntry s0b{
+                "pooldev", "chlorine_tank_remaining_l", "Tank remaining Chlorine",
+                "rt/pdm/metrics/pd2", "{{ ((value_json.tank.remaining_ml | float(0)) / 1000) | round(2) }}",
+                nullptr, "mdi:water-check", "L"
+            };
+            (void)haSvc_->addSensor(haSvc_->ctx, &s0b);
         }
         if (slots_[POOL_IO_SLOT_PH_PUMP].used) {
             const HASensorEntry s1{
@@ -1313,6 +1319,12 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 nullptr, "mdi:timer-outline", "s"
             };
             (void)haSvc_->addSensor(haSvc_->ctx, &s1);
+            const HASensorEntry s1b{
+                "pooldev", "ph_tank_remaining_l", "Tank remaining pH",
+                "rt/pdm/metrics/pd1", "{{ ((value_json.tank.remaining_ml | float(0)) / 1000) | round(2) }}",
+                nullptr, "mdi:beaker-check-outline", "L", false
+            };
+            (void)haSvc_->addSensor(haSvc_->ctx, &s1b);
         }
         if (slots_[POOL_IO_SLOT_FILL_PUMP].used) {
             const HASensorEntry s2{
@@ -1373,7 +1385,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 "pooldev", "pd1_max_uptime_min", "Max uptime pH Pump",
                 "cfg/pdm/pd1", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
                 MqttTopics::SuffixCfgSet, "{\\\"pdm/pd1\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
-                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+                0.0f, 1440.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n3);
         }
@@ -1382,7 +1394,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 "pooldev", "pd2_max_uptime_min", "Max uptime Chlorine Pump",
                 "cfg/pdm/pd2", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
                 MqttTopics::SuffixCfgSet, "{\\\"pdm/pd2\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
-                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+                0.0f, 1440.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n4);
         }
@@ -1391,9 +1403,35 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
                 "pooldev", "pd5_max_uptime_min", "Max uptime Chlorine Generator",
                 "cfg/pdm/pd5", "{{ ((value_json.max_uptime_day_s | float(0)) / 60) | round(0) | int(0) }}",
                 MqttTopics::SuffixCfgSet, "{\\\"pdm/pd5\\\":{\\\"max_uptime_day_s\\\":{{ (value | float(0) * 60) | round(0) | int(0) }}}}",
-                0.0f, 1440.0f, 1.0f, "box", "config", "mdi:timer-cog-outline", "min"
+                0.0f, 1440.0f, 1.0f, "slider", "config", "mdi:timer-cog-outline", "min"
             };
             (void)haSvc_->addNumber(haSvc_->ctx, &n5);
+        }
+    }
+    if (haSvc_ && haSvc_->addButton) {
+        if (slots_[POOL_IO_SLOT_PH_PUMP].used) {
+            const HAButtonEntry refillPhTank{
+                "pooldev",
+                "refill_ph_tank",
+                "Fill pH Tank",
+                MqttTopics::SuffixCmd,
+                "{\\\"cmd\\\":\\\"pool.refill\\\",\\\"args\\\":{\\\"slot\\\":1}}",
+                "config",
+                "mdi:beaker-plus-outline"
+            };
+            (void)haSvc_->addButton(haSvc_->ctx, &refillPhTank);
+        }
+        if (slots_[POOL_IO_SLOT_CHLORINE_PUMP].used) {
+            const HAButtonEntry refillChlorineTank{
+                "pooldev",
+                "refill_chlorine_tank",
+                "Fill Chlorine Tank",
+                MqttTopics::SuffixCmd,
+                "{\\\"cmd\\\":\\\"pool.refill\\\",\\\"args\\\":{\\\"slot\\\":2}}",
+                "config",
+                "mdi:water-plus"
+            };
+            (void)haSvc_->addButton(haSvc_->ctx, &refillChlorineTank);
         }
     }
 

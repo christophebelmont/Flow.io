@@ -288,7 +288,8 @@ bool HAModule::publishDiscovery(const char* component, const char* objectId, con
 
 bool HAModule::publishSensor(const char* objectId, const char* name,
                              const char* stateTopic, const char* valueTemplate,
-                             const char* entityCategory, const char* icon, const char* unit)
+                             const char* entityCategory, const char* icon, const char* unit,
+                             bool hasEntityName)
 {
     if (!objectId || !name || !stateTopic || !valueTemplate) return false;
 
@@ -304,6 +305,10 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
     if (icon && icon[0] != '\0') {
         snprintf(iconField, sizeof(iconField), ",\"icon\":\"%s\"", icon);
     }
+    char hasEntityNameField[40] = {0};
+    if (hasEntityName) {
+        snprintf(hasEntityNameField, sizeof(hasEntityNameField), ",\"has_entity_name\":true");
+    }
     char defaultEntityId[224] = {0};
     if (!buildDefaultEntityId("sensor", objectId, defaultEntityId, sizeof(defaultEntityId))) return false;
     char uniqueId[256] = {0};
@@ -313,13 +318,13 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
 
     if (!formatChecked(payloadBuf, sizeof(payloadBuf),
              "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
-             "\"state_topic\":\"%s\",\"value_template\":\"%s\",\"state_class\":\"measurement\"%s%s%s%s,"
+             "\"state_topic\":\"%s\",\"value_template\":\"%s\",\"state_class\":\"measurement\"%s%s%s%s%s,"
              "\"origin\":{\"name\":\"Flow.IO\"},"
              "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"%s\","
              "\"manufacturer\":\"%s\",\"model\":\"%s\",\"sw_version\":\"%s\"}}",
              name, objectId, defaultEntityId, uniqueId,
              stateTopic, valueTemplate,
-             entityCategoryField, iconField, unitField, availabilityField,
+             entityCategoryField, iconField, unitField, hasEntityNameField, availabilityField,
              deviceIdent, cfgData.vendor, cfgData.vendor, cfgData.model, FIRMW)) {
         LOGW("HA sensor payload truncated object=%s", objectId);
         return false;
@@ -554,7 +559,8 @@ bool HAModule::publishRegisteredEntities()
             continue;
         }
         mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
-        if (!publishSensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate, e.entityCategory, e.icon, e.unit)) {
+        if (!publishSensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate,
+                           e.entityCategory, e.icon, e.unit, e.hasEntityName)) {
             okAll = false;
         }
         if (stepDelay > 0) vTaskDelay(stepDelay);
