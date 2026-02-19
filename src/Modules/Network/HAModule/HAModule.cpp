@@ -19,7 +19,11 @@
 #define FIRMW "unknown"
 #endif
 
-static void buildAvailabilityField(const MqttService* mqttSvc, char* out, size_t outLen)
+static void buildAvailabilityField(const MqttService* mqttSvc,
+                                   char* out,
+                                   size_t outLen,
+                                   const char* stateTopic = nullptr,
+                                   const char* stateAvailabilityTemplate = nullptr)
 {
     if (!out || outLen == 0) return;
     out[0] = '\0';
@@ -27,7 +31,36 @@ static void buildAvailabilityField(const MqttService* mqttSvc, char* out, size_t
 
     char availabilityTopic[192] = {0};
     mqttSvc->formatTopic(mqttSvc->ctx, MqttTopics::SuffixStatus, availabilityTopic, sizeof(availabilityTopic));
-    if (availabilityTopic[0] == '\0') return;
+    const bool hasStateAvailability =
+        stateTopic && stateTopic[0] != '\0' &&
+        stateAvailabilityTemplate && stateAvailabilityTemplate[0] != '\0';
+
+    if (availabilityTopic[0] == '\0') {
+        if (!hasStateAvailability) return;
+        snprintf(
+            out,
+            outLen,
+            ",\"availability\":[{\"topic\":\"%s\",\"value_template\":\"%s\"}],"
+            "\"availability_mode\":\"all\",\"payload_available\":\"online\",\"payload_not_available\":\"offline\"",
+            stateTopic,
+            stateAvailabilityTemplate
+        );
+        return;
+    }
+
+    if (hasStateAvailability) {
+        snprintf(
+            out,
+            outLen,
+            ",\"availability\":[{\"topic\":\"%s\",\"value_template\":\"%s\"},"
+            "{\"topic\":\"%s\",\"value_template\":\"{{ 'online' if value_json.online else 'offline' }}\"}],"
+            "\"availability_mode\":\"all\",\"payload_available\":\"online\",\"payload_not_available\":\"offline\"",
+            stateTopic,
+            stateAvailabilityTemplate,
+            availabilityTopic
+        );
+        return;
+    }
 
     snprintf(
         out,
@@ -289,7 +322,8 @@ bool HAModule::publishDiscovery(const char* component, const char* objectId, con
 bool HAModule::publishSensor(const char* objectId, const char* name,
                              const char* stateTopic, const char* valueTemplate,
                              const char* entityCategory, const char* icon, const char* unit,
-                             bool hasEntityName)
+                             bool hasEntityName,
+                             const char* availabilityTemplate)
 {
     if (!objectId || !name || !stateTopic || !valueTemplate) return false;
 
@@ -311,8 +345,8 @@ bool HAModule::publishSensor(const char* objectId, const char* name,
     if (!buildDefaultEntityId("sensor", objectId, defaultEntityId, sizeof(defaultEntityId))) return false;
     char uniqueId[256] = {0};
     if (!buildUniqueId(objectId, name, uniqueId, sizeof(uniqueId))) return false;
-    char availabilityField[384] = {0};
-    buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField));
+    char availabilityField[768] = {0};
+    buildAvailabilityField(mqttSvc, availabilityField, sizeof(availabilityField), stateTopic, availabilityTemplate);
 
     if (!formatChecked(payloadBuf, sizeof(payloadBuf),
              "{\"name\":\"%s\",\"object_id\":\"%s\",\"default_entity_id\":\"%s\",\"unique_id\":\"%s\","
@@ -559,7 +593,7 @@ bool HAModule::publishRegisteredEntities()
         }
         mqttSvc->formatTopic(mqttSvc->ctx, e.stateTopicSuffix, stateTopicBuf, sizeof(stateTopicBuf));
         if (!publishSensor(objectIdBuf, e.name, stateTopicBuf, e.valueTemplate,
-                           e.entityCategory, e.icon, e.unit, e.hasEntityName)) {
+                           e.entityCategory, e.icon, e.unit, e.hasEntityName, e.availabilityTemplate)) {
             okAll = false;
         }
         if (stepDelay > 0) vTaskDelay(stepDelay);

@@ -123,6 +123,14 @@ public:
     const char* taskName() const override { return "io"; }
     BaseType_t taskCore() const override { return 1; }
 
+#if defined(FLOW_PROFILE_SUPERVISOR)
+    uint8_t dependencyCount() const override { return 2; }
+    const char* dependency(uint8_t i) const override {
+        if (i == 0) return "loghub";
+        if (i == 1) return "datastore";
+        return nullptr;
+    }
+#else
     uint8_t dependencyCount() const override { return 4; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
@@ -131,6 +139,7 @@ public:
         if (i == 3) return "ha";
         return nullptr;
     }
+#endif
 
     void init(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;

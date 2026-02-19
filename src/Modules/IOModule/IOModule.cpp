@@ -294,9 +294,10 @@ bool IOModule::buildEndpointSnapshot_(IOEndpoint* ep, char* out, size_t len, uin
 
     const char* id = ep->id();
     const char* label = endpointLabel(id);
-    int wrote = snprintf(out, len, "{\"id\":\"%s\",\"name\":\"%s\",\"value\":",
+    int wrote = snprintf(out, len, "{\"id\":\"%s\",\"name\":\"%s\",\"available\":%s,\"value\":",
                          (id && id[0] != '\0') ? id : "",
-                         (label && label[0] != '\0') ? label : ((id && id[0] != '\0') ? id : ""));
+                         (label && label[0] != '\0') ? label : ((id && id[0] != '\0') ? id : ""),
+                         v.valid ? "true" : "false");
     if (wrote < 0 || (size_t)wrote >= len) return false;
     size_t used = (size_t)wrote;
 
@@ -389,10 +390,11 @@ bool IOModule::buildGroupSnapshot_(char* out, size_t len, bool inputGroup, uint3
         if (!ok) v.valid = false;
 
         const char* label = endpointLabel(id);
-        wrote = snprintf(out + used, len - used, "%s\"%s\":{\"name\":\"%s\",\"value\":",
+        wrote = snprintf(out + used, len - used, "%s\"%s\":{\"name\":\"%s\",\"available\":%s,\"value\":",
                          first ? "" : ",",
                          id,
-                         (label && label[0] != '\0') ? label : id);
+                         (label && label[0] != '\0') ? label : id,
+                         v.valid ? "true" : "false");
         if (wrote < 0 || (size_t)wrote >= (len - used)) return false;
         used += (size_t)wrote;
         first = false;
@@ -489,7 +491,16 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
     if (!sourceDriver) return false;
 
     IOAnalogSample sample{};
-    if (!sourceDriver->readSample(slot.def.channel, sample)) return false;
+    if (!sourceDriver->readSample(slot.def.channel, sample)) {
+        const bool isDsSource =
+            (slot.def.source == IO_SRC_DS18_WATER) || (slot.def.source == IO_SRC_DS18_AIR);
+        if (isDsSource) {
+            // Surface DS18 disconnect/failure as an invalid runtime point (value=null in snapshots).
+            slot.endpoint->update(slot.lastRoundedValid ? slot.lastRounded : 0.0f, false, nowMs);
+            slot.lastRoundedValid = false;
+        }
+        return false;
+    }
     float raw = sample.value;
     int16_t rawBinary = sample.raw;
     uint32_t sampleSeq = sample.seq;
@@ -504,6 +515,7 @@ bool IOModule::processAnalogDefinition_(uint8_t idx, uint32_t nowMs)
 
     if (raw < slot.def.minValid || raw > slot.def.maxValid) {
         slot.endpoint->update(raw, false, nowMs);
+        slot.lastRoundedValid = false;
         return false;
     }
 
@@ -588,12 +600,18 @@ void IOModule::buildHaValueTemplate_(uint8_t analogIdx, char* out, size_t outLen
 {
     if (!out || outLen == 0 || analogIdx >= ANALOG_CFG_SLOTS) return;
     int32_t p = clampPrecisionForHa_(analogCfg_[analogIdx].precision);
-    snprintf(out, outLen, "{{ value_json.value | float(none) | round(%ld) }}", (long)p);
+    snprintf(
+        out,
+        outLen,
+        "{%% if value_json.value is number %%}{{ value_json.value | float | round(%ld) }}{%% else %%}unavailable{%% endif %%}",
+        (long)p
+    );
 }
 
 void IOModule::registerHaAnalogSensors_()
 {
     if (!haSvc_ || !haSvc_->addSensor) return;
+    static constexpr const char* kIoValueAvailabilityTpl = "{{ 'online' if value_json.available else 'offline' }}";
 
     buildHaValueTemplate_(0, haValueTpl_[0], sizeof(haValueTpl_[0]));
     buildHaValueTemplate_(1, haValueTpl_[1], sizeof(haValueTpl_[1]));
@@ -602,12 +620,12 @@ void IOModule::registerHaAnalogSensors_()
     buildHaValueTemplate_(4, haValueTpl_[4], sizeof(haValueTpl_[4]));
     buildHaValueTemplate_(5, haValueTpl_[5], sizeof(haValueTpl_[5]));
 
-    const HASensorEntry s0{"io", "orp", "ORP", "rt/io/input/a0", haValueTpl_[0], nullptr, "mdi:flash", "mV"};
-    const HASensorEntry s1{"io", "ph", "pH", "rt/io/input/a1", haValueTpl_[1], nullptr, "mdi:ph", ""};
-    const HASensorEntry s2{"io", "psi", "PSI", "rt/io/input/a2", haValueTpl_[2], nullptr, "mdi:gauge", "PSI"};
-    const HASensorEntry s3{"io", "spare", "Spare", "rt/io/input/a3", haValueTpl_[3], nullptr, "mdi:sine-wave", nullptr};
-    const HASensorEntry s4{"io", "water_temperature", "Water Temperature", "rt/io/input/a4", haValueTpl_[4], nullptr, "mdi:water-thermometer", "\xC2\xB0""C"};
-    const HASensorEntry s5{"io", "air_temperature", "Air Temperature", "rt/io/input/a5", haValueTpl_[5], nullptr, "mdi:thermometer", "\xC2\xB0""C"};
+    const HASensorEntry s0{"io", "orp", "ORP", "rt/io/input/a0", haValueTpl_[0], nullptr, "mdi:flash", "mV", false, kIoValueAvailabilityTpl};
+    const HASensorEntry s1{"io", "ph", "pH", "rt/io/input/a1", haValueTpl_[1], nullptr, "mdi:ph", "", false, kIoValueAvailabilityTpl};
+    const HASensorEntry s2{"io", "psi", "PSI", "rt/io/input/a2", haValueTpl_[2], nullptr, "mdi:gauge", "PSI", false, kIoValueAvailabilityTpl};
+    const HASensorEntry s3{"io", "spare", "Spare", "rt/io/input/a3", haValueTpl_[3], nullptr, "mdi:sine-wave", nullptr, false, kIoValueAvailabilityTpl};
+    const HASensorEntry s4{"io", "water_temperature", "Water Temperature", "rt/io/input/a4", haValueTpl_[4], nullptr, "mdi:water-thermometer", "\xC2\xB0""C", false, kIoValueAvailabilityTpl};
+    const HASensorEntry s5{"io", "air_temperature", "Air Temperature", "rt/io/input/a5", haValueTpl_[5], nullptr, "mdi:thermometer", "\xC2\xB0""C", false, kIoValueAvailabilityTpl};
     (void)haSvc_->addSensor(haSvc_->ctx, &s0);
     (void)haSvc_->addSensor(haSvc_->ctx, &s1);
     (void)haSvc_->addSensor(haSvc_->ctx, &s2);

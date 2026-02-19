@@ -40,6 +40,8 @@ void Ds18b20Driver::tick(uint32_t nowMs)
     if (c != DEVICE_DISCONNECTED_C) {
         celsius_ = c;
         valid_ = true;
+    } else {
+        valid_ = false;
     }
 
     if ((uint32_t)(nowMs - lastRequestMs_) >= cfg_.pollMs) {

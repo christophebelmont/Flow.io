@@ -15,6 +15,7 @@ struct HASensorEntry {
     const char* icon;
     const char* unit;
     bool hasEntityName;
+    const char* availabilityTemplate;
 };
 
 /** @brief Static Home Assistant binary sensor discovery registration. */
