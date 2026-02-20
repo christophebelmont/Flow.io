@@ -192,6 +192,18 @@ void ConfigStore::savePersistent()
     }
 }
 
+bool ConfigStore::erasePersistent()
+{
+    if (!_prefs) return false;
+    const bool ok = _prefs->clear();
+    if (!ok) return false;
+
+    _nvsWriteTotal.store(0U, std::memory_order_relaxed);
+    _nvsWriteWindow.store(0U, std::memory_order_relaxed);
+    _nvsLastSummaryMs.store(0U, std::memory_order_relaxed);
+    return true;
+}
+
 const ConfigMeta* ConfigStore::findByJsonName(const char* jsonName) const
 {
     if (!jsonName) return nullptr;

@@ -23,4 +23,7 @@ struct WifiService {
     bool (*isConnected)(void* ctx);
     bool (*getIP)(void* ctx, char* out, size_t len);
     void* ctx;
+    bool (*requestReconnect)(void* ctx);
+    bool (*requestScan)(void* ctx, bool force);
+    bool (*scanStatusJson)(void* ctx, char* out, size_t outLen);
 };

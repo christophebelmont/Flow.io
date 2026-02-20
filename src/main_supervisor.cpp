@@ -23,6 +23,7 @@
 #include "Modules/CommandModule/CommandModule.h"
 #include "Modules/AlarmModule/AlarmModule.h"
 #include "Modules/Network/WifiModule/WifiModule.h"
+#include "Modules/Network/WifiProvisioningModule/WifiProvisioningModule.h"
 #include "Modules/Network/TimeModule/TimeModule.h"
 #include "Modules/Network/WebInterfaceModule/WebInterfaceModule.h"
 #include "Modules/Network/FirmwareUpdateModule/FirmwareUpdateModule.h"
@@ -54,6 +55,7 @@ static CommandModule commandModule;
 static AlarmModule alarmModule;
 static LogAlarmSinkModule logAlarmSinkModule;
 static WifiModule wifiModule;
+static WifiProvisioningModule wifiProvisioningModule;
 static TimeModule timeModule;
 static WebInterfaceModule webInterfaceModule;
 static FirmwareUpdateModule firmwareUpdateModule;
@@ -122,6 +124,7 @@ void setup()
     moduleManager.add(&alarmModule);
     moduleManager.add(&logAlarmSinkModule);
     moduleManager.add(&wifiModule);
+    moduleManager.add(&wifiProvisioningModule);
     moduleManager.add(&timeModule);
     moduleManager.add(&webInterfaceModule);
     moduleManager.add(&firmwareUpdateModule);

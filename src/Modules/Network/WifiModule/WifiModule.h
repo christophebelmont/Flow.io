@@ -7,12 +7,14 @@
 #include "Core/NvsKeys.h"
 #include "Core/Services/Services.h"
 #include <WiFi.h>
+#include <ESPmDNS.h>
 
 /** @brief WiFi configuration values. */
 struct WifiConfig {
     bool enabled = true;
-    char ssid[32] = "CasaParigi";
-    char pass[64] = "Elsa2011Andrea2017Clara2019";
+    char ssid[32] = "";
+    char pass[64] = "";
+    char mdns[32] = "flowio";
 };
 
 /**
@@ -41,12 +43,37 @@ public:
     void loop() override;
 
 private:
+    static constexpr uint8_t kScanMaxResults = 24;
+    static constexpr uint32_t kScanThrottleMs = 8000U;
+
+    struct WifiScanEntry {
+        char ssid[33];
+        int16_t rssi;
+        uint8_t auth;
+        bool hidden;
+    };
+
     WifiConfig cfgData;
     WifiState state = WifiState::Idle;
     uint32_t stateTs = 0;
     const LogHubService* logHub = nullptr;
     DataStore* dataStore = nullptr;
     bool gotIpSent = false;
+    bool mdnsStarted = false;
+    uint32_t lastEmptySsidLogMs = 0;
+    char mdnsApplied[sizeof(cfgData.mdns)] = {0};
+    volatile bool scanRequested_ = false;
+    volatile bool scanRunning_ = false;
+    bool scanHasResults_ = false;
+    int16_t scanLastError_ = 0;
+    uint8_t scanCount_ = 0;
+    uint8_t scanTotalFound_ = 0;
+    uint8_t scanApRetryCount_ = 0;
+    uint32_t scanLastStartMs_ = 0;
+    uint32_t scanLastDoneMs_ = 0;
+    uint16_t scanGeneration_ = 0;
+    WifiScanEntry scanEntries_[kScanMaxResults] = {};
+    portMUX_TYPE scanMux_ = portMUX_INITIALIZER_UNLOCKED;
     
     // Config variables
     ConfigVariable<bool,0> enabledVar {
@@ -73,11 +100,27 @@ private:
         sizeof(cfgData.pass)
     };
 
+    ConfigVariable<char,0> mdnsVar {
+        NVS_KEY(NvsKeys::Wifi::Mdns),"mdns","wifi",
+        ConfigType::CharArray,
+        cfgData.mdns,
+        ConfigPersistence::Persistent,
+        sizeof(cfgData.mdns)
+    };
+
     // service
     static WifiState svcState(void* ctx);
     static bool svcIsConnected(void* ctx);
     static bool svcGetIP(void* ctx, char* out, size_t len);
+    static bool svcRequestReconnect(void* ctx);
+    static bool svcRequestScan(void* ctx, bool force);
+    static bool svcScanStatusJson(void* ctx, char* out, size_t outLen);
 
     void setState(WifiState s);
     void startConnect();
+    void stopMdns_();
+    void syncMdns_();
+    bool requestScan_(bool force);
+    void processScan_();
+    bool buildScanStatusJson_(char* out, size_t outLen);
 };

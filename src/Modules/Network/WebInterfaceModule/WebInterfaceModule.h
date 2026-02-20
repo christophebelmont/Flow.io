@@ -20,12 +20,13 @@ public:
     BaseType_t taskCore() const override { return 0; }
     uint16_t taskStackSize() const override { return 4096; }
 
-    uint8_t dependencyCount() const override { return 4; }
+    uint8_t dependencyCount() const override { return 5; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "wifi";
         if (i == 2) return "eventbus";
         if (i == 3) return "datastore";
+        if (i == 4) return "cmd";
         return nullptr;
     }
 
@@ -65,6 +66,8 @@ private:
 
     const LogHubService* logHub_ = nullptr;
     const WifiService* wifiSvc_ = nullptr;
+    const CommandService* cmdSvc_ = nullptr;
+    const NetworkAccessService* netAccessSvc_ = nullptr;
     DataStore* dataStore_ = nullptr;
     ConfigStore* cfgStore_ = nullptr;
     EventBus* eventBus_ = nullptr;
@@ -109,6 +112,8 @@ private:
                     uint8_t* data,
                     size_t len);
     void handleUpdateRequest_(AsyncWebServerRequest* request, FirmwareUpdateTarget target);
+    bool isWebReachable_() const;
+    bool getNetworkIp_(char* out, size_t len, NetworkAccessMode* modeOut) const;
     void flushLine_(bool force);
     static bool isLogByte_(uint8_t c);
     static bool svcSetPaused_(void* ctx, bool paused);

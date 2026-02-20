@@ -29,4 +29,5 @@ private:
     static void svcToJson(void* ctx, char* out, size_t outLen);
     static bool svcToJsonModule(void* ctx, const char* module, char* out, size_t outLen, bool* truncated);
     static uint8_t svcListModules(void* ctx, const char** out, uint8_t max);
+    static bool svcErase(void* ctx);
 };

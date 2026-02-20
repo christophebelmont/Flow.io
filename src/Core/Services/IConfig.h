@@ -14,5 +14,6 @@ struct ConfigStoreService {
     void (*toJson)(void* ctx, char* out, size_t outLen);
     bool (*toJsonModule)(void* ctx, const char* module, char* out, size_t outLen, bool* truncated);
     uint8_t (*listModules)(void* ctx, const char** out, uint8_t max);
+    bool (*erase)(void* ctx);
     void* ctx;
 };

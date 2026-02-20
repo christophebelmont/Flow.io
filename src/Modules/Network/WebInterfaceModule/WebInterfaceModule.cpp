@@ -10,9 +10,11 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <ArduinoJson.h>
 #include "Core/DataKeys.h"
 #include "Core/EventBus/EventPayloads.h"
 #include "Modules/Network/WifiModule/WifiRuntime.h"
+#include "WebInterfaceMenuIcons.h"
 
 static void sanitizeJsonString_(char* s)
 {
@@ -22,6 +24,20 @@ static void sanitizeJsonString_(char* s)
             s[i] = ' ';
         }
     }
+}
+
+static bool parseBoolParam_(const String& in, bool fallback)
+{
+    if (in.length() == 0) return fallback;
+    if (in.equalsIgnoreCase("1") || in.equalsIgnoreCase("true") || in.equalsIgnoreCase("yes") ||
+        in.equalsIgnoreCase("on")) {
+        return true;
+    }
+    if (in.equalsIgnoreCase("0") || in.equalsIgnoreCase("false") || in.equalsIgnoreCase("no") ||
+        in.equalsIgnoreCase("off")) {
+        return false;
+    }
+    return fallback;
 }
 
 static const char kFlowIoLogoSvg[] PROGMEM = R"SVG(
@@ -123,8 +139,7 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flow.IO Supervisor Interface</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <title>Superviseur Flow.IO</title>
   <style>
     :root {
       --md-bg: #fffbfe;
@@ -206,16 +221,17 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     }
     .menu-item.active { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
     .menu-item .ico {
-      width: 20px;
+      width: 22px;
       text-align: center;
       display: inline-flex;
       justify-content: center;
       align-items: center;
     }
-    .material-symbols-outlined {
-      font-size: 20px;
-      line-height: 1;
-      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    .menu-item .ico-svg {
+      font-size: 22px;
+      width: 22px;
+      height: 22px;
+      display: block;
     }
     .drawer.collapsed .menu-item .label { display: none; }
     @media (min-width: 901px) {
@@ -289,11 +305,33 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     .field { display: grid; gap: 6px; min-width: 0; }
     .field.full { grid-column: 1 / -1; }
     .field label { font-size: 12px; font-weight: 600; opacity: 0.78; }
-    input, button {
+    .password-wrap { position: relative; }
+    .password-wrap input { width: 100%; padding-right: 46px; }
+    .password-toggle {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0;
+      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0.72;
+    }
+    .password-toggle:hover { background: rgba(121,116,126,0.12); opacity: 1; }
+    .password-toggle:focus-visible { outline: 2px solid rgba(103,80,164,0.4); }
+    .password-toggle svg { width: 18px; height: 18px; display: block; }
+    input, select, button {
       border-radius: 12px; border: 1px solid rgba(121,116,126,0.45);
       background: white; color: var(--md-on-surface); font: inherit; padding: 10px 12px;
     }
-    input:focus { outline: 2px solid rgba(103,80,164,0.4); border-color: var(--md-primary); }
+    input:focus, select:focus { outline: 2px solid rgba(103,80,164,0.4); border-color: var(--md-primary); }
     .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     button { cursor: pointer; }
     .btn-primary { background: var(--md-primary); color: var(--md-on-primary); border-color: var(--md-primary); font-weight: 600; }
@@ -324,6 +362,37 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
       background: rgba(214, 233, 248, 0.8);
       font-size: 13px;
       color: #073b66;
+    }
+    .config-section {
+      margin-top: 2px;
+      margin-bottom: 14px;
+    }
+    .config-section h2 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #073b66;
+    }
+    .system-actions {
+      display: grid;
+      gap: 12px;
+    }
+    .system-action {
+      border: 1px solid rgba(121,116,126,0.28);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255,255,255,0.8);
+    }
+    .system-action h3 {
+      margin: 0 0 6px 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #073b66;
+    }
+    .system-action p {
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      color: #516170;
     }
     .control-list {
       display: grid;
@@ -433,13 +502,14 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     <aside id="drawer" class="drawer">
       <div class="drawer-header">
         <button id="menuToggle" class="menu-btn" data-menu-toggle aria-label="Toggle menu">=</button>
-        <div class="drawer-user">Admin</div>
+        <div class="drawer-user">Superviseur</div>
       </div>
       <nav class="menu-group">
-        <button class="menu-item active" data-page="page-terminal"><span class="ico material-symbols-outlined">terminal</span><span class="label">Journaux</span></button>
-        <button class="menu-item" data-page="page-upgrade"><span class="ico material-symbols-outlined">update</span><span class="label">Mise à jour Firmware</span></button>
-        <button class="menu-item" data-page="page-config"><span class="ico material-symbols-outlined">settings</span><span class="label">Configuration</span></button>
-        <button class="menu-item" data-page="page-control"><span class="ico material-symbols-outlined">pool</span><span class="label">Control</span></button>
+        <button class="menu-item active" data-page="page-terminal"><span class="ico"><img class="ico-svg" src="/assets/icon-journaux.svg" alt="" /></span><span class="label">Journaux</span></button>
+        <button class="menu-item" data-page="page-upgrade"><span class="ico"><img class="ico-svg" src="/assets/icon-upgrade.svg" alt="" /></span><span class="label">Mise à jour Firmware</span></button>
+        <button class="menu-item" data-page="page-config"><span class="ico"><img class="ico-svg" src="/assets/icon-config.svg?v=2" alt="" /></span><span class="label">Configuration</span></button>
+        <button class="menu-item" data-page="page-system"><span class="ico"><img class="ico-svg" src="/assets/icon-system.svg" alt="" /></span><span class="label">Système</span></button>
+        <button class="menu-item" data-page="page-control"><span class="ico"><img class="ico-svg" src="/assets/icon-control.svg" alt="" /></span><span class="label">Contrôle</span></button>
       </nav>
       <div class="drawer-footer">
         <span class="app-icon-shell"><img class="app-icon" src="/assets/flowio-logo.svg" alt="Flow.IO" /></span>
@@ -449,20 +519,20 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     <main class="content">
       <div class="mobile-topbar">
         <button class="menu-btn" data-menu-toggle aria-label="Open menu">=</button>
-        <div class="mobile-title">Admin</div>
+        <div class="mobile-title">Superviseur</div>
       </div>
       <section id="page-terminal" class="page active">
         <div class="topbar">
           <h1>Journaux</h1>
-          <span id="wsStatus" class="status-chip">connecting...</span>
+          <span id="wsStatus" class="status-chip">connexion...</span>
         </div>
         <div class="card">
           <div id="term" class="terminal"></div>
           <div class="term-toolbar">
-            <button id="toggleAutoscroll" class="btn-tonal" aria-pressed="true">Auto-scroll: ON</button>
-            <input id="line" placeholder="Send line to UART" />
-            <button id="send" class="btn-tonal">Send</button>
-            <button id="clear">Clear</button>
+            <button id="toggleAutoscroll" class="btn-tonal" aria-pressed="true">Défilement auto : activé</button>
+            <input id="line" placeholder="Envoyer une ligne vers l'UART" />
+            <button id="send" class="btn-tonal">Envoyer</button>
+            <button id="clear">Effacer</button>
           </div>
         </div>
       </section>
@@ -470,71 +540,131 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
       <section id="page-upgrade" class="page">
         <div class="topbar">
           <h1>Mise à jour Firmware</h1>
-          <span id="upStatusChip" class="status-chip">idle</span>
+          <span id="upStatusChip" class="status-chip">inactif</span>
         </div>
         <div class="card">
           <div class="form-grid">
             <div class="field full">
-              <label for="updateHost">HTTP Server (hostname or IP, optional protocol)</label>
-              <input id="updateHost" placeholder="e.g. 192.168.1.20 or http://192.168.1.20" />
+              <label for="updateHost">Serveur HTTP (nom d'hôte ou IP, protocole optionnel)</label>
+              <input id="updateHost" placeholder="ex. 192.168.1.20 ou http://192.168.1.20" />
             </div>
             <div class="field">
-              <label for="flowPath">Flow.IO image path</label>
+              <label for="flowPath">Chemin image Flow.IO</label>
               <input id="flowPath" placeholder="/build/FlowIO.bin" />
             </div>
             <div class="field">
-              <label for="nextionPath">Nextion image path</label>
+              <label for="nextionPath">Chemin image Nextion</label>
               <input id="nextionPath" placeholder="/build/Nextion.tft" />
             </div>
           </div>
           <div class="btn-row">
-            <button id="saveCfg" class="btn-tonal">Save Config</button>
-            <button id="upFlow" class="btn-primary">Upgrade Flow.IO</button>
-            <button id="upNextion" class="btn-primary">Upgrade Nextion</button>
-            <button id="refreshState">Refresh Status</button>
+            <button id="saveCfg" class="btn-tonal">Enregistrer la configuration</button>
+            <button id="upFlow" class="btn-primary">Mettre à jour Flow.IO</button>
+            <button id="upNextion" class="btn-primary">Mettre à jour Nextion</button>
+            <button id="refreshState">Rafraîchir l'état</button>
           </div>
           <div class="upgrade-progress" aria-label="Progression mise à jour firmware">
             <div id="upgradeProgressBar" class="upgrade-progress-bar"></div>
           </div>
-          <div id="upgradeStatusText" class="upgrade-status">No operation running.</div>
+          <div id="upgradeStatusText" class="upgrade-status">Aucune opération en cours.</div>
         </div>
       </section>
 
       <section id="page-config" class="page">
         <div class="topbar">
           <h1>Configuration</h1>
-          <span class="status-chip">MQTT</span>
+          <span class="status-chip">WiFi + MQTT</span>
         </div>
         <div class="card">
-          <div class="form-grid">
-            <div class="field full">
-              <label for="mqttServer">Serveur MQTT</label>
-              <input id="mqttServer" placeholder="e.g. 192.168.1.20" />
+          <div class="config-section">
+            <h2>WiFi</h2>
+            <div class="form-grid">
+              <div class="field">
+                <label for="wifiEnabled">Activer WiFi (1/0)</label>
+                <input id="wifiEnabled" type="number" min="0" max="1" placeholder="1" />
+              </div>
+              <div class="field">
+                <label for="wifiSsid">SSID</label>
+                <input id="wifiSsid" placeholder="Nom du réseau WiFi" />
+              </div>
+              <div class="field full">
+                <label for="wifiSsidList">Réseaux détectés</label>
+                <select id="wifiSsidList">
+                  <option value="">Scan requis...</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="wifiPass">Mot de passe</label>
+                <div class="password-wrap">
+                  <input id="wifiPass" type="password" placeholder="Mot de passe WiFi" />
+                  <button id="toggleWifiPass" class="password-toggle" type="button" aria-label="Afficher le mot de passe WiFi" aria-pressed="false"></button>
+                </div>
+              </div>
             </div>
-            <div class="field">
-              <label for="mqttPort">Port</label>
-              <input id="mqttPort" type="number" min="1" max="65535" placeholder="1883" />
+            <div class="btn-row">
+              <button id="scanWifi" class="btn-tonal">Scanner les réseaux</button>
+              <button id="applyWifiCfg" class="btn-primary">Appliquer WiFi</button>
             </div>
-            <div class="field">
-              <label for="mqttUser">Username</label>
-              <input id="mqttUser" placeholder="username" />
+            <div id="wifiConfigStatus" class="config-status">Configuration WiFi prête.</div>
+          </div>
+
+          <div class="config-section">
+            <h2>MQTT</h2>
+            <div class="form-grid">
+              <div class="field full">
+                <label for="mqttServer">Serveur MQTT</label>
+                <input id="mqttServer" placeholder="ex. 192.168.1.20" />
+              </div>
+              <div class="field">
+                <label for="mqttPort">Port</label>
+                <input id="mqttPort" type="number" min="1" max="65535" placeholder="1883" />
+              </div>
+              <div class="field">
+                <label for="mqttUser">Identifiant</label>
+                <input id="mqttUser" placeholder="identifiant" />
+              </div>
+              <div class="field full">
+                <label for="mqttPass">Mot de passe</label>
+                <div class="password-wrap">
+                  <input id="mqttPass" type="password" placeholder="mot de passe" />
+                  <button id="toggleMqttPass" class="password-toggle" type="button" aria-label="Afficher le mot de passe MQTT" aria-pressed="false"></button>
+                </div>
+              </div>
             </div>
-            <div class="field full">
-              <label for="mqttPass">Password</label>
-              <input id="mqttPass" type="password" placeholder="password" />
+            <div class="btn-row">
+              <button id="applyMqttCfg" class="btn-primary">Appliquer MQTT</button>
+            </div>
+            <div id="mqttConfigStatus" class="config-status">Configuration MQTT prête.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-system" class="page">
+        <div class="topbar">
+          <h1>Système</h1>
+          <span class="status-chip">administrateur</span>
+        </div>
+        <div class="card">
+          <div class="system-actions">
+            <div class="system-action">
+              <h3>Redémarrer le Superviseur</h3>
+              <p>Redémarre uniquement le Superviseur pour relancer les services sans modifier la configuration.</p>
+              <button id="rebootSupervisor" class="btn-tonal">Redémarrer</button>
+            </div>
+            <div class="system-action">
+              <h3>Réinitialisation usine</h3>
+              <p>Efface la configuration enregistrée puis redémarre l'équipement avec les valeurs d'usine.</p>
+              <button id="factoryReset" class="btn-primary">Réinitialisation usine</button>
             </div>
           </div>
-          <div class="btn-row">
-            <button id="applyMqttCfg" class="btn-primary">Appliquer</button>
-          </div>
-          <div id="mqttConfigStatus" class="config-status">Configuration MQTT prête.</div>
+          <div id="systemStatusText" class="config-status">Aucune action système en cours.</div>
         </div>
       </section>
 
       <section id="page-control" class="page">
         <div class="topbar">
-          <h1>Control</h1>
-          <span class="status-chip">manual</span>
+          <h1>Contrôle</h1>
+          <span class="status-chip">manuel</span>
         </div>
         <div class="card control-card">
           <div class="control-list">
@@ -583,6 +713,18 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
       closeMobileDrawer();
     }
 
+    async function ouvrirPageParDefautSelonModeReseau() {
+      try {
+        const res = await fetch('/api/network/mode', { cache: 'no-store' });
+        const data = await res.json();
+        if (res.ok && data && data.ok === true && data.mode === 'ap') {
+          showPage('page-config');
+        }
+      } catch (err) {
+        // Keep default page when network mode endpoint is unavailable.
+      }
+    }
+
     menuItems.forEach((item) => item.addEventListener('click', () => showPage(item.dataset.page)));
 
     menuToggles.forEach((btn) => btn.addEventListener('click', () => {
@@ -623,15 +765,28 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     const mqttPort = document.getElementById('mqttPort');
     const mqttUser = document.getElementById('mqttUser');
     const mqttPass = document.getElementById('mqttPass');
+    const toggleMqttPassBtn = document.getElementById('toggleMqttPass');
     const applyMqttCfgBtn = document.getElementById('applyMqttCfg');
     const mqttConfigStatus = document.getElementById('mqttConfigStatus');
+    const wifiEnabled = document.getElementById('wifiEnabled');
+    const wifiSsid = document.getElementById('wifiSsid');
+    const wifiSsidList = document.getElementById('wifiSsidList');
+    const wifiPass = document.getElementById('wifiPass');
+    const toggleWifiPassBtn = document.getElementById('toggleWifiPass');
+    const scanWifiBtn = document.getElementById('scanWifi');
+    const applyWifiCfgBtn = document.getElementById('applyWifiCfg');
+    const wifiConfigStatus = document.getElementById('wifiConfigStatus');
+    const rebootSupervisorBtn = document.getElementById('rebootSupervisor');
+    const factoryResetBtn = document.getElementById('factoryReset');
+    const systemStatusText = document.getElementById('systemStatusText');
+    let wifiScanPollTimer = null;
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(wsProto + '://' + location.host + '/wsserial');
 
-    ws.onopen = () => wsStatus.textContent = 'connected';
-    ws.onclose = () => wsStatus.textContent = 'disconnected';
-    ws.onerror = () => wsStatus.textContent = 'error';
+    ws.onopen = () => wsStatus.textContent = 'connecté';
+    ws.onclose = () => wsStatus.textContent = 'déconnecté';
+    ws.onerror = () => wsStatus.textContent = 'erreur';
 
     const ansiState = { fg: null };
     const ansiFgMap = {
@@ -683,7 +838,7 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
     };
 
     function refreshAutoscrollUi() {
-      toggleAutoscrollBtn.textContent = autoScrollEnabled ? 'Auto-scroll: ON' : 'Auto-scroll: OFF';
+      toggleAutoscrollBtn.textContent = autoScrollEnabled ? 'Défilement auto : activé' : 'Défilement auto : désactivé';
       toggleAutoscrollBtn.setAttribute('aria-pressed', autoScrollEnabled ? 'true' : 'false');
       toggleAutoscrollBtn.classList.toggle('btn-tonal', autoScrollEnabled);
       toggleAutoscrollBtn.classList.toggle('btn-toggle-off', !autoScrollEnabled);
@@ -695,6 +850,27 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
       if (ws.readyState === WebSocket.OPEN) ws.send(txt);
       line.value = '';
       line.focus();
+    }
+
+    const iconeOeilOuvert =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5C6.7 5 2.73 8.11 1.16 11.25a1.7 1.7 0 0 0 0 1.5C2.73 15.89 6.7 19 12 19s9.27-3.11 10.84-6.25a1.7 1.7 0 0 0 0-1.5C21.27 8.11 17.3 5 12 5Zm0 12c-4.46 0-7.88-2.66-9.29-5 .64-1.06 1.74-2.21 3.17-3.11A11.7 11.7 0 0 1 12 7c4.46 0 7.88 2.66 9.29 5-.64 1.06-1.74 2.21-3.17 3.11A11.7 11.7 0 0 1 12 17Zm0-6.4A2.4 2.4 0 1 0 14.4 13 2.4 2.4 0 0 0 12 10.6Z"/></svg>';
+    const iconeOeilBarre =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.28 2.22 2.22 3.28l2.64 2.64c-1.54 1.14-2.84 2.65-3.7 4.34a1.7 1.7 0 0 0 0 1.5C2.73 14.89 6.7 18 12 18c2.2 0 4.18-.53 5.93-1.38l2.79 2.79 1.06-1.06ZM12 16.2c-4.46 0-7.88-2.66-9.29-5 .73-1.21 2.09-2.57 3.9-3.53l1.66 1.66a3.8 3.8 0 0 0 5.4 5.4l1.75 1.75c-1.02.44-2.16.72-3.42.72Zm.04-9.4 4.35 4.35c0-.05.01-.1.01-.15a4.4 4.4 0 0 0-4.4-4.4h-.01a.8.8 0 0 1 .05.2Zm9.8 4.45C20.27 8.11 16.3 5 11 5c-1.8 0-3.46.35-4.97.95l1.47 1.47A11.5 11.5 0 0 1 12 6.8c4.46 0 7.88 2.66 9.29 5-.43.71-1.03 1.47-1.79 2.16l1.28 1.28c.86-.78 1.56-1.65 2.06-2.63a1.7 1.7 0 0 0 0-1.36Z"/></svg>';
+
+    function mettreAJourEtatVisibiliteMotDePasse(inputEl, toggleBtn, labelAfficher, labelMasquer) {
+      if (!inputEl || !toggleBtn) return;
+      const isVisible = inputEl.type === 'text';
+      toggleBtn.innerHTML = isVisible ? iconeOeilOuvert : iconeOeilBarre;
+      toggleBtn.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+      toggleBtn.setAttribute('aria-label', isVisible ? labelMasquer : labelAfficher);
+      toggleBtn.setAttribute('title', isVisible ? 'Mot de passe en clair' : 'Mot de passe masqué');
+    }
+
+    function basculerVisibiliteMotDePasse(inputEl, toggleBtn, labelAfficher, labelMasquer) {
+      if (!inputEl || !toggleBtn) return;
+      const isMasked = inputEl.type === 'password';
+      inputEl.type = isMasked ? 'text' : 'password';
+      mettreAJourEtatVisibiliteMotDePasse(inputEl, toggleBtn, labelAfficher, labelMasquer);
     }
     sendBtn.addEventListener('click', sendLine);
     line.addEventListener('keydown', (e) => {
@@ -719,16 +895,22 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
 
     function updateUpgradeView(data) {
       if (!data || data.ok !== true) return;
-      const state = data.state || 'unknown';
+      const state = data.state || 'inconnu';
       const target = data.target || '-';
       const progress = Number.isFinite(data.progress) ? data.progress : 0;
       const msg = data.msg || '';
-      upStatusChip.textContent = state;
+      let stateLabel = state;
+      if (state === 'idle') stateLabel = 'inactif';
+      else if (state === 'queued') stateLabel = 'en attente';
+      else if (state === 'running') stateLabel = 'en cours';
+      else if (state === 'done') stateLabel = 'terminé';
+      else if (state === 'error') stateLabel = 'erreur';
+      upStatusChip.textContent = stateLabel;
       let p = progress;
       if (state === 'done') p = 100;
       if (state === 'queued' && p <= 0) p = 2;
       setUpgradeProgress(p);
-      setUpgradeMessage(state + ' | target=' + target + (msg ? ' | ' + msg : ''));
+      setUpgradeMessage(stateLabel + ' | cible=' + target + (msg ? ' | ' + msg : ''));
     }
 
     async function loadUpgradeConfig() {
@@ -741,7 +923,7 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
           nextionPath.value = data.nextion_path || '';
         }
       } catch (err) {
-        setUpgradeMessage('Config load failed: ' + err);
+        setUpgradeMessage('Échec du chargement de la configuration : ' + err);
       }
     }
 
@@ -756,8 +938,8 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
         body: body.toString()
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error('save failed');
-      setUpgradeMessage('Configuration saved.');
+      if (!res.ok || !data.ok) throw new Error('échec enregistrement');
+      setUpgradeMessage('Configuration enregistrée.');
     }
 
     async function refreshUpgradeStatus() {
@@ -766,7 +948,7 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
         const data = await res.json();
         if (data && data.ok) updateUpgradeView(data);
       } catch (err) {
-        setUpgradeMessage('Status read failed: ' + err);
+        setUpgradeMessage('Échec de lecture de l\'état : ' + err);
       }
     }
 
@@ -776,12 +958,12 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
         const endpoint = target === 'flowio' ? '/fwupdate/flowio' : '/fwupdate/nextion';
         const res = await fetch(endpoint, { method: 'POST' });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error('start failed');
+        if (!res.ok || !data.ok) throw new Error('échec démarrage');
         setUpgradeProgress(1);
-        setUpgradeMessage('Upgrade request accepted for ' + target + '.');
+        setUpgradeMessage('Demande de mise à jour acceptée pour ' + target + '.');
         await refreshUpgradeStatus();
       } catch (err) {
-        setUpgradeMessage('Upgrade failed: ' + err);
+        setUpgradeMessage('Échec de la mise à jour : ' + err);
       }
     }
 
@@ -814,15 +996,163 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
         body: body.toString()
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error('apply failed');
+      if (!res.ok || !data.ok) throw new Error('échec application');
       mqttConfigStatus.textContent = 'Configuration MQTT appliquée.';
+    }
+
+    function stopWifiScanPolling() {
+      if (wifiScanPollTimer) {
+        clearTimeout(wifiScanPollTimer);
+        wifiScanPollTimer = null;
+      }
+    }
+
+    function scheduleWifiScanPolling() {
+      stopWifiScanPolling();
+      wifiScanPollTimer = setTimeout(() => {
+        refreshWifiScanStatus(false);
+      }, 1200);
+    }
+
+    function renderWifiScanList(data) {
+      const networks = (data && Array.isArray(data.networks)) ? data.networks : [];
+      const currentSsid = (wifiSsid.value || '').trim();
+      const prevSelected = wifiSsidList.value || '';
+
+      wifiSsidList.innerHTML = '';
+      const manualOpt = document.createElement('option');
+      manualOpt.value = '';
+      manualOpt.textContent = 'Saisie manuelle';
+      wifiSsidList.appendChild(manualOpt);
+
+      for (const net of networks) {
+        if (!net || typeof net.ssid !== 'string' || net.ssid.length === 0) continue;
+        if (net.hidden) continue;
+        const opt = document.createElement('option');
+        const secureSuffix = net.secure ? ' (securise)' : ' (ouvert)';
+        const rssiSuffix = Number.isFinite(net.rssi) ? (' ' + net.rssi + ' dBm') : '';
+        opt.value = net.ssid;
+        opt.textContent = net.ssid + secureSuffix + rssiSuffix;
+        wifiSsidList.appendChild(opt);
+      }
+
+      const values = Array.from(wifiSsidList.options).map((o) => o.value);
+      if (currentSsid && values.includes(currentSsid)) {
+        wifiSsidList.value = currentSsid;
+      } else if (prevSelected && values.includes(prevSelected)) {
+        wifiSsidList.value = prevSelected;
+      } else {
+        wifiSsidList.value = '';
+      }
+    }
+
+    function updateWifiScanStatusText(data, reqError) {
+      if (reqError) {
+        wifiConfigStatus.textContent = 'Scan WiFi indisponible: ' + reqError;
+        return;
+      }
+      if (!data || data.ok !== true) {
+        wifiConfigStatus.textContent = 'Scan WiFi : réponse invalide.';
+        return;
+      }
+
+      const running = !!data.running;
+      const requested = !!data.requested;
+      const count = Number.isFinite(data.count) ? data.count : 0;
+      const totalFound = Number.isFinite(data.total_found) ? data.total_found : count;
+      if (running || requested) {
+        wifiConfigStatus.textContent = 'Scan WiFi en cours...';
+        return;
+      }
+      if (count > 0) {
+        wifiConfigStatus.textContent = 'Scan WiFi terminé : ' + count + ' réseaux affichés (' + totalFound + ' détectés).';
+        return;
+      }
+      wifiConfigStatus.textContent = 'Aucun réseau visible détecté.';
+    }
+
+    async function requestWifiScan(force) {
+      const body = new URLSearchParams();
+      body.set('force', force ? '1' : '0');
+      const res = await fetch('/api/wifi/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: body.toString()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error('échec démarrage scan');
+      return data;
+    }
+
+    async function refreshWifiScanStatus(triggerScan) {
+      try {
+        if (triggerScan) {
+          await requestWifiScan(true);
+        }
+        const res = await fetch('/api/wifi/scan', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data || data.ok !== true) throw new Error('échec lecture état');
+
+        renderWifiScanList(data);
+        updateWifiScanStatusText(data, null);
+
+        if (data.running || data.requested) {
+          scheduleWifiScanPolling();
+        } else {
+          stopWifiScanPolling();
+        }
+      } catch (err) {
+        stopWifiScanPolling();
+        updateWifiScanStatusText(null, err);
+      }
+    }
+
+    async function loadWifiConfig() {
+      try {
+        const res = await fetch('/api/wifi/config', { cache: 'no-store' });
+        const data = await res.json();
+        if (data && data.ok) {
+          wifiEnabled.value = data.enabled ? '1' : '0';
+          wifiSsid.value = data.ssid || '';
+          wifiPass.value = data.pass || '';
+          wifiConfigStatus.textContent = 'Configuration WiFi chargée.';
+        }
+      } catch (err) {
+        wifiConfigStatus.textContent = 'Chargement WiFi échoué: ' + err;
+      }
+    }
+
+    async function saveWifiConfig() {
+      const body = new URLSearchParams();
+      body.set('enabled', (wifiEnabled.value || '1').trim());
+      body.set('ssid', wifiSsid.value.trim());
+      body.set('pass', wifiPass.value);
+
+      const res = await fetch('/api/wifi/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: body.toString()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error('échec application');
+      wifiConfigStatus.textContent = 'Configuration WiFi appliquée (reconnexion en cours).';
+    }
+
+    async function callSystemAction(action) {
+      const endpoint = action === 'factory_reset' ? '/api/system/factory-reset' : '/api/system/reboot';
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error('échec action');
+      systemStatusText.textContent = action === 'factory_reset'
+        ? 'Réinitialisation usine lancée. Redémarrage en cours...'
+        : 'Redémarrage du Superviseur lancé...';
     }
 
     saveCfgBtn.addEventListener('click', async () => {
       try {
         await saveUpgradeConfig();
       } catch (err) {
-        setUpgradeMessage('Save failed: ' + err);
+        setUpgradeMessage('Échec de l\'enregistrement : ' + err);
       }
     });
     upFlowBtn.addEventListener('click', () => startUpgrade('flowio'));
@@ -835,10 +1165,76 @@ static const char kWebInterfacePage[] PROGMEM = R"HTML(
         mqttConfigStatus.textContent = 'Application MQTT échouée: ' + err;
       }
     });
+    if (toggleWifiPassBtn && wifiPass) {
+      mettreAJourEtatVisibiliteMotDePasse(
+        wifiPass,
+        toggleWifiPassBtn,
+        'Afficher le mot de passe WiFi',
+        'Masquer le mot de passe WiFi'
+      );
+      toggleWifiPassBtn.addEventListener('click', () => {
+        basculerVisibiliteMotDePasse(
+          wifiPass,
+          toggleWifiPassBtn,
+          'Afficher le mot de passe WiFi',
+          'Masquer le mot de passe WiFi'
+        );
+      });
+    }
+    if (toggleMqttPassBtn && mqttPass) {
+      mettreAJourEtatVisibiliteMotDePasse(
+        mqttPass,
+        toggleMqttPassBtn,
+        'Afficher le mot de passe MQTT',
+        'Masquer le mot de passe MQTT'
+      );
+      toggleMqttPassBtn.addEventListener('click', () => {
+        basculerVisibiliteMotDePasse(
+          mqttPass,
+          toggleMqttPassBtn,
+          'Afficher le mot de passe MQTT',
+          'Masquer le mot de passe MQTT'
+        );
+      });
+    }
+    wifiSsidList.addEventListener('change', () => {
+      const picked = (wifiSsidList.value || '').trim();
+      if (picked.length > 0) {
+        wifiSsid.value = picked;
+      }
+    });
+    scanWifiBtn.addEventListener('click', () => {
+      refreshWifiScanStatus(true);
+    });
+    applyWifiCfgBtn.addEventListener('click', async () => {
+      try {
+        await saveWifiConfig();
+      } catch (err) {
+        wifiConfigStatus.textContent = 'Application WiFi échouée: ' + err;
+      }
+    });
+    rebootSupervisorBtn.addEventListener('click', async () => {
+      try {
+        await callSystemAction('reboot');
+      } catch (err) {
+        systemStatusText.textContent = 'Redémarrage échoué : ' + err;
+      }
+    });
+    factoryResetBtn.addEventListener('click', async () => {
+      if (!confirm('Confirmer la réinitialisation usine ? Cette action efface la configuration.')) return;
+      try {
+        await callSystemAction('factory_reset');
+      } catch (err) {
+        systemStatusText.textContent = 'Réinitialisation usine échouée : ' + err;
+      }
+    });
 
     loadUpgradeConfig();
     setUpgradeProgress(0);
+    loadWifiConfig();
     loadMqttConfig();
+    refreshWifiScanStatus(true);
+    ouvrirPageParDefautSelonModeReseau();
     refreshUpgradeStatus();
     setInterval(refreshUpgradeStatus, 2000);
   </script>
@@ -859,6 +1255,8 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     services_ = &services;
     logHub_ = services.get<LogHubService>("loghub");
     wifiSvc_ = services.get<WifiService>("wifi");
+    cmdSvc_ = services.get<CommandService>("cmd");
+    netAccessSvc_ = services.get<NetworkAccessService>("network_access");
     const DataStoreService* dsSvc = services.get<DataStoreService>("datastore");
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
     auto* ebSvc = services.get<EventBusService>("eventbus");
@@ -897,6 +1295,21 @@ void WebInterfaceModule::startServer_()
     server_.on("/assets/flowio-logo.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->send(200, "image/svg+xml", kFlowIoLogoSvg);
     });
+    server_.on("/assets/icon-journaux.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "image/svg+xml", kMenuIconJournauxSvg);
+    });
+    server_.on("/assets/icon-upgrade.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "image/svg+xml", kMenuIconUpgradeSvg);
+    });
+    server_.on("/assets/icon-config.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "image/svg+xml", kMenuIconConfigSvg);
+    });
+    server_.on("/assets/icon-system.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "image/svg+xml", kMenuIconSystemSvg);
+    });
+    server_.on("/assets/icon-control.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "image/svg+xml", kMenuIconControlSvg);
+    });
 
     server_.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->redirect("/webinterface");
@@ -914,6 +1327,52 @@ void WebInterfaceModule::startServer_()
     });
     server_.on("/webserial/health", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->redirect("/webinterface/health");
+    });
+    server_.on("/api/network/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        NetworkAccessMode mode = NetworkAccessMode::None;
+        if (!netAccessSvc_ && services_) {
+            netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+        }
+        if (netAccessSvc_ && netAccessSvc_->mode) {
+            mode = netAccessSvc_->mode(netAccessSvc_->ctx);
+        } else if (wifiSvc_ && wifiSvc_->isConnected && wifiSvc_->isConnected(wifiSvc_->ctx)) {
+            mode = NetworkAccessMode::Station;
+        }
+
+        const char* modeTxt = "none";
+        if (mode == NetworkAccessMode::Station) modeTxt = "station";
+        else if (mode == NetworkAccessMode::AccessPoint) modeTxt = "ap";
+
+        char ip[16] = {0};
+        (void)getNetworkIp_(ip, sizeof(ip), nullptr);
+
+        char out[96] = {0};
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":true,\"mode\":\"%s\",\"ip\":\"%s\"}",
+                               modeTxt,
+                               ip);
+        if (n <= 0 || (size_t)n >= sizeof(out)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"network.mode\"}}");
+            return;
+        }
+        request->send(200, "application/json", out);
+    });
+    server_.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
+    });
+    server_.on("/gen_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
+    });
+    server_.on("/hotspot-detect.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
+    });
+    server_.on("/connecttest.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
+    });
+    server_.on("/ncsi.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
     });
 
     auto fwStatusHandler = [this](AsyncWebServerRequest* request) {
@@ -1070,12 +1529,210 @@ void WebInterfaceModule::startServer_()
         request->send(200, "application/json", "{\"ok\":true}");
     });
 
+    server_.on("/api/wifi/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (!cfgStore_) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"wifi.config.get\"}}");
+            return;
+        }
+
+        char wifiJson[320] = {0};
+        if (!cfgStore_->toJsonModule("wifi", wifiJson, sizeof(wifiJson), nullptr)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.config.get\"}}");
+            return;
+        }
+
+        StaticJsonDocument<320> doc;
+        const DeserializationError err = deserializeJson(doc, wifiJson);
+        if (err || !doc.is<JsonObjectConst>()) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"InvalidData\",\"where\":\"wifi.config.get\"}}");
+            return;
+        }
+
+        JsonObjectConst root = doc.as<JsonObjectConst>();
+        bool enabled = root["enabled"] | true;
+        const char* ssid = root["ssid"] | "";
+        const char* pass = root["pass"] | "";
+
+        char ssidSafe[96] = {0};
+        char passSafe[96] = {0};
+        snprintf(ssidSafe, sizeof(ssidSafe), "%s", ssid ? ssid : "");
+        snprintf(passSafe, sizeof(passSafe), "%s", pass ? pass : "");
+        sanitizeJsonString_(ssidSafe);
+        sanitizeJsonString_(passSafe);
+
+        char out[360] = {0};
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":true,\"enabled\":%s,\"ssid\":\"%s\",\"pass\":\"%s\"}",
+                               enabled ? "true" : "false",
+                               ssidSafe,
+                               passSafe);
+        if (n <= 0 || (size_t)n >= sizeof(out)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.config.get\"}}");
+            return;
+        }
+        request->send(200, "application/json", out);
+    });
+
+    server_.on("/api/wifi/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        if (!cfgStore_) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"wifi.config.set\"}}");
+            return;
+        }
+
+        const String enabledStr = request->hasParam("enabled", true)
+                                      ? request->getParam("enabled", true)->value()
+                                      : String("1");
+        const bool enabled = parseBoolParam_(enabledStr, true);
+        const String ssid = request->hasParam("ssid", true)
+                                ? request->getParam("ssid", true)->value()
+                                : String();
+        const String pass = request->hasParam("pass", true)
+                                ? request->getParam("pass", true)->value()
+                                : String();
+
+        StaticJsonDocument<320> patch;
+        JsonObject root = patch.to<JsonObject>();
+        JsonObject wifi = root.createNestedObject("wifi");
+        wifi["enabled"] = enabled;
+        wifi["ssid"] = ssid.c_str();
+        wifi["pass"] = pass.c_str();
+
+        char patchJson[320] = {0};
+        if (serializeJson(patch, patchJson, sizeof(patchJson)) == 0) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.config.set\"}}");
+            return;
+        }
+
+        if (!cfgStore_->applyJson(patchJson)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.config.set\"}}");
+            return;
+        }
+
+        if (!netAccessSvc_ && services_) {
+            netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+        }
+        if (netAccessSvc_ && netAccessSvc_->notifyWifiConfigChanged) {
+            netAccessSvc_->notifyWifiConfigChanged(netAccessSvc_->ctx);
+        }
+
+        request->send(200, "application/json", "{\"ok\":true}");
+    });
+
+    server_.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (!wifiSvc_ && services_) {
+            wifiSvc_ = services_->get<WifiService>("wifi");
+        }
+        if (!wifiSvc_ || !wifiSvc_->scanStatusJson) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"wifi.scan.get\"}}");
+            return;
+        }
+
+        char out[3072] = {0};
+        if (!wifiSvc_->scanStatusJson(wifiSvc_->ctx, out, sizeof(out))) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.scan.get\"}}");
+            return;
+        }
+        request->send(200, "application/json", out);
+    });
+
+    server_.on("/api/wifi/scan", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        if (!wifiSvc_ && services_) {
+            wifiSvc_ = services_->get<WifiService>("wifi");
+        }
+        if (!wifiSvc_ || !wifiSvc_->requestScan) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"wifi.scan.start\"}}");
+            return;
+        }
+
+        String forceStr = request->hasParam("force", true)
+                              ? request->getParam("force", true)->value()
+                              : String("1");
+        const bool force = parseBoolParam_(forceStr, true);
+        if (!wifiSvc_->requestScan(wifiSvc_->ctx, force)) {
+            request->send(500, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"wifi.scan.start\"}}");
+            return;
+        }
+
+        if (wifiSvc_->scanStatusJson) {
+            char out[3072] = {0};
+            if (wifiSvc_->scanStatusJson(wifiSvc_->ctx, out, sizeof(out))) {
+                request->send(202, "application/json", out);
+                return;
+            }
+        }
+
+        request->send(202, "application/json", "{\"ok\":true,\"accepted\":true}");
+    });
+
+    server_.on("/api/system/reboot", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        if (!cmdSvc_ && services_) {
+            cmdSvc_ = services_->get<CommandService>("cmd");
+        }
+        if (!cmdSvc_ || !cmdSvc_->execute) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"system.reboot\"}}");
+            return;
+        }
+
+        char reply[196] = {0};
+        const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "system.reboot", "{}", nullptr, reply, sizeof(reply));
+        if (!ok) {
+            const String body = (reply[0] != '\0')
+                                    ? String(reply)
+                                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.reboot\"}}");
+            request->send(500, "application/json", body);
+            return;
+        }
+        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
+        request->send(200, "application/json", body);
+    });
+
+    server_.on("/api/system/factory-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        if (!cmdSvc_ && services_) {
+            cmdSvc_ = services_->get<CommandService>("cmd");
+        }
+        if (!cmdSvc_ || !cmdSvc_->execute) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"system.factory_reset\"}}");
+            return;
+        }
+
+        char reply[220] = {0};
+        const bool ok = cmdSvc_->execute(cmdSvc_->ctx, "system.factory_reset", "{}", nullptr, reply, sizeof(reply));
+        if (!ok) {
+            const String body =
+                (reply[0] != '\0')
+                    ? String(reply)
+                    : String("{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"system.factory_reset\"}}");
+            request->send(500, "application/json", body);
+            return;
+        }
+        const String body = (reply[0] != '\0') ? String(reply) : String("{\"ok\":true}");
+        request->send(200, "application/json", body);
+    });
+
     server_.on("/fwupdate/flowio", HTTP_POST, [this](AsyncWebServerRequest* request) {
         handleUpdateRequest_(request, FirmwareUpdateTarget::FlowIO);
     });
 
     server_.on("/fwupdate/nextion", HTTP_POST, [this](AsyncWebServerRequest* request) {
         handleUpdateRequest_(request, FirmwareUpdateTarget::Nextion);
+    });
+
+    server_.onNotFound([](AsyncWebServerRequest* request) {
+        request->redirect("/webinterface");
     });
 
     ws_.onEvent([this](AsyncWebSocket* server,
@@ -1092,15 +1749,16 @@ void WebInterfaceModule::startServer_()
     started_ = true;
     LOGI("WebInterface server started, listening on 0.0.0.0:%d", kServerPort);
 
-    if (wifiSvc_ && wifiSvc_->isConnected && wifiSvc_->isConnected(wifiSvc_->ctx)) {
-        char ip[16] = {0};
-        if (wifiSvc_->getIP && wifiSvc_->getIP(wifiSvc_->ctx, ip, sizeof(ip)) && ip[0] != '\0') {
-            LOGI("WebInterface URL: http://%s/webinterface", ip);
+    char ip[16] = {0};
+    NetworkAccessMode mode = NetworkAccessMode::None;
+    if (getNetworkIp_(ip, sizeof(ip), &mode) && ip[0] != '\0') {
+        if (mode == NetworkAccessMode::AccessPoint) {
+            LOGI("WebInterface URL (AP): http://%s/webinterface", ip);
         } else {
-            LOGI("WebInterface URL: WiFi connected (IP unavailable)");
+            LOGI("WebInterface URL: http://%s/webinterface", ip);
         }
     } else {
-        LOGI("WebInterface URL: waiting for WiFi IP");
+        LOGI("WebInterface URL: waiting for network IP");
     }
 }
 
@@ -1112,7 +1770,7 @@ void WebInterfaceModule::onWsEvent_(AsyncWebSocket*,
                                  size_t len)
 {
     if (type == WS_EVT_CONNECT) {
-        if (client) client->text("[webinterface] connected");
+        if (client) client->text("[webinterface] connecté");
         return;
     }
 
@@ -1128,7 +1786,7 @@ void WebInterfaceModule::onWsEvent_(AsyncWebSocket*,
     msg[n] = '\0';
 
     if (uartPaused_) {
-        if (client) client->text("[webinterface] uart busy (firmware update in progress)");
+        if (client) client->text("[webinterface] uart occupé (mise à jour firmware en cours)");
         return;
     }
 
@@ -1164,6 +1822,42 @@ void WebInterfaceModule::handleUpdateRequest_(AsyncWebServerRequest* request, Fi
     }
 
     request->send(202, "application/json", "{\"ok\":true,\"accepted\":true}");
+}
+
+bool WebInterfaceModule::isWebReachable_() const
+{
+    if (netAccessSvc_ && netAccessSvc_->isWebReachable) {
+        return netAccessSvc_->isWebReachable(netAccessSvc_->ctx);
+    }
+    if (wifiSvc_ && wifiSvc_->isConnected) {
+        return wifiSvc_->isConnected(wifiSvc_->ctx);
+    }
+    return netReady_;
+}
+
+bool WebInterfaceModule::getNetworkIp_(char* out, size_t len, NetworkAccessMode* modeOut) const
+{
+    if (out && len > 0) out[0] = '\0';
+    if (modeOut) *modeOut = NetworkAccessMode::None;
+    if (!out || len == 0) return false;
+
+    if (netAccessSvc_ && netAccessSvc_->getIP) {
+        if (netAccessSvc_->getIP(netAccessSvc_->ctx, out, len)) {
+            if (modeOut && netAccessSvc_->mode) {
+                *modeOut = netAccessSvc_->mode(netAccessSvc_->ctx);
+            }
+            return out[0] != '\0';
+        }
+    }
+
+    if (wifiSvc_ && wifiSvc_->getIP) {
+        if (wifiSvc_->getIP(wifiSvc_->ctx, out, len)) {
+            if (modeOut) *modeOut = NetworkAccessMode::Station;
+            return out[0] != '\0';
+        }
+    }
+
+    return false;
 }
 
 bool WebInterfaceModule::isLogByte_(uint8_t c)
@@ -1218,8 +1912,12 @@ void WebInterfaceModule::flushLine_(bool force)
 
 void WebInterfaceModule::loop()
 {
+    if (!netAccessSvc_ && services_) {
+        netAccessSvc_ = services_->get<NetworkAccessService>("network_access");
+    }
+
     if (!started_) {
-        if (!netReady_) {
+        if (!isWebReachable_()) {
             vTaskDelay(pdMS_TO_TICKS(100));
             return;
         }

@@ -76,6 +76,8 @@ public:
     void loadPersistent();
     /** @brief Save persistent values from registered variables into NVS. */
     void savePersistent();
+    /** @brief Erase all persistent keys in the active Preferences namespace. */
+    bool erasePersistent();
 
     /** @brief Serialize all registered config to JSON. */
     void toJson(char* out, size_t outLen) const;

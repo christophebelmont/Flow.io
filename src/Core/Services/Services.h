@@ -17,5 +17,6 @@
 #include "ITime.h"
 #include "ITimeScheduler.h"
 #include "IWifi.h"
+#include "INetworkAccess.h"
 #include "IWebInterface.h"
 #include "IFirmwareUpdate.h"

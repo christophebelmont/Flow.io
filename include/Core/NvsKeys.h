@@ -15,6 +15,7 @@ namespace Wifi {
 constexpr char Enabled[] = "wifi_en"; // WiFi module persisted key for field `wifi_en`.
 constexpr char Ssid[] = "wifi_ssid"; // WiFi module persisted key for field `wifi_ssid`.
 constexpr char Pass[] = "wifi_pass"; // WiFi module persisted key for field `wifi_pass`.
+constexpr char Mdns[] = "wifi_mdns"; // WiFi module persisted key for field `wifi_mdns`.
 }  // namespace Wifi
 
 namespace Mqtt {

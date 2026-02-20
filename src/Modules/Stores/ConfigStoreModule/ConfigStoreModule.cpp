@@ -23,13 +23,17 @@ uint8_t ConfigStoreModule::svcListModules(void* ctx, const char** out, uint8_t m
     return ((ConfigStore*)ctx)->listModules(out, max);
 }
 
+bool ConfigStoreModule::svcErase(void* ctx) {
+    return ((ConfigStore*)ctx)->erasePersistent();
+}
+
 void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     registry = &cfg;
 
     /// récupérer service loghub (log async)
     logHub = services.get<LogHubService>("loghub");
 
-    static ConfigStoreService svc{ svcApplyJson, svcToJson, svcToJsonModule, svcListModules, nullptr };
+    static ConfigStoreService svc{ svcApplyJson, svcToJson, svcToJsonModule, svcListModules, svcErase, nullptr };
     svc.ctx = registry;
 
     services.add("config", &svc);

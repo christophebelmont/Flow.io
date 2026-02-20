@@ -14,11 +14,12 @@ public:
     /** @brief Module id. */
     const char* moduleId() const override { return "system"; }
 
-    /** @brief Depends on log hub and command service. */
-    uint8_t dependencyCount() const override { return 2; }
+    /** @brief Depends on log hub, command service and config service. */
+    uint8_t dependencyCount() const override { return 3; }
     const char* dependency(uint8_t i) const override {
         if (i == 0) return "loghub";
         if (i == 1) return "cmd";
+        if (i == 2) return "config";
         return nullptr;
     }
 
@@ -27,6 +28,7 @@ public:
 
 private:
     const CommandService* cmdSvc = nullptr;
+    const ConfigStoreService* cfgSvc = nullptr;
     const LogHubService* logHub = nullptr;
     static bool cmdPing(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
     static bool cmdReboot(void* userCtx, const CommandRequest& req, char* reply, size_t replyLen);
