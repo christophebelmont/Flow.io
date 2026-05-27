@@ -12,13 +12,12 @@ Tca9554Driver::Tca9554Driver(const char* driverId, I2CBus* bus, uint8_t address)
 
 bool Tca9554Driver::begin()
 {
-    // Output-only mode:
-    // - disable polarity inversion,
-    // - configure all pins as outputs,
-    // - apply initial output mask.
+    // Output-only mode. Write output register BEFORE switching to output mode
+    // to avoid a glitch: the TCA9554 POR output register is 0xFF, so configuring
+    // pins as outputs first would briefly drive them HIGH before state_ is applied.
     if (!writeReg_(kRegPolarityInversion, 0x00)) return false;
-    if (!writeReg_(kRegConfiguration, 0x00)) return false;
-    return writeReg_(kRegOutputPort, state_);
+    if (!writeReg_(kRegOutputPort, state_)) return false;
+    return writeReg_(kRegConfiguration, 0x00);
 }
 
 bool Tca9554Driver::writeMask(uint8_t mask)

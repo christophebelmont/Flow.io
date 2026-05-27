@@ -31,5 +31,5 @@ private:
     const char* driverId_ = nullptr;
     I2CBus* bus_ = nullptr;
     uint8_t address_ = 0x20;
-    uint8_t state_ = 0xFF;
+    uint8_t state_ = 0x00;
 };

@@ -58,7 +58,7 @@ public:
     const ModuleTaskSpec* taskSpecs() const override { return singleLoopTaskSpec(); }
     /** @brief Give extra headroom to WiFi stack/callback activity. */
     uint16_t taskStackSize() const override {
-#if defined(FLOW_PROFILE_SUPERVISOR) || defined(FLOW_PROFILE_MICRONOVA)
+#if defined(FLOW_PROFILE_SUPERVISOR) || defined(FLOW_PROFILE_MICRONOVA) || defined(FLOW_PROFILE_FLOWIOS3)
         return 4096;
 #else
         return 2816;
