@@ -34,6 +34,7 @@ enum class ModuleId : uint8_t {
     MicronovaBus,
     MicronovaBoiler,
     MicronovaMqttBridge,
+    StatusLed,
     Count
 };
 
@@ -82,6 +83,7 @@ constexpr const char* toString(ModuleId id)
         case ModuleId::MicronovaBus: return "micronova.bus";
         case ModuleId::MicronovaBoiler: return "micronova.boiler";
         case ModuleId::MicronovaMqttBridge: return "micronova.mqtt";
+        case ModuleId::StatusLed: return "status_led";
         case ModuleId::Unknown:
         case ModuleId::Count:
         default:

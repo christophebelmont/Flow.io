@@ -112,6 +112,7 @@ bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len)
 
 void registerModules(AppContext& ctx, ModuleInstances& modules)
 {
+    ctx.moduleManager.add(&modules.statusLedModule);
     ctx.moduleManager.add(&modules.logHubModule);
     ctx.moduleManager.add(&modules.logDispatcherModule);
     ctx.moduleManager.add(&modules.logSerialSinkModule);

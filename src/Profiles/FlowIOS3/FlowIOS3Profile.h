@@ -23,6 +23,7 @@
 #include "Modules/PoolLogicModule/PoolLogicModule.h"
 #include "Modules/Stores/ConfigStoreModule/ConfigStoreModule.h"
 #include "Modules/Stores/DataStoreModule/DataStoreModule.h"
+#include "Modules/System/StatusLedModule/StatusLedModule.h"
 #include "Modules/System/SystemModule/SystemModule.h"
 #include "Modules/System/SystemMonitorModule/SystemMonitorModule.h"
 
@@ -45,6 +46,7 @@ struct ModuleInstances {
     DataStoreModule dataStoreModule{};
     MQTTModule mqttModule{};
     HAModule haModule{};
+    StatusLedModule statusLedModule{};
     SystemModule systemModule{};
     SystemMonitorModule systemMonitorModule{};
     LogSerialSinkModule logSerialSinkModule{};
