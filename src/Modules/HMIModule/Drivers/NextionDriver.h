@@ -9,9 +9,15 @@
 #include <Arduino.h>
 
 struct NextionDriverConfig {
+#ifdef FLOW_BOARD_WAVESHARE_ESP32_S3
+    HardwareSerial* serial = &Serial2;
+    int8_t rxPin = 44;
+    int8_t txPin = 43;
+#else
     HardwareSerial* serial = &Serial2;
     int8_t rxPin = 16;
     int8_t txPin = 17;
+#endif
     uint32_t baud = 115200;
     uint32_t minRenderGapMs = 120;
     uint16_t displayVersionReadTimeoutMs = 180U;

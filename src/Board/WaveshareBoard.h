@@ -188,8 +188,8 @@ inline constexpr I2cBusSpec kWaveshareESP32S3I2c[] = {
  *   bus GPIO pins are not.
  */
 inline constexpr OneWireBusSpec kWaveshareESP32S3OneWire[] = {
-    {"temp_probe_1", BoardSignal::TempProbe1, 47}, // Water DS18B20 probe bus on GPIO47.
-    {"temp_probe_2", BoardSignal::TempProbe2, 48}, // Air DS18B20 probe bus on GPIO48.
+    {"temp_probe_1", BoardSignal::TempProbe1, 20}, // Water DS18B20 probe bus on GPIO20.
+    {"temp_probe_2", BoardSignal::TempProbe2, 19}, // Air DS18B20 probe bus on GPIO19.
 };
 
 /*
@@ -290,18 +290,13 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
     {"digital_in6_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn6, 9, false, 0},
     {"digital_in7_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn7, 10, false, 0},
     {"digital_in8_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn8, 11, false, 0},
-    {"water_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe1, 47, false, 0},
-    {"air_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe2, 48, false, 0},
-    {"venice_tx433", IoCapability::DigitalOut, BoardSignal::Tx433, 45, false, 0},
+    {"water_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe1, 20, false, 0},
+    {"air_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe2, 19, false, 0},
+    {"venice_tx433", IoCapability::DigitalOut, BoardSignal::Tx433, 03, false, 0},
 };
 
 /*
  * Local ST7789 TFT display wiring and timing.
- *
- * TFT support is intentionally disabled on the Waveshare ESP32-S3 target. Keep
- * the pin entries at -1 so these ESP32 GPIOs are not reserved by this board
- * profile. The previous TFT wiring is kept in comments next to each disabled
- * field for reference.
  *
  * Field order:
  *   resX, resY, rotation, colStart, rowStart, backlightPin, csPin, dcPin,
@@ -343,13 +338,13 @@ inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
     1,         // rotation.
     0,         // colStart.
     0,         // rowStart.
-    -1,        // backlightPin disabled; was GPIO1 / TFT_BL.
-    -1,        // csPin disabled; was GPIO21 / SPI_CS.
-    -1,        // dcPin disabled; was GPIO45 / TFT_DC.
-    -1,        // rstPin disabled; was GPIO2 / TFT_RES.
-    -1,        // misoPin disabled; was not wired for this TFT.
-    -1,        // mosiPin disabled; was GPIO47 / SPI_MOSI.
-    -1,        // sclkPin disabled; was GPIO48 / SPI_SCL.
+    21,        // backlightPin / TFT_BL.
+    45,        // csPin        / SPI_CS.
+    1,         // dcPin        / TFT_DC.
+    47,        // rstPin       / TFT_RES.
+    -1,        // misoPin disabled; not wired for this TFT.
+    2,         // mosiPin      / SPI_MOSI.
+    48,        // sclkPin      / SPI_SCL.
     false,     // swapColorBytes.
     true,      // invertColors.
     40000000U, // spiHz.

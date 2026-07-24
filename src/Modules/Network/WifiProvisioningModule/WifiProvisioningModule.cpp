@@ -335,10 +335,9 @@ void WifiProvisioningModule::onEvent_(const Event& e)
 void WifiProvisioningModule::buildApCredentials_()
 {
     const uint64_t chipId = ESP.getEfuseMac();
-    const uint8_t b0 = (uint8_t)(chipId >> 16);
-    const uint8_t b1 = (uint8_t)(chipId >> 8);
-    const uint8_t b2 = (uint8_t)(chipId >> 0);
-    snprintf(apSsid_, sizeof(apSsid_), "flow.io-%02X%02X%02X", b0, b1, b2);
+    uint64_t id=0;
+    for(int i=0; i<17; i=i+8) id |= ((chipId >> (40 - i)) & 0xff) << i;
+    snprintf(apSsid_, sizeof(apSsid_), "flow.io-%06X", id);
     snprintf(apPass_, sizeof(apPass_), "%s", kDefaultApPass);
 }
 

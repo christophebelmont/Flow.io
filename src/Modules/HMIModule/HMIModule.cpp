@@ -1334,6 +1334,9 @@ bool HMIModule::publishHomeAlarmBits_()
 bool HMIModule::validateDriverDisplayVersion_(bool requireDetection)
 {
     if (!driver_) return true;
+    // ******************
+    return true; // steph
+    // ******************
     if (!driver_->hasDisplayVersion()) {
         if (!requireDetection) return true;
         LOGW("Ecran Nextion version non detectee. Affichage Nextion desactive.");

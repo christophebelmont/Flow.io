@@ -34,7 +34,7 @@ struct IOModuleConfig {
     bool bme680Enabled = false;
     uint8_t bme680Address = 0x77;
     int32_t bme680PollMs = 2000;
-    bool ina226Enabled = false;
+    bool ina226Enabled = true;
     uint8_t ina226Address = 0x40;
     int32_t ina226PollMs = 500;
     float ina226ShuntOhms = 0.1f;
