@@ -17,6 +17,18 @@
     "io/drivers/bmp280/address": {
       "display_format": "hex"
     },
+    "io/drivers/expander00/address": {
+      "display_format": "hex"
+    },
+    "io/drivers/expander01/address": {
+      "display_format": "hex"
+    },
+    "io/drivers/expander02/address": {
+      "display_format": "hex"
+    },
+    "io/drivers/expander03/address": {
+      "display_format": "hex"
+    },
     "io/drivers/ina226/address": {
       "display_format": "hex"
     },

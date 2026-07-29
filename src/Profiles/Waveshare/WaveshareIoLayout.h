@@ -8,6 +8,20 @@ namespace Profiles {
 namespace Waveshare {
 namespace IoLayout {
 
+enum : IOExpanderId {
+    ExpanderTca9554 = 0,
+    ExpanderMcp23017 = 1,
+    ExpanderPcf8574Aux = 2,
+    ExpanderTca9554Aux = 3,
+};
+
+inline constexpr IOExpanderSpec kExpanders[] = {
+    {ExpanderTca9554, IO_EXPANDER_KIND_TCA9554, true, FLOW_WIRDEF_IO_PCFAD, 0x00, false},
+    {ExpanderMcp23017, IO_EXPANDER_KIND_MCP23017, true, 0x21, 0x00, false},
+    {ExpanderPcf8574Aux, IO_EXPANDER_KIND_PCF8574, false, 0x22, 0xFF, false},
+    {ExpanderTca9554Aux, IO_EXPANDER_KIND_TCA9554, false, 0x23, 0x00, false},
+};
+
 enum : PhysicalPortId {
     PortAdsInternal0 = 100, // ADS1115 interne, entree single-ended A0.
     PortAdsInternal1 = 101, // ADS1115 interne, entree single-ended A1.
@@ -46,26 +60,42 @@ enum : PhysicalPortId {
     PortExio6 = 305, // TCA9554 sortie bit 5.
     PortExio7 = 306, // TCA9554 sortie bit 6.
     PortExio8 = 307, // TCA9554 sortie bit 7.
-    PortMcpOut1 = 400, // MCP23017 sortie bit 0.
-    PortMcpOut2 = 401, // MCP23017 sortie bit 1.
-    PortMcpOut3 = 402, // MCP23017 sortie bit 2.
-    PortMcpOut4 = 403, // MCP23017 sortie bit 3.
-    PortMcpOut5 = 404, // MCP23017 sortie bit 4.
-    PortMcpOut6 = 405, // MCP23017 sortie bit 5.
-    PortMcpOut7 = 406, // MCP23017 sortie bit 6.
-    PortMcpOut8 = 407, // MCP23017 sortie bit 7.
-    PortMcpOut9 = 408, // MCP23017 sortie bit 8.
-    PortMcpOut10 = 409, // MCP23017 sortie bit 9.
-    PortMcpOut11 = 410, // MCP23017 sortie bit 10.
-    PortMcpOut12 = 411, // MCP23017 sortie bit 11.
-    PortMcpOut13 = 412, // MCP23017 sortie bit 12.
-    PortMcpOut14 = 413, // MCP23017 sortie bit 13.
-    PortMcpOut15 = 414, // MCP23017 sortie bit 14.
-    PortMcpOut16 = 415 // MCP23017 sortie bit 15.
+    PortMcpInGpb0 = 400, // MCP23017 entree GPB0.
+    PortMcpInGpb1 = 401, // MCP23017 entree GPB1.
+    PortMcpInGpb2 = 402, // MCP23017 entree GPB2.
+    PortMcpInGpb3 = 403, // MCP23017 entree GPB3.
+    PortMcpInGpb4 = 404, // MCP23017 entree GPB4.
+    PortMcpInGpb5 = 405, // MCP23017 entree GPB5.
+    PortMcpInGpb6 = 406, // MCP23017 entree GPB6.
+    PortMcpInGpb7 = 407, // MCP23017 entree GPB7.
+    PortMcpOutGpa0 = 408, // MCP23017 sortie GPA0.
+    PortMcpOutGpa1 = 409, // MCP23017 sortie GPA1.
+    PortMcpOutGpa2 = 410, // MCP23017 sortie GPA2.
+    PortMcpOutGpa3 = 411, // MCP23017 sortie GPA3.
+    PortMcpOutGpa4 = 412, // MCP23017 sortie GPA4.
+    PortMcpOutGpa5 = 413, // MCP23017 sortie GPA5.
+    PortMcpOutGpa6 = 414, // MCP23017 sortie GPA6.
+    PortMcpOutGpa7 = 415, // MCP23017 sortie GPA7.
+    PortPcfAux0 = 500, // PCF8574 auxiliaire sortie bit 0.
+    PortPcfAux1 = 501, // PCF8574 auxiliaire sortie bit 1.
+    PortPcfAux2 = 502, // PCF8574 auxiliaire sortie bit 2.
+    PortPcfAux3 = 503, // PCF8574 auxiliaire sortie bit 3.
+    PortPcfAux4 = 504, // PCF8574 auxiliaire sortie bit 4.
+    PortPcfAux5 = 505, // PCF8574 auxiliaire sortie bit 5.
+    PortPcfAux6 = 506, // PCF8574 auxiliaire sortie bit 6.
+    PortPcfAux7 = 507, // PCF8574 auxiliaire sortie bit 7.
+    PortTcaAux0 = 510, // TCA9554 auxiliaire sortie bit 0.
+    PortTcaAux1 = 511, // TCA9554 auxiliaire sortie bit 1.
+    PortTcaAux2 = 512, // TCA9554 auxiliaire sortie bit 2.
+    PortTcaAux3 = 513, // TCA9554 auxiliaire sortie bit 3.
+    PortTcaAux4 = 514, // TCA9554 auxiliaire sortie bit 4.
+    PortTcaAux5 = 515, // TCA9554 auxiliaire sortie bit 5.
+    PortTcaAux6 = 516, // TCA9554 auxiliaire sortie bit 6.
+    PortTcaAux7 = 517 // TCA9554 auxiliaire sortie bit 7.
 };
 
 inline constexpr IOBindingPortSpec kBindingPorts[] = {
-    // {portId, kind, param0, param1}
+    // {portId, kind, channel, expanderId}
     {PortAdsInternal0, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 0, 0}, // ADS1115 interne canal 0.
     {PortAdsInternal1, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 1, 0}, // ADS1115 interne canal 1.
     {PortAdsInternal2, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 2, 0}, // ADS1115 interne canal 2.
@@ -106,31 +136,50 @@ inline constexpr IOBindingPortSpec kBindingPorts[] = {
     {PortDin6, IO_PORT_KIND_GPIO_INPUT, 10, 0}, // Entree digitale 7 (GPIO10).
     {PortDin7, IO_PORT_KIND_GPIO_INPUT, 11, 0}, // Entree digitale 8 (GPIO11).
 #endif
-    {PortExio1, IO_PORT_KIND_TCA9554_OUTPUT, 0, 0}, // TCA9554 bit 0.
-    {PortExio2, IO_PORT_KIND_TCA9554_OUTPUT, 1, 0}, // TCA9554 bit 1.
-    {PortExio3, IO_PORT_KIND_TCA9554_OUTPUT, 2, 0}, // TCA9554 bit 2.
-    {PortExio4, IO_PORT_KIND_TCA9554_OUTPUT, 3, 0}, // TCA9554 bit 3.
-    {PortExio5, IO_PORT_KIND_TCA9554_OUTPUT, 4, 0}, // TCA9554 bit 4.
-    {PortExio6, IO_PORT_KIND_TCA9554_OUTPUT, 5, 0}, // TCA9554 bit 5.
-    {PortExio7, IO_PORT_KIND_TCA9554_OUTPUT, 6, 0}, // TCA9554 bit 6.
-    {PortExio8, IO_PORT_KIND_TCA9554_OUTPUT, 7, 0}, // TCA9554 bit 7.
-    {PortMcpOut1, IO_PORT_KIND_MCP23017_OUTPUT, 0, 0}, // MCP23017 bit 0.
-    {PortMcpOut2, IO_PORT_KIND_MCP23017_OUTPUT, 1, 0}, // MCP23017 bit 1.
-    {PortMcpOut3, IO_PORT_KIND_MCP23017_OUTPUT, 2, 0}, // MCP23017 bit 2.
-    {PortMcpOut4, IO_PORT_KIND_MCP23017_OUTPUT, 3, 0}, // MCP23017 bit 3.
-    {PortMcpOut5, IO_PORT_KIND_MCP23017_OUTPUT, 4, 0}, // MCP23017 bit 4.
-    {PortMcpOut6, IO_PORT_KIND_MCP23017_OUTPUT, 5, 0}, // MCP23017 bit 5.
-    {PortMcpOut7, IO_PORT_KIND_MCP23017_OUTPUT, 6, 0}, // MCP23017 bit 6.
-    {PortMcpOut8, IO_PORT_KIND_MCP23017_OUTPUT, 7, 0}, // MCP23017 bit 7.
-    {PortMcpOut9, IO_PORT_KIND_MCP23017_OUTPUT, 8, 0}, // MCP23017 bit 8.
-    {PortMcpOut10, IO_PORT_KIND_MCP23017_OUTPUT, 9, 0}, // MCP23017 bit 9.
-    {PortMcpOut11, IO_PORT_KIND_MCP23017_OUTPUT, 10, 0}, // MCP23017 bit 10.
-    {PortMcpOut12, IO_PORT_KIND_MCP23017_OUTPUT, 11, 0}, // MCP23017 bit 11.
-    {PortMcpOut13, IO_PORT_KIND_MCP23017_OUTPUT, 12, 0}, // MCP23017 bit 12.
-    {PortMcpOut14, IO_PORT_KIND_MCP23017_OUTPUT, 13, 0}, // MCP23017 bit 13.
-    {PortMcpOut15, IO_PORT_KIND_MCP23017_OUTPUT, 14, 0}, // MCP23017 bit 14.
-    {PortMcpOut16, IO_PORT_KIND_MCP23017_OUTPUT, 15, 0}, // MCP23017 bit 15.
+    {PortExio1, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554}, // TCA9554 bit 0.
+    {PortExio2, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554}, // TCA9554 bit 1.
+    {PortExio3, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554}, // TCA9554 bit 2.
+    {PortExio4, IO_PORT_KIND_TCA9554_OUTPUT, 3, ExpanderTca9554}, // TCA9554 bit 3.
+    {PortExio5, IO_PORT_KIND_TCA9554_OUTPUT, 4, ExpanderTca9554}, // TCA9554 bit 4.
+    {PortExio6, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554}, // TCA9554 bit 5.
+    {PortExio7, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554}, // TCA9554 bit 6.
+    {PortExio8, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554}, // TCA9554 bit 7.
+    {PortMcpInGpb0, IO_PORT_KIND_MCP23017_INPUT, 8, ExpanderMcp23017}, // MCP23017 GPB0.
+    {PortMcpInGpb1, IO_PORT_KIND_MCP23017_INPUT, 9, ExpanderMcp23017}, // MCP23017 GPB1.
+    {PortMcpInGpb2, IO_PORT_KIND_MCP23017_INPUT, 10, ExpanderMcp23017}, // MCP23017 GPB2.
+    {PortMcpInGpb3, IO_PORT_KIND_MCP23017_INPUT, 11, ExpanderMcp23017}, // MCP23017 GPB3.
+    {PortMcpInGpb4, IO_PORT_KIND_MCP23017_INPUT, 12, ExpanderMcp23017}, // MCP23017 GPB4.
+    {PortMcpInGpb5, IO_PORT_KIND_MCP23017_INPUT, 13, ExpanderMcp23017}, // MCP23017 GPB5.
+    {PortMcpInGpb6, IO_PORT_KIND_MCP23017_INPUT, 14, ExpanderMcp23017}, // MCP23017 GPB6.
+    {PortMcpInGpb7, IO_PORT_KIND_MCP23017_INPUT, 15, ExpanderMcp23017}, // MCP23017 GPB7.
+    {PortMcpOutGpa0, IO_PORT_KIND_MCP23017_OUTPUT, 0, ExpanderMcp23017}, // MCP23017 GPA0.
+    {PortMcpOutGpa1, IO_PORT_KIND_MCP23017_OUTPUT, 1, ExpanderMcp23017}, // MCP23017 GPA1.
+    {PortMcpOutGpa2, IO_PORT_KIND_MCP23017_OUTPUT, 2, ExpanderMcp23017}, // MCP23017 GPA2.
+    {PortMcpOutGpa3, IO_PORT_KIND_MCP23017_OUTPUT, 3, ExpanderMcp23017}, // MCP23017 GPA3.
+    {PortMcpOutGpa4, IO_PORT_KIND_MCP23017_OUTPUT, 4, ExpanderMcp23017}, // MCP23017 GPA4.
+    {PortMcpOutGpa5, IO_PORT_KIND_MCP23017_OUTPUT, 5, ExpanderMcp23017}, // MCP23017 GPA5.
+    {PortMcpOutGpa6, IO_PORT_KIND_MCP23017_OUTPUT, 6, ExpanderMcp23017}, // MCP23017 GPA6.
+    {PortMcpOutGpa7, IO_PORT_KIND_MCP23017_OUTPUT, 7, ExpanderMcp23017}, // MCP23017 GPA7.
+    {PortPcfAux0, IO_PORT_KIND_PCF8574_OUTPUT, 0, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 0.
+    {PortPcfAux1, IO_PORT_KIND_PCF8574_OUTPUT, 1, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 1.
+    {PortPcfAux2, IO_PORT_KIND_PCF8574_OUTPUT, 2, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 2.
+    {PortPcfAux3, IO_PORT_KIND_PCF8574_OUTPUT, 3, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 3.
+    {PortPcfAux4, IO_PORT_KIND_PCF8574_OUTPUT, 4, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 4.
+    {PortPcfAux5, IO_PORT_KIND_PCF8574_OUTPUT, 5, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 5.
+    {PortPcfAux6, IO_PORT_KIND_PCF8574_OUTPUT, 6, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 6.
+    {PortPcfAux7, IO_PORT_KIND_PCF8574_OUTPUT, 7, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 7.
+    {PortTcaAux0, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 0.
+    {PortTcaAux1, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 1.
+    {PortTcaAux2, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 2.
+    {PortTcaAux3, IO_PORT_KIND_TCA9554_OUTPUT, 3, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 3.
+    {PortTcaAux4, IO_PORT_KIND_TCA9554_OUTPUT, 4, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 4.
+    {PortTcaAux5, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 5.
+    {PortTcaAux6, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 6.
+    {PortTcaAux7, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 7.
 };
+
+static_assert((sizeof(kExpanders) / sizeof(kExpanders[0])) <= IO_MAX_EXPANDERS,
+              "Waveshare expander topology exceeds IOModule capacity");
 
 constexpr PhysicalPortId analogPortFromLegacy(uint8_t source, uint8_t channel)
 {

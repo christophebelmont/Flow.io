@@ -118,13 +118,18 @@ bool buildSystemSnapshot(MQTTModule* mqtt, char* out, size_t len)
 
     const int wrote = snprintf(
         out, len,
-        "{\"upt_ms\":%llu,\"heap\":{\"free\":%lu,\"min_free\":%lu,\"largest\":%lu,\"frag\":%u},"
+        "{\"upt_ms\":%llu,\"heap\":{\"free\":%lu,\"min_free\":%lu,\"largest\":%lu,\"frag\":%u,"
+        "\"internal_free\":%lu,\"internal_min_free\":%lu,\"internal_largest\":%lu,\"internal_frag\":%u},"
         "\"mqtt_rx\":{\"rx_drop\":%lu,\"oversize_drop\":%lu,\"parse_fail\":%lu,\"handler_fail\":%lu},\"ts\":%lu}",
         (unsigned long long)snap.uptimeMs64,
         (unsigned long)snap.heap.freeBytes,
         (unsigned long)snap.heap.minFreeBytes,
         (unsigned long)snap.heap.largestFreeBlock,
         (unsigned int)snap.heap.fragPercent,
+        (unsigned long)snap.heap.internalFreeBytes,
+        (unsigned long)snap.heap.internalMinFreeBytes,
+        (unsigned long)snap.heap.internalLargestFreeBlock,
+        (unsigned int)snap.heap.internalFragPercent,
         (unsigned long)rxDrop,
         (unsigned long)oversizeDrop,
         (unsigned long)parseFail,
@@ -186,7 +191,11 @@ uint8_t dependsOnMaskForPreset(const DomainSpec& domain, const PoolDevicePreset&
 
 void configurePoolDevices(const AppContext& ctx, ModuleInstances& modules)
 {
-    for (uint8_t i = 0; i < Limits::Io::MaxPoolDevices; ++i) {
+    static constexpr uint8_t kConfiguredPoolDevices =
+        (Limits::Io::MaxPoolDevices < Limits::Io::MaxDigitalOutputs)
+            ? Limits::Io::MaxPoolDevices
+            : Limits::Io::MaxDigitalOutputs;
+    for (uint8_t i = 0; i < kConfiguredPoolDevices; ++i) {
         PoolDeviceDefinition def{};
         snprintf(def.label, sizeof(def.label), "PD%02u", (unsigned)i);
         def.slot = i;

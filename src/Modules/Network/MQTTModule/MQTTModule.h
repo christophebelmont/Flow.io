@@ -73,13 +73,7 @@ public:
     }
     void onStart(ConfigStore& cfg, ServiceRegistry& services) override;
     void loop() override;
-    uint16_t taskStackSize() const override {
-#if defined(FLOW_PROFILE_WAVESHARE)
-        return 5120;
-#else
-        return Limits::Mqtt::TaskStackSize;
-#endif
-    }
+    uint16_t taskStackSize() const override { return Limits::Mqtt::TaskStackSize; }
     uint32_t startDelayMs() const override {
 #if defined(FLOW_PROFILE_WAVESHARE)
         return 4000U;

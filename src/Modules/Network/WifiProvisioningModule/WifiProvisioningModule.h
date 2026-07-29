@@ -102,6 +102,8 @@ public:
     uint16_t taskStackSize() const override {
 #if defined(FLOW_PROFILE_FLOW_CONNECT_DISPLAY)
         return 5120;
+#elif defined(FLOW_PROFILE_WAVESHARE)
+        return 4096;
 #else
         return 3072;
 #endif

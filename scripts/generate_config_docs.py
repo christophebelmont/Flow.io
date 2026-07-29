@@ -296,6 +296,14 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
             205: "DIN5 - GPIO9 [205]",
             206: "DIN6 - GPIO10 [206]",
             207: "DIN7 - GPIO11 [207]",
+            400: "GPB0 - MCP23017 input [400]",
+            401: "GPB1 - MCP23017 input [401]",
+            402: "GPB2 - MCP23017 input [402]",
+            403: "GPB3 - MCP23017 input [403]",
+            404: "GPB4 - MCP23017 input [404]",
+            405: "GPB5 - MCP23017 input [405]",
+            406: "GPB6 - MCP23017 input [406]",
+            407: "GPB7 - MCP23017 input [407]",
         }
 
         selected_labels = None
@@ -306,14 +314,20 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
 
         if selected_labels is not None:
             filtered: List[dict] = []
+            present_values = set()
             for entry in current:
                 value = _to_int(entry.get("value"))
                 if value is None or value not in selected_labels:
                     continue
                 filtered.append(sanitize_enum_entry(entry, selected_labels[value]))
+                present_values.add(value)
+            for value, label in selected_labels.items():
+                if value not in present_values:
+                    filtered.append({"value": value, "label": label})
             enum_sets[din_key] = binding_entries_with_non_connected(filtered)
 
-    # Digital output bindings: flow.io uses PCF8574 ports, Waveshare uses TCA9554/MCP23017 ports.
+    # Digital output bindings: flow.io uses its onboard PCF8574; Waveshare exposes
+    # its primary TCA9554/MCP23017 plus optional PCF8574 and TCA9554 instances.
     dout_key = "flowio_binding_port_digital_output"
     dout_entries = enum_sets.get(dout_key)
     if isinstance(dout_entries, list):
@@ -342,30 +356,44 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
                 305: "EXIO6 - TCA9554 bit 5 [305]",
                 306: "EXIO7 - TCA9554 bit 6 [306]",
                 307: "EXIO8 - TCA9554 bit 7 [307]",
-                400: "MCPOut1 - MCP23017 bit 0 [400]",
-                401: "MCPOut2 - MCP23017 bit 1 [401]",
-                402: "MCPOut3 - MCP23017 bit 2 [402]",
-                403: "MCPOut4 - MCP23017 bit 3 [403]",
-                404: "MCPOut5 - MCP23017 bit 4 [404]",
-                405: "MCPOut6 - MCP23017 bit 5 [405]",
-                406: "MCPOut7 - MCP23017 bit 6 [406]",
-                407: "MCPOut8 - MCP23017 bit 7 [407]",
-                408: "MCPOut9 - MCP23017 bit 8 [408]",
-                409: "MCPOut10 - MCP23017 bit 9 [409]",
-                410: "MCPOut11 - MCP23017 bit 10 [410]",
-                411: "MCPOut12 - MCP23017 bit 11 [411]",
-                412: "MCPOut13 - MCP23017 bit 12 [412]",
-                413: "MCPOut14 - MCP23017 bit 13 [413]",
-                414: "MCPOut15 - MCP23017 bit 14 [414]",
-                415: "MCPOut16 - MCP23017 bit 15 [415]",
+                408: "GPA0 - MCP23017 output [408]",
+                409: "GPA1 - MCP23017 output [409]",
+                410: "GPA2 - MCP23017 output [410]",
+                411: "GPA3 - MCP23017 output [411]",
+                412: "GPA4 - MCP23017 output [412]",
+                413: "GPA5 - MCP23017 output [413]",
+                414: "GPA6 - MCP23017 output [414]",
+                415: "GPA7 - MCP23017 output [415]",
+                500: "PCF2/P0 - PCF8574 auxiliary bit 0 [500]",
+                501: "PCF2/P1 - PCF8574 auxiliary bit 1 [501]",
+                502: "PCF2/P2 - PCF8574 auxiliary bit 2 [502]",
+                503: "PCF2/P3 - PCF8574 auxiliary bit 3 [503]",
+                504: "PCF2/P4 - PCF8574 auxiliary bit 4 [504]",
+                505: "PCF2/P5 - PCF8574 auxiliary bit 5 [505]",
+                506: "PCF2/P6 - PCF8574 auxiliary bit 6 [506]",
+                507: "PCF2/P7 - PCF8574 auxiliary bit 7 [507]",
+                510: "TCA3/P0 - TCA9554 auxiliary bit 0 [510]",
+                511: "TCA3/P1 - TCA9554 auxiliary bit 1 [511]",
+                512: "TCA3/P2 - TCA9554 auxiliary bit 2 [512]",
+                513: "TCA3/P3 - TCA9554 auxiliary bit 3 [513]",
+                514: "TCA3/P4 - TCA9554 auxiliary bit 4 [514]",
+                515: "TCA3/P5 - TCA9554 auxiliary bit 5 [515]",
+                516: "TCA3/P6 - TCA9554 auxiliary bit 6 [516]",
+                517: "TCA3/P7 - TCA9554 auxiliary bit 7 [517]",
             }
             relabeled: List[dict] = []
+            present_values = set()
             for entry in filtered:
                 value = _to_int(entry.get("value"))
                 if value is not None and value in dout_labels_waveshare:
                     relabeled.append(sanitize_enum_entry(entry, dout_labels_waveshare[value]))
+                    present_values.add(value)
                 else:
-                    relabeled.append(dict(entry))
+                    if value is not None and value in dout_labels_waveshare:
+                        relabeled.append(dict(entry))
+            for value, label in dout_labels_waveshare.items():
+                if value not in present_values:
+                    relabeled.append({"value": value, "label": label})
             filtered = relabeled
 
         # Ensure flow.io exposes all 8 PCF bits (400..407) in UI bindings.

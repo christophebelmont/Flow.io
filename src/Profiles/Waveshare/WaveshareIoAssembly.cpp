@@ -80,6 +80,14 @@ constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
     {5, "io_di6", "Digital Input 6", "mdi:electric-switch", nullptr},
     {6, "io_di7", "Digital Input 7", "mdi:electric-switch", nullptr},
     {7, "io_di8", "Digital Input 8", "mdi:electric-switch", nullptr},
+    {8, "io_gpb0", "GPB0", "mdi:electric-switch", nullptr},
+    {9, "io_gpb1", "GPB1", "mdi:electric-switch", nullptr},
+    {10, "io_gpb2", "GPB2", "mdi:electric-switch", nullptr},
+    {11, "io_gpb3", "GPB3", "mdi:electric-switch", nullptr},
+    {12, "io_gpb4", "GPB4", "mdi:electric-switch", nullptr},
+    {13, "io_gpb5", "GPB5", "mdi:electric-switch", nullptr},
+    {14, "io_gpb6", "GPB6", "mdi:electric-switch", nullptr},
+    {15, "io_gpb7", "GPB7", "mdi:electric-switch", nullptr},
 };
 #else
 constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
@@ -220,14 +228,29 @@ uint8_t exioOrdinalFromPort(PhysicalPortId port)
 PhysicalPortId waveshareCompOutputPort(uint8_t idx)
 {
     switch (idx) {
-        case 0: return FlowIoLayout::PortMcpOut1;
-        case 1: return FlowIoLayout::PortMcpOut2;
-        case 2: return FlowIoLayout::PortMcpOut3;
-        case 3: return FlowIoLayout::PortMcpOut4;
-        case 4: return FlowIoLayout::PortMcpOut5;
-        case 5: return FlowIoLayout::PortMcpOut6;
-        case 6: return FlowIoLayout::PortMcpOut7;
-        case 7: return FlowIoLayout::PortMcpOut8;
+        case 0: return FlowIoLayout::PortMcpOutGpa0;
+        case 1: return FlowIoLayout::PortMcpOutGpa1;
+        case 2: return FlowIoLayout::PortMcpOutGpa2;
+        case 3: return FlowIoLayout::PortMcpOutGpa3;
+        case 4: return FlowIoLayout::PortMcpOutGpa4;
+        case 5: return FlowIoLayout::PortMcpOutGpa5;
+        case 6: return FlowIoLayout::PortMcpOutGpa6;
+        case 7: return FlowIoLayout::PortMcpOutGpa7;
+        default: return IO_PORT_INVALID;
+    }
+}
+
+PhysicalPortId waveshareMcpInputPort(uint8_t idx)
+{
+    switch (idx) {
+        case 0: return FlowIoLayout::PortMcpInGpb0;
+        case 1: return FlowIoLayout::PortMcpInGpb1;
+        case 2: return FlowIoLayout::PortMcpInGpb2;
+        case 3: return FlowIoLayout::PortMcpInGpb3;
+        case 4: return FlowIoLayout::PortMcpInGpb4;
+        case 5: return FlowIoLayout::PortMcpInGpb5;
+        case 6: return FlowIoLayout::PortMcpInGpb6;
+        case 7: return FlowIoLayout::PortMcpInGpb7;
         default: return IO_PORT_INVALID;
     }
 }
@@ -286,6 +309,14 @@ const char* waveshareDigitalInputNameForLogical(uint8_t logicalIdx)
         case 5: return "DIN5";
         case 6: return "DIN6";
         case 7: return "DIN7";
+        case 8: return "GPB0";
+        case 9: return "GPB1";
+        case 10: return "GPB2";
+        case 11: return "GPB3";
+        case 12: return "GPB4";
+        case 13: return "GPB5";
+        case 14: return "GPB6";
+        case 15: return "GPB7";
         default: return "DIN";
     }
 }
@@ -509,6 +540,10 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         FlowIoLayout::kBindingPorts,
         (uint8_t)(sizeof(FlowIoLayout::kBindingPorts) / sizeof(FlowIoLayout::kBindingPorts[0]))
     );
+    modules.ioModule.setExpanders(
+        FlowIoLayout::kExpanders,
+        (uint8_t)(sizeof(FlowIoLayout::kExpanders) / sizeof(FlowIoLayout::kExpanders[0]))
+    );
 
     for (uint8_t i = 0; i < Limits::Io::MaxAnalogEndpoints; ++i) {
         IOAnalogDefinition def{};
@@ -555,7 +590,7 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
     }
 
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    for (uint8_t i = 0; i < 8; ++i) {
+    for (uint8_t i = 0; i < 8U && i < Limits::Io::MaxDigitalInputs; ++i) {
         if (modules.ioModule.digitalInputSlotUsed(i)) continue;
         IODigitalInputDefinition def{};
         snprintf(def.id, sizeof(def.id), "%s", waveshareDigitalInputNameForLogical(i));
@@ -567,6 +602,20 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         def.counterDebounceUs = 0U;
         def.bindingPort = digitalInputPortFromOrdinal((uint8_t)(i + 1U));
         requireSetup(modules.ioModule.defineDigitalInput(def), "define waveshare digital input");
+    }
+    for (uint8_t logicalIdx = 8U; logicalIdx < Limits::Io::MaxDigitalInputs; ++logicalIdx) {
+        const uint8_t i = (uint8_t)(logicalIdx - 8U);
+        if (modules.ioModule.digitalInputSlotUsed(logicalIdx)) continue;
+        IODigitalInputDefinition def{};
+        snprintf(def.id, sizeof(def.id), "%s", waveshareDigitalInputNameForLogical(logicalIdx));
+        def.ioId = (IoId)(IO_ID_DI_BASE + logicalIdx);
+        def.activeHigh = false;
+        def.pullMode = IO_PULL_NONE;
+        def.mode = IO_DIGITAL_INPUT_STATE;
+        def.edgeMode = IO_EDGE_RISING;
+        def.counterDebounceUs = 0U;
+        def.bindingPort = waveshareMcpInputPort(i);
+        requireSetup(modules.ioModule.defineDigitalInput(def), "define waveshare MCP digital input");
     }
 #else
     for (uint8_t i = 4; i < 8; ++i) {
@@ -614,10 +663,11 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
     }
 
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    for (uint8_t i = 0; i < 8; ++i) {
+    for (uint8_t logicalIdx = 8U; logicalIdx < Limits::Io::MaxDigitalOutputs; ++logicalIdx) {
+        const uint8_t i = (uint8_t)(logicalIdx - 8U);
         IODigitalOutputDefinition def{};
-        snprintf(def.id, sizeof(def.id), "COMP%02u", (unsigned)(i + 1U));
-        def.ioId = (IoId)(IO_ID_DO_BASE + 8U + i);
+        snprintf(def.id, sizeof(def.id), "GPA%u", (unsigned)i);
+        def.ioId = (IoId)(IO_ID_DO_BASE + logicalIdx);
         def.bindingPort = waveshareCompOutputPort(i);
         def.activeHigh = true;
         def.initialOn = false;

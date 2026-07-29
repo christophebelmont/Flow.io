@@ -99,7 +99,23 @@ void ActivityLogModule::init(ConfigStore&, ServiceRegistry& services)
         }
     }
 
-    persistQueue_ = xQueueCreate(kPersistQueueLen, sizeof(ActivityEvent));
+    const size_t persistQueueBytes = (size_t)kPersistQueueLen * sizeof(ActivityEvent);
+    persistQueueStorage_ = static_cast<uint8_t*>(
+        heap_caps_malloc(persistQueueBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+    );
+    if (persistQueueStorage_) {
+        persistQueueStorageInPsram_ = true;
+    } else {
+        persistQueueStorage_ = static_cast<uint8_t*>(
+            heap_caps_malloc(persistQueueBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+        );
+    }
+    if (persistQueueStorage_) {
+        persistQueue_ = xQueueCreateStatic(kPersistQueueLen,
+                                           sizeof(ActivityEvent),
+                                           persistQueueStorage_,
+                                           &persistQueueStatic_);
+    }
 
     service_.emit = &ActivityLogModule::serviceEmit_;
     service_.getStats = &ActivityLogModule::serviceGetStats_;
@@ -127,9 +143,11 @@ void ActivityLogModule::init(ConfigStore&, ServiceRegistry& services)
 
     bootEventPending_ = true;
     bootEventSinceMs_ = millis();
-    LOGI("Activity log ready entries=%u psram=%u spiffs=%u",
+    LOGI("Activity log ready entries=%u psram=%u persist_queue=%luB/%s spiffs=%u",
          (unsigned)capacity_,
          inPsram_ ? 1U : 0U,
+         (unsigned long)persistQueueBytes,
+         persistQueueStorageInPsram_ ? "psram" : (persistQueueStorage_ ? "internal" : "none"),
          spiffsReady_ ? 1U : 0U);
 }
 

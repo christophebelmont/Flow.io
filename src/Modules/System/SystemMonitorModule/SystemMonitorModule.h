@@ -23,7 +23,7 @@ public:
     const char* taskName() const override { return "sysmon"; }
     /** @brief Pin monitoring module on core 0. */
     BaseType_t taskCore() const override { return 0; }
-    uint16_t taskStackSize() const override { return 3072; }
+    uint16_t taskStackSize() const override { return 5120; }
     UBaseType_t taskStackCaps() const override {
 #if defined(FLOW_PROFILE_WAVESHARE)
         return MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
@@ -69,6 +69,9 @@ private:
         uint32_t freeBytes = 0;
         uint32_t minFreeBytes = 0;
         uint32_t largestFreeBlock = 0;
+        uint32_t internalFreeBytes = 0;
+        uint32_t internalMinFreeBytes = 0;
+        uint32_t internalLargestFreeBlock = 0;
     };
 
 #ifdef CONFIG_HEAP_TASK_TRACKING
@@ -127,7 +130,11 @@ private:
     bool heapLoggedThisCycle_ = false;
     bool buffersLoggedThisCycle_ = false;
     MqttConfigRouteProducer* cfgMqttPub_ = nullptr;
+#if defined(FLOW_PROFILE_WAVESHARE)
+    HeapWatchSample* heapWatchSamples_ = nullptr;
+#else
     HeapWatchSample heapWatchSamples_[kHeapWatchSampleCount]{};
+#endif
     char heapWatchTriggerReason_[20] = {0};
     uint8_t memoryPressureState_ = 0; // 0=normal,1=constrained,2=shedding,3=critical,4=panic
 #ifdef CONFIG_HEAP_TASK_TRACKING

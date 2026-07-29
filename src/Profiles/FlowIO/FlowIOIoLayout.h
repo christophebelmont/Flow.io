@@ -10,6 +10,14 @@ namespace Profiles {
 namespace FlowIO {
 namespace IoLayout {
 
+enum : IOExpanderId {
+    ExpanderPcf8574 = 0,
+};
+
+inline constexpr IOExpanderSpec kExpanders[] = {
+    {ExpanderPcf8574, IO_EXPANDER_KIND_PCF8574, FLOW_WIRDEF_IO_PCFEN, FLOW_WIRDEF_IO_PCFAD, FLOW_WIRDEF_IO_PCFMK, FLOW_WIRDEF_IO_PCFAL},
+};
+
 enum : PhysicalPortId {
     PortAdsInternal0 = 100, // ADS1115 interne, entree single-ended A0.
     PortAdsInternal1 = 101, // ADS1115 interne, entree single-ended A1.
@@ -55,7 +63,7 @@ enum : PhysicalPortId {
 };
 
 inline constexpr IOBindingPortSpec kBindingPorts[] = {
-    // {portId, kind, param0, param1}
+    // {portId, kind, channel, expanderId}
     {PortAdsInternal0, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 0, 0}, // ADS1115 interne canal 0.
     {PortAdsInternal1, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 1, 0}, // ADS1115 interne canal 1.
     {PortAdsInternal2, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 2, 0}, // ADS1115 interne canal 2.
@@ -89,14 +97,14 @@ inline constexpr IOBindingPortSpec kBindingPorts[] = {
     {PortRelay6, IO_PORT_KIND_GPIO_OUTPUT, BoardProfiles::kFlowIODINv1IoPoints[5].pin, 0}, // Relais 6 via GPIO de la board.
     {PortRelay7, IO_PORT_KIND_GPIO_OUTPUT, BoardProfiles::kFlowIODINv1IoPoints[6].pin, 0}, // Relais 7 via GPIO de la board.
     {PortRelay8, IO_PORT_KIND_GPIO_OUTPUT, BoardProfiles::kFlowIODINv1IoPoints[7].pin, 0}, // Relais 8 via GPIO de la board.
-    {PortPcf0Bit0, IO_PORT_KIND_PCF8574_OUTPUT, 0, 0}, // PCF8574 bit 0.
-    {PortPcf0Bit1, IO_PORT_KIND_PCF8574_OUTPUT, 1, 0}, // PCF8574 bit 1.
-    {PortPcf0Bit2, IO_PORT_KIND_PCF8574_OUTPUT, 2, 0}, // PCF8574 bit 2.
-    {PortPcf0Bit3, IO_PORT_KIND_PCF8574_OUTPUT, 3, 0}, // PCF8574 bit 3.
-    {PortPcf0Bit4, IO_PORT_KIND_PCF8574_OUTPUT, 4, 0}, // PCF8574 bit 4.
-    {PortPcf0Bit5, IO_PORT_KIND_PCF8574_OUTPUT, 5, 0}, // PCF8574 bit 5.
-    {PortPcf0Bit6, IO_PORT_KIND_PCF8574_OUTPUT, 6, 0}, // PCF8574 bit 6.
-    {PortPcf0Bit7, IO_PORT_KIND_PCF8574_OUTPUT, 7, 0}, // PCF8574 bit 7.
+    {PortPcf0Bit0, IO_PORT_KIND_PCF8574_OUTPUT, 0, ExpanderPcf8574}, // PCF8574 bit 0.
+    {PortPcf0Bit1, IO_PORT_KIND_PCF8574_OUTPUT, 1, ExpanderPcf8574}, // PCF8574 bit 1.
+    {PortPcf0Bit2, IO_PORT_KIND_PCF8574_OUTPUT, 2, ExpanderPcf8574}, // PCF8574 bit 2.
+    {PortPcf0Bit3, IO_PORT_KIND_PCF8574_OUTPUT, 3, ExpanderPcf8574}, // PCF8574 bit 3.
+    {PortPcf0Bit4, IO_PORT_KIND_PCF8574_OUTPUT, 4, ExpanderPcf8574}, // PCF8574 bit 4.
+    {PortPcf0Bit5, IO_PORT_KIND_PCF8574_OUTPUT, 5, ExpanderPcf8574}, // PCF8574 bit 5.
+    {PortPcf0Bit6, IO_PORT_KIND_PCF8574_OUTPUT, 6, ExpanderPcf8574}, // PCF8574 bit 6.
+    {PortPcf0Bit7, IO_PORT_KIND_PCF8574_OUTPUT, 7, ExpanderPcf8574}, // PCF8574 bit 7.
 };
 
 constexpr PhysicalPortId analogPortFromLegacy(uint8_t source, uint8_t channel)

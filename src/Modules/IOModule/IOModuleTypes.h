@@ -11,8 +11,11 @@
 
 typedef uint16_t BindingPointId;
 typedef BindingPointId PhysicalPortId;
+typedef uint8_t IOExpanderId;
 constexpr BindingPointId BINDING_POINT_NONE = 0u;
 constexpr PhysicalPortId IO_PORT_INVALID = BINDING_POINT_NONE;
+constexpr IOExpanderId IO_EXPANDER_INVALID = 0xFFu;
+constexpr uint8_t IO_MAX_EXPANDERS = 4u;
 
 struct IOModuleConfig {
     bool enabled = FLOW_WIRDEF_IO_EN;
@@ -76,14 +79,39 @@ enum IOBindingPortKind : uint8_t {
     IO_PORT_KIND_BMP280 = 10,
     IO_PORT_KIND_BME680 = 11,
     IO_PORT_KIND_TCA9554_OUTPUT = 12,
-    IO_PORT_KIND_MCP23017_OUTPUT = 13
+    IO_PORT_KIND_MCP23017_OUTPUT = 13,
+    IO_PORT_KIND_MCP23017_INPUT = 14
+};
+
+enum IOExpanderKind : uint8_t {
+    IO_EXPANDER_KIND_NONE = 0,
+    IO_EXPANDER_KIND_PCF8574 = 1,
+    IO_EXPANDER_KIND_TCA9554 = 2,
+    IO_EXPANDER_KIND_MCP23017 = 3
+};
+
+struct IOExpanderSpec {
+    IOExpanderId expanderId = IO_EXPANDER_INVALID;
+    uint8_t kind = IO_EXPANDER_KIND_NONE;
+    bool enabled = false;
+    uint8_t address = 0;
+    uint8_t maskDefault = 0;
+    bool activeLow = false;
+};
+
+struct IOExpanderConfig {
+    bool enabled = false;
+    uint8_t address = 0;
+    uint8_t maskDefault = 0;
+    // Global polarity inversion combined with each logical output's activeHigh setting.
+    bool activeLow = false;
 };
 
 struct IOBindingPortSpec {
     PhysicalPortId portId = IO_PORT_INVALID;
     uint8_t kind = IO_PORT_KIND_NONE;
-    uint8_t param0 = 0;
-    uint8_t param1 = 0;
+    uint8_t channel = 0;
+    IOExpanderId expanderId = IO_EXPANDER_INVALID;
 };
 
 typedef void (*IOAnalogValueCallback)(void* ctx, float value);

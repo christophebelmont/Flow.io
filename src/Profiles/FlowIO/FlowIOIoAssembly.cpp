@@ -406,6 +406,10 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         FlowIoLayout::kBindingPorts,
         (uint8_t)(sizeof(FlowIoLayout::kBindingPorts) / sizeof(FlowIoLayout::kBindingPorts[0]))
     );
+    modules.ioModule.setExpanders(
+        FlowIoLayout::kExpanders,
+        (uint8_t)(sizeof(FlowIoLayout::kExpanders) / sizeof(FlowIoLayout::kExpanders[0]))
+    );
 
     for (uint8_t i = 0; i < ctx.domain->domainSlotCount; ++i) {
         const DomainSlotPreset& preset = ctx.domain->domainSlots[i];

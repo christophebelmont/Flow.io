@@ -1,14 +1,19 @@
 #pragma once
 /**
  * @file Mcp23017BitDriver.h
- * @brief Logical single-bit digital output adapter on top of Mcp23017Driver.
+ * @brief Logical single-bit digital adapter on top of Mcp23017Driver.
  */
 
 #include "Modules/IOModule/IODrivers/Mcp23017Driver.h"
 
 class Mcp23017BitDriver : public IDigitalPinDriver {
 public:
-    Mcp23017BitDriver(const char* driverId, Mcp23017Driver* parent, uint8_t bit, bool activeHigh);
+    Mcp23017BitDriver(const char* driverId,
+                      Mcp23017Driver* parent,
+                      uint8_t bit,
+                      bool activeHigh,
+                      bool output,
+                      uint8_t inputPullMode = 0);
 
     const char* id() const override { return driverId_; }
     bool begin() override;
@@ -22,4 +27,6 @@ private:
     Mcp23017Driver* parent_ = nullptr;
     uint8_t bit_ = 0;
     bool activeHigh_ = true;
+    bool output_ = true;
+    uint8_t inputPullMode_ = 0;
 };

@@ -48,6 +48,7 @@
 #include <FS.h>
 #include <esp_heap_caps.h>
 #include <memory>
+#include <stdarg.h>
 #include "Core/DataKeys.h"
 #include "Core/EventBus/EventPayloads.h"
 #include "Modules/Network/TimeModule/TimeRuntime.h"
@@ -222,12 +223,6 @@ struct BootLogJsonPageCtx {
     uint16_t count = 0;
 };
 
-struct ActivityLogJsonPageCtx {
-    AsyncResponseStream* response = nullptr;
-    bool first = true;
-    uint16_t count = 0;
-};
-
 static const char* activityDomainName_(uint8_t domain)
 {
     switch ((ActivityDomain)domain) {
@@ -289,6 +284,297 @@ static const char* activityStateName_(uint8_t state)
         default: return "unknown";
     }
 }
+
+struct ActivityJsonBufferWriter {
+    ActivityJsonBufferWriter(char* output, size_t outputLen)
+        : out(output), capacity(outputLen)
+    {
+        if (out && capacity > 0U) out[0] = '\0';
+    }
+
+    bool append(const char* text)
+    {
+        if (!ok || !text) return false;
+        const size_t textLen = strlen(text);
+        if (textLen >= remaining()) {
+            ok = false;
+            return false;
+        }
+        memcpy(out + length, text, textLen);
+        length += textLen;
+        out[length] = '\0';
+        return true;
+    }
+
+    bool appendChar(char value)
+    {
+        if (!ok || remaining() <= 1U) {
+            ok = false;
+            return false;
+        }
+        out[length++] = value;
+        out[length] = '\0';
+        return true;
+    }
+
+    bool appendFormat(const char* format, ...)
+    {
+        if (!ok || !format || remaining() == 0U) {
+            ok = false;
+            return false;
+        }
+        va_list args;
+        va_start(args, format);
+        const int wrote = vsnprintf(out + length, remaining(), format, args);
+        va_end(args);
+        if (wrote < 0 || (size_t)wrote >= remaining()) {
+            ok = false;
+            return false;
+        }
+        length += (size_t)wrote;
+        return true;
+    }
+
+    bool appendJsonString(const char* text)
+    {
+        if (!appendChar('"')) return false;
+        if (text) {
+            for (const char* p = text; *p != '\0' && ok; ++p) {
+                switch (*p) {
+                case '"': append("\\\""); break;
+                case '\\': append("\\\\"); break;
+                case '\b': append("\\b"); break;
+                case '\f': append("\\f"); break;
+                case '\n': append("\\n"); break;
+                case '\r': append("\\r"); break;
+                case '\t': append("\\t"); break;
+                default:
+                    appendChar(((uint8_t)*p < 0x20U) ? '?' : *p);
+                    break;
+                }
+            }
+        }
+        return appendChar('"');
+    }
+
+    size_t remaining() const
+    {
+        return (out && length < capacity) ? (capacity - length) : 0U;
+    }
+
+    char* out = nullptr;
+    size_t capacity = 0U;
+    size_t length = 0U;
+    bool ok = true;
+};
+
+struct ActivityLogChunkState {
+    static constexpr size_t kPendingMax = 1024U;
+
+    ~ActivityLogChunkState()
+    {
+        if (events) heap_caps_free(events);
+    }
+
+    bool begin(const ActivityLogService* activityLog,
+               const ActivityLogStats& statsSnapshot,
+               uint16_t requestedOffset,
+               uint16_t requestedLimit,
+               bool descending)
+    {
+        stats = statsSnapshot;
+        offset = requestedOffset;
+        limit = requestedLimit;
+        newestFirst = descending;
+
+        if (!activityLog || !activityLog->readPage || stats.count == 0U ||
+            offset >= stats.count || limit == 0U) {
+            return true;
+        }
+
+        const uint16_t remaining = (uint16_t)(stats.count - offset);
+        capacity = (limit < remaining) ? limit : remaining;
+        const size_t bytes = (size_t)capacity * sizeof(ActivityEvent);
+
+#if defined(FLOW_PROFILE_WAVESHARE)
+        events = static_cast<ActivityEvent*>(
+            heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        );
+        if (!events) {
+            events = static_cast<ActivityEvent*>(
+                heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+            );
+        }
+#else
+        events = static_cast<ActivityEvent*>(heap_caps_malloc(bytes, MALLOC_CAP_8BIT));
+#endif
+        if (!events) return false;
+
+        const uint16_t readOffset =
+            newestFirst ? (uint16_t)(stats.count - offset - capacity) : offset;
+        count = activityLog->readPage(activityLog->ctx,
+                                      readOffset,
+                                      capacity,
+                                      &ActivityLogChunkState::snapshotWriter,
+                                      this);
+        return true;
+    }
+
+    size_t fill(uint8_t* buffer, size_t maxLen)
+    {
+        if (!buffer || maxLen == 0U) return 0U;
+
+        size_t written = 0U;
+        while (written < maxLen) {
+            if (pendingPos < pendingLen) {
+                const size_t room = maxLen - written;
+                const size_t left = pendingLen - pendingPos;
+                const size_t copyLen = (left < room) ? left : room;
+                memcpy(buffer + written, pending + pendingPos, copyLen);
+                written += copyLen;
+                pendingPos += copyLen;
+                continue;
+            }
+            if (!prepareNext()) break;
+        }
+        return written;
+    }
+
+private:
+    enum class Stage : uint8_t {
+        Header,
+        Events,
+        Suffix,
+        Done,
+    };
+
+    static bool snapshotWriter(void* ctx,
+                               const ActivityEvent& event,
+                               uint16_t,
+                               uint16_t)
+    {
+        ActivityLogChunkState* self = static_cast<ActivityLogChunkState*>(ctx);
+        if (!self || !self->events || self->count >= self->capacity) return false;
+        self->events[self->count++] = event;
+        return true;
+    }
+
+    bool prepareNext()
+    {
+        pendingLen = 0U;
+        pendingPos = 0U;
+
+        while (stage != Stage::Done) {
+            if (stage == Stage::Header) {
+                const bool complete =
+                    count == 0U || ((uint32_t)offset + (uint32_t)count >= stats.count);
+                const int32_t next = complete ? -1 : (int32_t)offset + (int32_t)count;
+                ActivityJsonBufferWriter out(pending, sizeof(pending));
+                out.appendFormat(
+                    "{\"available\":%s,\"capacity\":%u,\"entries\":%u,\"dropped\":%lu,"
+                    "\"persisted\":%lu,\"persist_dropped\":%lu,\"psram\":%s,\"spiffs\":%s,"
+                    "\"offset\":%u,\"limit\":%u,\"count\":%u,\"next\":",
+                    stats.capacity > 0U ? "true" : "false",
+                    (unsigned)stats.capacity,
+                    (unsigned)stats.count,
+                    (unsigned long)stats.droppedCount,
+                    (unsigned long)stats.persistedCount,
+                    (unsigned long)stats.persistDropCount,
+                    stats.psram ? "true" : "false",
+                    stats.spiffs ? "true" : "false",
+                    (unsigned)offset,
+                    (unsigned)limit,
+                    (unsigned)count);
+                if (next < 0) out.append("null");
+                else out.appendFormat("%ld", (long)next);
+                out.appendFormat(",\"complete\":%s,\"order\":\"%s\",\"events\":[",
+                                 complete ? "true" : "false",
+                                 newestFirst ? "desc" : "asc");
+                if (!out.ok) return false;
+                pendingLen = out.length;
+                stage = Stage::Events;
+                return pendingLen > 0U;
+            }
+
+            if (stage == Stage::Events) {
+                if (eventIndex < count) {
+                    const uint16_t storedIndex =
+                        newestFirst ? (uint16_t)(count - 1U - eventIndex) : eventIndex;
+                    if (!formatEvent(events[storedIndex], eventIndex > 0U)) {
+                        snprintf(pending, sizeof(pending), "%snull", eventIndex > 0U ? "," : "");
+                        pendingLen = strlen(pending);
+                    }
+                    ++eventIndex;
+                    return pendingLen > 0U;
+                }
+                stage = Stage::Suffix;
+                continue;
+            }
+
+            if (stage == Stage::Suffix) {
+                memcpy(pending, "]}", 3U);
+                pendingLen = 2U;
+                stage = Stage::Done;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool formatEvent(const ActivityEvent& event, bool prependComma)
+    {
+        ActivityJsonBufferWriter out(pending, sizeof(pending));
+        if (prependComma) out.appendChar(',');
+        out.appendFormat(
+            "{\"seq\":%lu,\"ts_ms\":%lu,\"epoch_s\":%lu,\"code\":%u,"
+            "\"domain\":%u,\"source\":%u,\"severity\":%u,\"role\":%u,"
+            "\"state\":%u,\"reason\":%u,\"slot\":%u",
+            (unsigned long)event.seq,
+            (unsigned long)event.ts_ms,
+            (unsigned long)event.epoch_s,
+            (unsigned)event.code,
+            (unsigned)event.domain,
+            (unsigned)event.source,
+            (unsigned)event.severity,
+            (unsigned)event.role,
+            (unsigned)event.state,
+            (unsigned)event.reason,
+            (unsigned)event.targetSlot);
+        out.append(",\"domain_name\":");
+        out.appendJsonString(activityDomainName_(event.domain));
+        out.append(",\"source_name\":");
+        out.appendJsonString(activitySourceName_(event.source));
+        out.append(",\"severity_name\":");
+        out.appendJsonString(activitySeverityName_(event.severity));
+        out.append(",\"role_name\":");
+        out.appendJsonString(activityRoleName_(event.role));
+        out.append(",\"state_name\":");
+        out.appendJsonString(activityStateName_(event.state));
+        out.append(",\"title\":");
+        out.appendJsonString(event.title);
+        out.append(",\"detail\":");
+        out.appendJsonString(event.detail);
+        out.append(",\"icon\":");
+        out.appendJsonString(event.icon);
+        out.appendChar('}');
+        if (!out.ok) return false;
+        pendingLen = out.length;
+        return true;
+    }
+
+    ActivityLogStats stats{};
+    ActivityEvent* events = nullptr;
+    uint16_t capacity = 0U;
+    uint16_t count = 0U;
+    uint16_t offset = 0U;
+    uint16_t limit = 0U;
+    uint16_t eventIndex = 0U;
+    bool newestFirst = false;
+    Stage stage = Stage::Header;
+    char pending[kPendingMax] = {0};
+    size_t pendingLen = 0U;
+    size_t pendingPos = 0U;
+};
 
 static void appendActivityModuleName_(char* out, size_t outLen, const char* moduleName)
 {
@@ -2107,6 +2393,10 @@ bool waveshareBuildStatusDomainJson_(FlowStatusDomain domain,
         heap["min_free"] = ctx.systemStats.heap.minFreeBytes;
         heap["larg"] = ctx.systemStats.heap.largestFreeBlock;
         heap["frag"] = ctx.systemStats.heap.fragPercent;
+        heap["internal_free"] = ctx.systemStats.heap.internalFreeBytes;
+        heap["internal_min"] = ctx.systemStats.heap.internalMinFreeBytes;
+        heap["internal_larg"] = ctx.systemStats.heap.internalLargestFreeBlock;
+        heap["internal_frag"] = ctx.systemStats.heap.internalFragPercent;
         return serializeJson(doc, out, outLen) > 0U;
     }
 
@@ -2871,6 +3161,7 @@ const char* waveshareIoPortKindLabel_(uint8_t kind)
         case IO_PORT_KIND_BME680: return "bme680";
         case IO_PORT_KIND_TCA9554_OUTPUT: return "tca9554_output";
         case IO_PORT_KIND_MCP23017_OUTPUT: return "mcp23017_output";
+        case IO_PORT_KIND_MCP23017_INPUT: return "mcp23017_input";
         default: return "none";
     }
 }
@@ -2894,48 +3185,49 @@ bool waveshareIoPortBackendChannel_(const IOBindingPortSpec& spec, uint8_t& back
         case IO_PORT_KIND_GPIO_INPUT:
         case IO_PORT_KIND_GPIO_OUTPUT:
             backendOut = IO_BACKEND_GPIO;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_PCF8574_OUTPUT:
             backendOut = IO_BACKEND_PCF8574;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_ADS_INTERNAL_SINGLE:
             backendOut = IO_BACKEND_ADS1115_INT;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_ADS_EXTERNAL_DIFF:
             backendOut = IO_BACKEND_ADS1115_EXT_DIFF;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_DS18_WATER:
         case IO_PORT_KIND_DS18_AIR:
             backendOut = IO_BACKEND_DS18B20;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_INA226:
             backendOut = IO_BACKEND_INA226;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_SHT40:
             backendOut = IO_BACKEND_SHT40;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_BMP280:
             backendOut = IO_BACKEND_BMP280;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_BME680:
             backendOut = IO_BACKEND_BME680;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_TCA9554_OUTPUT:
             backendOut = IO_BACKEND_TCA9554;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         case IO_PORT_KIND_MCP23017_OUTPUT:
+        case IO_PORT_KIND_MCP23017_INPUT:
             backendOut = IO_BACKEND_MCP23017;
-            channelOut = spec.param0;
+            channelOut = spec.channel;
             return true;
         default:
             return false;
@@ -4291,29 +4583,27 @@ WebInterfaceModule::~WebInterfaceModule()
 void WebInterfaceModule::initRuntimeValuesBodyScratch_()
 {
 #if defined(FLOW_PROFILE_WAVESHARE)
-    if (runtimeValuesBodyScratchInPsram_) return;
-    if (!psramFound()) {
-        runtimeValuesBodyScratch_ = runtimeValuesBodyScratchLocal_;
-        runtimeValuesBodyScratchInPsram_ = false;
-        LOGW("Web runtime body scratch keeps internal RAM (PSRAM not found) size=%u",
-             (unsigned)kRuntimeValuesBodyMax);
-        return;
+    if (runtimeValuesBodyScratch_) return;
+    void* ptr = nullptr;
+    bool allocatedInPsram = false;
+    if (psramFound()) {
+        ptr = heap_caps_malloc(kRuntimeValuesBodyMax + 1U, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        allocatedInPsram = (ptr != nullptr);
     }
-
-    void* ptr = heap_caps_malloc(kRuntimeValuesBodyMax + 1U, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!ptr) {
-        runtimeValuesBodyScratch_ = runtimeValuesBodyScratchLocal_;
-        runtimeValuesBodyScratchInPsram_ = false;
-        LOGW("Web runtime body scratch PSRAM alloc failed, fallback to internal size=%u",
-             (unsigned)kRuntimeValuesBodyMax);
+        ptr = heap_caps_malloc(kRuntimeValuesBodyMax + 1U, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (!ptr) {
+        LOGW("Web runtime body scratch unavailable size=%u", (unsigned)kRuntimeValuesBodyMax);
         return;
     }
-
     runtimeValuesBodyScratch_ = static_cast<char*>(ptr);
     runtimeValuesBodyScratch_[0] = '\0';
-    runtimeValuesBodyScratchInPsram_ = true;
-    LOGI("Web runtime body scratch in PSRAM size=%u free_psram=%luKB",
+    runtimeValuesBodyScratchOwned_ = true;
+    runtimeValuesBodyScratchInPsram_ = allocatedInPsram;
+    LOGI("Web runtime body scratch allocated size=%u memory=%s free_psram=%luKB",
          (unsigned)kRuntimeValuesBodyMax,
+         runtimeValuesBodyScratchInPsram_ ? "psram" : "internal",
          (unsigned long)(ESP.getFreePsram() / 1024U));
 #endif
 }
@@ -4321,11 +4611,12 @@ void WebInterfaceModule::initRuntimeValuesBodyScratch_()
 void WebInterfaceModule::freeRuntimeValuesBodyScratch_()
 {
 #if defined(FLOW_PROFILE_WAVESHARE)
-    if (runtimeValuesBodyScratchInPsram_ && runtimeValuesBodyScratch_) {
+    if (runtimeValuesBodyScratchOwned_ && runtimeValuesBodyScratch_) {
         heap_caps_free(runtimeValuesBodyScratch_);
     }
-    runtimeValuesBodyScratch_ = runtimeValuesBodyScratchLocal_;
+    runtimeValuesBodyScratch_ = nullptr;
     runtimeValuesBodyScratchInPsram_ = false;
+    runtimeValuesBodyScratchOwned_ = false;
 #endif
 }
 
@@ -4547,57 +4838,14 @@ void WebInterfaceModule::sendBootLogHttpResponse_(AsyncWebServerRequest* request
     request->send(response);
 }
 
-bool WebInterfaceModule::writeActivityLogJsonEvent_(void* writerCtx,
-                                                    const ActivityEvent& e,
-                                                    uint16_t,
-                                                    uint16_t)
-{
-    ActivityLogJsonPageCtx* ctx = static_cast<ActivityLogJsonPageCtx*>(writerCtx);
-    if (!ctx || !ctx->response) return false;
-
-    if (!ctx->first) {
-        ctx->response->print(',');
-    }
-    ctx->first = false;
-    ctx->response->print('{');
-    ctx->response->printf("\"seq\":%lu,\"ts_ms\":%lu,\"epoch_s\":%lu,\"code\":%u",
-                          (unsigned long)e.seq,
-                          (unsigned long)e.ts_ms,
-                          (unsigned long)e.epoch_s,
-                          (unsigned)e.code);
-    ctx->response->printf(",\"domain\":%u,\"source\":%u,\"severity\":%u,\"role\":%u,\"state\":%u,\"reason\":%u,\"slot\":%u",
-                          (unsigned)e.domain,
-                          (unsigned)e.source,
-                          (unsigned)e.severity,
-                          (unsigned)e.role,
-                          (unsigned)e.state,
-                          (unsigned)e.reason,
-                          (unsigned)e.targetSlot);
-    ctx->response->print(",\"domain_name\":");
-    printJsonEscaped_(*ctx->response, activityDomainName_(e.domain));
-    ctx->response->print(",\"source_name\":");
-    printJsonEscaped_(*ctx->response, activitySourceName_(e.source));
-    ctx->response->print(",\"severity_name\":");
-    printJsonEscaped_(*ctx->response, activitySeverityName_(e.severity));
-    ctx->response->print(",\"role_name\":");
-    printJsonEscaped_(*ctx->response, activityRoleName_(e.role));
-    ctx->response->print(",\"state_name\":");
-    printJsonEscaped_(*ctx->response, activityStateName_(e.state));
-    ctx->response->print(",\"title\":");
-    printJsonEscaped_(*ctx->response, e.title);
-    ctx->response->print(",\"detail\":");
-    printJsonEscaped_(*ctx->response, e.detail);
-    ctx->response->print(",\"icon\":");
-    printJsonEscaped_(*ctx->response, e.icon);
-    ctx->response->print('}');
-    ++ctx->count;
-    return true;
-}
-
 void WebInterfaceModule::sendActivityLogHttpResponse_(AsyncWebServerRequest* request, bool statusOnly)
 {
     if (!request) return;
     noteHttpActivity_();
+
+    if (!activityLog_ && services_) {
+        activityLog_ = services_->get<ActivityLogService>(ServiceId::ActivityLog);
+    }
 
     ActivityLogStats stats{};
     bool available = false;
@@ -4607,64 +4855,56 @@ void WebInterfaceModule::sendActivityLogHttpResponse_(AsyncWebServerRequest* req
     }
 
     int32_t requestedOffset = statusOnly ? 0 : requestIntParam_(request, "offset", 0);
-    int32_t requestedLimit = statusOnly ? 0 : requestIntParam_(request, "limit", 64);
+    int32_t requestedLimit = statusOnly ? 0 : requestIntParam_(request, "limit", 32);
     if (requestedOffset < 0) requestedOffset = 0;
-    if (requestedLimit <= 0) requestedLimit = statusOnly ? 0 : 64;
-    if (requestedLimit > 128) requestedLimit = 128;
+    if (requestedLimit <= 0) requestedLimit = statusOnly ? 0 : 32;
+    if (requestedLimit > 64) requestedLimit = 64;
 
     const uint16_t offset = (requestedOffset > UINT16_MAX) ? UINT16_MAX : (uint16_t)requestedOffset;
     const uint16_t limit = (requestedLimit > UINT16_MAX) ? UINT16_MAX : (uint16_t)requestedLimit;
 
-    AsyncResponseStream* response = request->beginResponseStream("application/json");
-    addNoCacheHeaders_(response);
-    response->printf("{\"available\":%s,\"capacity\":%u,\"entries\":%u,\"dropped\":%lu,\"persisted\":%lu,\"persist_dropped\":%lu,\"psram\":%s,\"spiffs\":%s",
-                     available ? "true" : "false",
-                     (unsigned)stats.capacity,
-                     (unsigned)stats.count,
-                     (unsigned long)stats.droppedCount,
-                     (unsigned long)stats.persistedCount,
-                     (unsigned long)stats.persistDropCount,
-                     stats.psram ? "true" : "false",
-                     stats.spiffs ? "true" : "false");
-
     if (statusOnly) {
-        response->print('}');
+        char out[320] = {0};
+        snprintf(out,
+                 sizeof(out),
+                 "{\"available\":%s,\"capacity\":%u,\"entries\":%u,\"dropped\":%lu,"
+                 "\"persisted\":%lu,\"persist_dropped\":%lu,\"psram\":%s,\"spiffs\":%s}",
+                 available ? "true" : "false",
+                 (unsigned)stats.capacity,
+                 (unsigned)stats.count,
+                 (unsigned long)stats.droppedCount,
+                 (unsigned long)stats.persistedCount,
+                 (unsigned long)stats.persistDropCount,
+                 stats.psram ? "true" : "false",
+                 stats.spiffs ? "true" : "false");
+        AsyncWebServerResponse* response = request->beginResponse(200, "application/json", out);
+        addNoCacheHeaders_(response);
         request->send(response);
         return;
     }
 
-    ActivityLogJsonPageCtx pageCtx{};
-    pageCtx.response = response;
+    char order[8] = {0};
+    copyRequestParamValue_(request, "order", false, order, sizeof(order), "asc");
+    const bool descending = strcasecmp(order, "desc") == 0;
 
-    const uint16_t writableLimit = available ? limit : 0U;
-    uint16_t expectedCount = 0U;
-    if (available && activityLog_ && activityLog_->readPage && offset < stats.count && writableLimit > 0U) {
-        const uint16_t remaining = (uint16_t)(stats.count - offset);
-        expectedCount = (writableLimit < remaining) ? writableLimit : remaining;
+    auto state = std::make_shared<ActivityLogChunkState>();
+    if (!state || !state->begin(available ? activityLog_ : nullptr,
+                                stats,
+                                offset,
+                                available ? limit : 0U,
+                                descending)) {
+        request->send(503,
+                      "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"LowMemory\",\"where\":\"activity.snapshot\"}}");
+        return;
     }
-    const bool expectedComplete = ((uint32_t)offset + (uint32_t)expectedCount >= stats.count) ||
-                                  expectedCount == 0U;
-    const int32_t expectedNext = expectedComplete ? -1 : (int32_t)offset + (int32_t)expectedCount;
 
-    response->printf(",\"offset\":%u,\"limit\":%u,\"count\":%u,\"next\":",
-                     (unsigned)offset,
-                     (unsigned)limit,
-                     (unsigned)expectedCount);
-    if (expectedNext < 0) {
-        response->print("null");
-    } else {
-        response->print((unsigned)expectedNext);
-    }
-    response->printf(",\"complete\":%s,\"events\":[", expectedComplete ? "true" : "false");
-
-    if (available && activityLog_ && activityLog_->readPage && offset < stats.count && writableLimit > 0U) {
-        (void)activityLog_->readPage(activityLog_->ctx,
-                                     offset,
-                                     writableLimit,
-                                     &WebInterfaceModule::writeActivityLogJsonEvent_,
-                                     &pageCtx);
-    }
-    response->print("]}");
+    AsyncWebServerResponse* response =
+        request->beginChunkedResponse("application/json",
+                                      [state](uint8_t* buffer, size_t maxLen, size_t) -> size_t {
+                                          return state->fill(buffer, maxLen);
+                                      });
+    addNoCacheHeaders_(response);
     request->send(response);
 }
 
@@ -5489,6 +5729,10 @@ void WebInterfaceModule::startServer_()
         heap["min_free"] = snap.heap.minFreeBytes;
         heap["largest"] = snap.heap.largestFreeBlock;
         heap["frag"] = snap.heap.fragPercent;
+        heap["internal_free"] = snap.heap.internalFreeBytes;
+        heap["internal_min_free"] = snap.heap.internalMinFreeBytes;
+        heap["internal_largest"] = snap.heap.internalLargestFreeBlock;
+        heap["internal_frag"] = snap.heap.internalFragPercent;
 
         char out[960] = {0};
         const size_t n = serializeJson(doc, out, sizeof(out));

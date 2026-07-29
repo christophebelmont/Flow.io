@@ -94,6 +94,90 @@
       "help_t": "cfgdocs.io.drivers.ds18b20.poll_ms.help",
       "unit": "ms"
     },
+    "io/drivers/expander00/enabled": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander00.enabled.label",
+      "help_t": "cfgdocs.io.drivers.expander.enabled.help"
+    },
+    "io/drivers/expander00/address": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander00.address.label",
+      "help_t": "cfgdocs.io.drivers.expander.address.help",
+      "display_format": "hex"
+    },
+    "io/drivers/expander00/mask_default": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander00.mask_default.label",
+      "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
+    },
+    "io/drivers/expander00/active_low": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander00.active_low.label",
+      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
+    },
+    "io/drivers/expander01/enabled": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander01.enabled.label",
+      "help_t": "cfgdocs.io.drivers.expander.enabled.help"
+    },
+    "io/drivers/expander01/address": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander01.address.label",
+      "help_t": "cfgdocs.io.drivers.expander.address.help",
+      "display_format": "hex"
+    },
+    "io/drivers/expander01/mask_default": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander01.mask_default.label",
+      "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
+    },
+    "io/drivers/expander01/active_low": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander01.active_low.label",
+      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
+    },
+    "io/drivers/expander02/enabled": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander02.enabled.label",
+      "help_t": "cfgdocs.io.drivers.expander.enabled.help"
+    },
+    "io/drivers/expander02/address": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander02.address.label",
+      "help_t": "cfgdocs.io.drivers.expander.address.help",
+      "display_format": "hex"
+    },
+    "io/drivers/expander02/mask_default": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander02.mask_default.label",
+      "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
+    },
+    "io/drivers/expander02/active_low": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander02.active_low.label",
+      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
+    },
+    "io/drivers/expander03/enabled": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander03.enabled.label",
+      "help_t": "cfgdocs.io.drivers.expander.enabled.help"
+    },
+    "io/drivers/expander03/address": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander03.address.label",
+      "help_t": "cfgdocs.io.drivers.expander.address.help",
+      "display_format": "hex"
+    },
+    "io/drivers/expander03/mask_default": {
+      "type": "UInt8",
+      "label_t": "cfgdocs.io.drivers.expander03.mask_default.label",
+      "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
+    },
+    "io/drivers/expander03/active_low": {
+      "type": "Bool",
+      "label_t": "cfgdocs.io.drivers.expander03.active_low.label",
+      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
+    },
     "io/drivers/gpio/poll_ms": {
       "type": "Int32",
       "label_t": "cfgdocs.io.drivers.gpio.poll_ms.label",

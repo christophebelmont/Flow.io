@@ -57,7 +57,11 @@ private:
     const ActivityLogService* activityLog_ = nullptr;
     QueueHandle_t persistenceQ_ = nullptr;
     StaticQueue_t persistenceQStatic_{};
-    uint8_t persistenceQStorage_[kPersistenceQueueLen * sizeof(PersistenceRequest)]{};
+    uint8_t* persistenceQStorage_ = nullptr;
+#if !defined(FLOW_PROFILE_WAVESHARE)
+    uint8_t persistenceQStorageLocal_[kPersistenceQueueLen * sizeof(PersistenceRequest)]{};
+#endif
+    bool persistenceQStorageInPsram_ = false;
 
     bool applyJson_(const char* json);
     void emitApplyJsonActivity_(const char* json);

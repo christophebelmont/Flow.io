@@ -153,10 +153,6 @@ private:
                                       const LogEntry& e,
                                       uint16_t index,
                                       uint16_t total);
-    static bool writeActivityLogJsonEvent_(void* writerCtx,
-                                           const ActivityEvent& e,
-                                           uint16_t index,
-                                           uint16_t total);
     void dumpBootLogCapture_(AsyncWebSocketClient* client);
     void sendBootLogHttpResponse_(AsyncWebServerRequest* request, bool statusOnly);
     void sendActivityLogHttpResponse_(AsyncWebServerRequest* request, bool statusOnly);
@@ -244,9 +240,14 @@ private:
 
     char lineBuf_[kLineBufferSize] = {0};
     size_t lineLen_ = 0;
+#if defined(FLOW_PROFILE_WAVESHARE)
+    char* runtimeValuesBodyScratch_ = nullptr;
+#else
     char runtimeValuesBodyScratchLocal_[kRuntimeValuesBodyMax + 1U] = {0};
     char* runtimeValuesBodyScratch_ = runtimeValuesBodyScratchLocal_;
+#endif
     bool runtimeValuesBodyScratchInPsram_ = false;
+    bool runtimeValuesBodyScratchOwned_ = false;
     portMUX_TYPE runtimeValuesBodyMux_ = portMUX_INITIALIZER_UNLOCKED;
     volatile bool runtimeValuesBodyBusy_ = false;
     uint32_t wsFlowConnectCount_ = 0;

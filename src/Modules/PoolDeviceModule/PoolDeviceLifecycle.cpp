@@ -488,7 +488,7 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     }
     BufferUsageTracker::note(TrackedBufferId::PoolDeviceSlots,
                              (size_t)count * sizeof(PoolDeviceSlot),
-                             sizeof(slots_),
+                             (size_t)POOL_DEVICE_MAX * sizeof(PoolDeviceSlot),
                              "init",
                              nullptr);
     LOGI("PoolDevice module ready (devices=%u)", (unsigned)count);

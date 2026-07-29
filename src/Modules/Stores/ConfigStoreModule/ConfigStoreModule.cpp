@@ -7,6 +7,7 @@
 #include "Core/ModuleLog.h"
 
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include <string.h>
 
 namespace {
@@ -220,10 +221,27 @@ void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     registry = &cfg;
     services_ = &services;
     if (!persistenceQ_) {
+#if defined(FLOW_PROFILE_WAVESHARE)
+        const size_t storageBytes = (size_t)kPersistenceQueueLen * sizeof(PersistenceRequest);
+        persistenceQStorage_ = static_cast<uint8_t*>(
+            heap_caps_malloc(storageBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        );
+        if (persistenceQStorage_) {
+            persistenceQStorageInPsram_ = true;
+        } else {
+            persistenceQStorage_ = static_cast<uint8_t*>(
+                heap_caps_malloc(storageBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+            );
+        }
+#else
+        persistenceQStorage_ = persistenceQStorageLocal_;
+#endif
+        if (persistenceQStorage_) {
         persistenceQ_ = xQueueCreateStatic(kPersistenceQueueLen,
                                            sizeof(PersistenceRequest),
                                            persistenceQStorage_,
                                            &persistenceQStatic_);
+        }
     }
 
     /// récupérer service loghub (log async)
@@ -233,7 +251,9 @@ void ConfigStoreModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     if (!services.add(ServiceId::ConfigStore, &svc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::ConfigStore));
     }
-    LOGI("ConfigStoreService registered");
+    LOGI("ConfigStoreService registered persist_queue=%luB/%s",
+         (unsigned long)((size_t)kPersistenceQueueLen * sizeof(PersistenceRequest)),
+         persistenceQStorageInPsram_ ? "psram" : (persistenceQStorage_ ? "internal" : "none"));
 }
 
 void ConfigStoreModule::loop() {

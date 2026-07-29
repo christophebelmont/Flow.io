@@ -1798,6 +1798,9 @@
       const deferredHeavyMs = Math.max(0, Number(opts.deferHeavyMs) || 0);
       const pageToken = ++pageLoadToken;
       currentPageId = pageId;
+      if (pageId !== 'page-activity-log') {
+        cancelActivityLogRefresh();
+      }
       if (pageId !== 'page-info') {
         stopInfoPolling();
       }
@@ -1931,6 +1934,10 @@
     let logsOverlayOpen = false;
     let activityFilter = 'all';
     let activityWindowShiftHours = 0;
+    let activityRequestToken = 0;
+    let activityAbortController = null;
+    let activityLoadedEvents = [];
+    let activityLoadedStats = null;
 
     const checkUpdatesBtn = document.getElementById('checkUpdates');
     const cancelUpgradeUiBtn = document.getElementById('cancelUpgradeUi');
@@ -2577,6 +2584,18 @@
         end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    function activityWindowBoundsMs() {
+      const end = Date.now() - (activityWindowShiftHours * 3 * 3600000);
+      return { start: end - (3 * 3600000), end };
+    }
+
+    function cancelActivityLogRefresh() {
+      activityRequestToken += 1;
+      const controller = activityAbortController;
+      activityAbortController = null;
+      if (controller) controller.abort();
+    }
+
     function renderActivityLog(events, stats) {
       if (!activityLogList) return;
       activityLogList.innerHTML = '';
@@ -2654,21 +2673,59 @@
     async function refreshActivityLog(showBusy) {
       if (!activityLogList) return;
       if (showBusy && activityLogStatus) activityLogStatus.textContent = 'Chargement du journal...';
-      const limit = 128;
+
+      if (activityAbortController) activityAbortController.abort();
+      const controller = new AbortController();
+      activityAbortController = controller;
+      const requestToken = ++activityRequestToken;
+      const limit = 32;
       let offset = 0;
       const events = [];
+      const seenSequences = new Set();
       let stats = null;
-      while (true) {
-        const response = await fetch('/api/activity/logs?offset=' + encodeURIComponent(offset) + '&limit=' + limit, { cache: 'no-store' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const page = await response.json();
-        stats = page;
-        if (Array.isArray(page.events)) events.push(...page.events);
-        if (page.complete || page.next == null || Number(page.count) === 0) break;
-        offset = Number(page.next);
-        if (!Number.isFinite(offset) || offset < 0 || events.length >= 768) break;
+      const windowBounds = activityWindowBoundsMs();
+
+      try {
+        while (true) {
+          const url =
+            '/api/activity/logs?order=desc&offset=' + encodeURIComponent(offset) +
+            '&limit=' + limit;
+          const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const page = await response.json();
+          if (requestToken !== activityRequestToken) return;
+
+          stats = page;
+          const pageEvents = Array.isArray(page.events) ? page.events : [];
+          pageEvents.forEach((event) => {
+            const sequence = Number(event && event.seq) || 0;
+            if (sequence > 0 && seenSequences.has(sequence)) return;
+            if (sequence > 0) seenSequences.add(sequence);
+            events.push(event);
+          });
+
+          const reachedWindowStart = pageEvents.some((event) => {
+            const epoch = Number(event && event.epoch_s) || 0;
+            return epoch > 0 && (epoch * 1000) <= windowBounds.start;
+          });
+          if (reachedWindowStart || page.complete || page.next == null || Number(page.count) === 0) break;
+
+          offset = Number(page.next);
+          if (!Number.isFinite(offset) || offset < 0 || events.length >= 768) break;
+        }
+
+        if (requestToken !== activityRequestToken) return;
+        activityLoadedEvents = events;
+        activityLoadedStats = stats;
+        renderActivityLog(activityLoadedEvents, activityLoadedStats);
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        throw err;
+      } finally {
+        if (activityAbortController === controller) {
+          activityAbortController = null;
+        }
       }
-      renderActivityLog(events, stats);
     }
 
     async function purgeActivityLog() {
@@ -2794,7 +2851,7 @@
       btn.addEventListener('click', () => {
         activityFilter = String(btn.dataset.activityFilter || 'all');
         activityFilterBtns.forEach((el) => el.classList.toggle('is-active', el === btn));
-        refreshActivityLog(false).catch(() => {});
+        renderActivityLog(activityLoadedEvents, activityLoadedStats);
       });
     });
     applyLogSourceUi();

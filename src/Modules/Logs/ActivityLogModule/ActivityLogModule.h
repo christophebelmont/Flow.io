@@ -77,6 +77,9 @@ private:
     mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
 
     QueueHandle_t persistQueue_ = nullptr;
+    StaticQueue_t persistQueueStatic_{};
+    uint8_t* persistQueueStorage_ = nullptr;
+    bool persistQueueStorageInPsram_ = false;
     ActivityLogService service_{};
     ServiceRegistry* services_ = nullptr;
     const TimeService* timeSvc_ = nullptr;

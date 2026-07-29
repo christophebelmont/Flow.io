@@ -4,6 +4,7 @@
  */
 
 #include "IOModule.h"
+#include "IOConfigDescriptorStorage.h"
 #define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::IOModule)
 #include "Core/ModuleLog.h"
 #include "Domain/Pool/PoolIds.h"
@@ -149,6 +150,18 @@ static constexpr uint8_t kCfgBranchIoI4 = 21;
 static constexpr uint8_t kCfgBranchIoI5 = 44;
 static constexpr uint8_t kCfgBranchIoI6 = 45;
 static constexpr uint8_t kCfgBranchIoI7 = 46;
+static constexpr uint8_t kCfgBranchIoI8 = 73;
+static constexpr uint8_t kCfgBranchIoI9 = 74;
+static constexpr uint8_t kCfgBranchIoI10 = 75;
+static constexpr uint8_t kCfgBranchIoI11 = 76;
+static constexpr uint8_t kCfgBranchIoI12 = 77;
+static constexpr uint8_t kCfgBranchIoI13 = 78;
+static constexpr uint8_t kCfgBranchIoI14 = 79;
+static constexpr uint8_t kCfgBranchIoI15 = 80;
+static constexpr uint8_t kCfgBranchIoExp0 = 81;
+static constexpr uint8_t kCfgBranchIoExp1 = 82;
+static constexpr uint8_t kCfgBranchIoExp2 = 83;
+static constexpr uint8_t kCfgBranchIoExp3 = 84;
 static constexpr uint8_t kCfgBranchIoBus = 22;
 static constexpr uint8_t kCfgBranchIoDs18b20 = 23;
 static constexpr uint8_t kCfgBranchIoGpio = 24;
@@ -201,6 +214,48 @@ static constexpr uint8_t analogCfgBranch_(uint8_t idx)
                            ConfigBranchRef::UnknownLocalBranch;
 }
 
+static constexpr uint8_t digitalInputCfgBranch_(uint8_t idx)
+{
+    return (idx == 0U) ? kCfgBranchIoI0 :
+           (idx == 1U) ? kCfgBranchIoI1 :
+           (idx == 2U) ? kCfgBranchIoI2 :
+           (idx == 3U) ? kCfgBranchIoI3 :
+           (idx == 4U) ? kCfgBranchIoI4 :
+           (idx == 5U) ? kCfgBranchIoI5 :
+           (idx == 6U) ? kCfgBranchIoI6 :
+           (idx == 7U) ? kCfgBranchIoI7 :
+           (idx == 8U) ? kCfgBranchIoI8 :
+           (idx == 9U) ? kCfgBranchIoI9 :
+           (idx == 10U) ? kCfgBranchIoI10 :
+           (idx == 11U) ? kCfgBranchIoI11 :
+           (idx == 12U) ? kCfgBranchIoI12 :
+           (idx == 13U) ? kCfgBranchIoI13 :
+           (idx == 14U) ? kCfgBranchIoI14 :
+           (idx == 15U) ? kCfgBranchIoI15 :
+                            ConfigBranchRef::UnknownLocalBranch;
+}
+
+static constexpr uint8_t digitalOutputCfgBranch_(uint8_t idx)
+{
+    return (idx == 0U) ? kCfgBranchIoD0 :
+           (idx == 1U) ? kCfgBranchIoD1 :
+           (idx == 2U) ? kCfgBranchIoD2 :
+           (idx == 3U) ? kCfgBranchIoD3 :
+           (idx == 4U) ? kCfgBranchIoD4 :
+           (idx == 5U) ? kCfgBranchIoD5 :
+           (idx == 6U) ? kCfgBranchIoD6 :
+           (idx == 7U) ? kCfgBranchIoD7 :
+           (idx == 8U) ? kCfgBranchIoD8 :
+           (idx == 9U) ? kCfgBranchIoD9 :
+           (idx == 10U) ? kCfgBranchIoD10 :
+           (idx == 11U) ? kCfgBranchIoD11 :
+           (idx == 12U) ? kCfgBranchIoD12 :
+           (idx == 13U) ? kCfgBranchIoD13 :
+           (idx == 14U) ? kCfgBranchIoD14 :
+           (idx == 15U) ? kCfgBranchIoD15 :
+                            ConfigBranchRef::UnknownLocalBranch;
+}
+
 PhysicalPortId normalizeConfiguredBindingPort(PhysicalPortId port)
 {
     return (port == kLegacyDisconnectedBindingPort) ? IO_PORT_INVALID : port;
@@ -217,6 +272,8 @@ static void formatDs18Address_(const uint8_t addr[8], char* out, size_t outLen)
 
 #define FLOW_IO_ANALOG_ROUTE_ENTRY(ROUTE_ID, BRANCH_ID, SLOT_STR) \
     {ROUTE_ID, {(uint8_t)ConfigModuleId::Io, BRANCH_ID}, "io/input/a" SLOT_STR, "io/input/a" SLOT_STR, (uint8_t)MqttPublishPriority::Normal, nullptr}
+#define FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(ROUTE_ID, BRANCH_ID, SLOT_STR) \
+    {ROUTE_ID, {(uint8_t)ConfigModuleId::Io, BRANCH_ID}, "io/input/i" SLOT_STR, "io/input/i" SLOT_STR, (uint8_t)MqttPublishPriority::Normal, nullptr}
 #define FLOW_IO_DIGITAL_OUTPUT_ROUTE_ENTRY(ROUTE_ID, BRANCH_ID, SLOT_STR) \
     {ROUTE_ID, {(uint8_t)ConfigModuleId::Io, BRANCH_ID}, "io/output/d" SLOT_STR, "io/output/d" SLOT_STR, (uint8_t)MqttPublishPriority::Normal, nullptr}
 static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
@@ -244,6 +301,14 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {44, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI5}, "io/input/i05", "io/input/i05", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {45, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI6}, "io/input/i06", "io/input/i06", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {46, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoI7}, "io/input/i07", "io/input/i07", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(73, kCfgBranchIoI8, "08"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(74, kCfgBranchIoI9, "09"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(75, kCfgBranchIoI10, "10"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(76, kCfgBranchIoI11, "11"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(77, kCfgBranchIoI12, "12"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(78, kCfgBranchIoI13, "13"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(79, kCfgBranchIoI14, "14"),
+    FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY(80, kCfgBranchIoI15, "15"),
     {22, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBus}, "io/drivers/bus", "io/drivers/bus", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {23, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoDs18b20}, "io/drivers/ds18b20", "io/drivers/ds18b20", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {24, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoGpio}, "io/drivers/gpio", "io/drivers/gpio", (uint8_t)MqttPublishPriority::Normal, nullptr},
@@ -255,6 +320,10 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {30, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBmp280}, "io/drivers/bmp280", "io/drivers/bmp280", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {31, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBme680}, "io/drivers/bme680", "io/drivers/bme680", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {32, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoIna226}, "io/drivers/ina226", "io/drivers/ina226", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {81, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoExp0}, "io/drivers/expander00", "io/drivers/expander00", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {82, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoExp1}, "io/drivers/expander01", "io/drivers/expander01", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {83, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoExp2}, "io/drivers/expander02", "io/drivers/expander02", (uint8_t)MqttPublishPriority::Normal, nullptr},
+    {84, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoExp3}, "io/drivers/expander03", "io/drivers/expander03", (uint8_t)MqttPublishPriority::Normal, nullptr},
     FLOW_IO_ANALOG_ROUTE_ENTRY(33, kCfgBranchIoA6, "06"),
     FLOW_IO_ANALOG_ROUTE_ENTRY(34, kCfgBranchIoA7, "07"),
     FLOW_IO_ANALOG_ROUTE_ENTRY(35, kCfgBranchIoA8, "08"),
@@ -292,6 +361,7 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     FLOW_IO_ANALOG_ROUTE_ENTRY(72, kCfgBranchIoA31, "31"),
 };
 #undef FLOW_IO_ANALOG_ROUTE_ENTRY
+#undef FLOW_IO_DIGITAL_INPUT_ROUTE_ENTRY
 #undef FLOW_IO_DIGITAL_OUTPUT_ROUTE_ENTRY
 static_assert((sizeof(kIoCfgRoutes) / sizeof(kIoCfgRoutes[0])) <= MqttConfigRouteProducer::MaxRoutes,
               "IOModule config routes exceed MqttConfigRouteProducer capacity");
@@ -376,43 +446,62 @@ void IOModule::setBindingPorts(const IOBindingPortSpec* ports, uint8_t count)
     bindingPortCount_ = count;
 }
 
-bool IOModule::ensureExtraAnalogCfgVars_()
+void IOModule::setExpanders(const IOExpanderSpec* expanders, uint8_t count)
 {
-    if (extraAnalogCfgVars_) return true;
-    void* mem = heap_caps_malloc(sizeof(ExtraAnalogConfigVars), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!mem) mem = heap_caps_malloc(sizeof(ExtraAnalogConfigVars), MALLOC_CAP_8BIT);
-    if (!mem) return false;
-    extraAnalogCfgVars_ = new (mem) ExtraAnalogConfigVars(analogCfg_);
-    return true;
+    expanders_ = expanders;
+    expanderCount_ = count;
+    for (uint8_t i = 0; i < IO_MAX_EXPANDERS; ++i) {
+        expanderCfg_[i] = IOExpanderConfig{};
+        runtimeExpanders_[i] = RuntimeExpander{};
+    }
+    if (!expanders_) return;
+    for (uint8_t i = 0; i < count; ++i) {
+        const IOExpanderSpec& spec = expanders[i];
+        if (spec.expanderId >= IO_MAX_EXPANDERS) continue;
+        expanderCfg_[spec.expanderId].enabled = spec.enabled;
+        expanderCfg_[spec.expanderId].address = spec.address;
+        expanderCfg_[spec.expanderId].maskDefault = spec.maskDefault;
+        expanderCfg_[spec.expanderId].activeLow = spec.activeLow;
+        runtimeExpanders_[spec.expanderId].spec = &spec;
+    }
 }
 
-bool IOModule::ensureDigitalCounterCfgVars_()
+bool IOModule::ensureConfigDescriptorStorage_()
 {
-    if (extraDigitalCounterCfgVars_) return true;
-    void* mem = heap_caps_malloc(sizeof(ExtraDigitalCounterConfigVars), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!mem) mem = heap_caps_malloc(sizeof(ExtraDigitalCounterConfigVars), MALLOC_CAP_8BIT);
-    if (!mem) return false;
-    extraDigitalCounterCfgVars_ = new (mem) ExtraDigitalCounterConfigVars(digitalInCfg_);
-    return true;
-}
+    if (configDescriptors_) return true;
 
-bool IOModule::ensureDigitalInputModeCfgVars_()
-{
-    if (extraDigitalInputModeCfgVars_) return true;
-    void* mem = heap_caps_malloc(sizeof(ExtraDigitalInputModeConfigVars), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!mem) mem = heap_caps_malloc(sizeof(ExtraDigitalInputModeConfigVars), MALLOC_CAP_8BIT);
-    if (!mem) return false;
-    extraDigitalInputModeCfgVars_ = new (mem) ExtraDigitalInputModeConfigVars(digitalInCfg_);
-    return true;
-}
+    const size_t internalBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t psramBefore = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    void* mem = heap_caps_malloc(
+        sizeof(IOConfigDescriptorStorage),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+    bool psramBacked = (mem != nullptr);
+#if !defined(BOARD_HAS_PSRAM)
+    // Profiles without PSRAM retain a compatibility fallback. PSRAM-equipped
+    // targets deliberately fail instead of silently consuming internal RAM.
+    if (!mem) {
+        mem = heap_caps_malloc(sizeof(IOConfigDescriptorStorage), MALLOC_CAP_8BIT);
+    }
+#endif
+    if (!mem) {
+        LOGE("I/O config descriptor allocation failed bytes=%u memory=psram",
+             (unsigned)sizeof(IOConfigDescriptorStorage));
+        return false;
+    }
 
-bool IOModule::ensureExtraDigitalOutputCfgVars_()
-{
-    if (extraDigitalOutputCfgVars_) return true;
-    void* mem = heap_caps_malloc(sizeof(ExtraDigitalOutputConfigVars), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!mem) mem = heap_caps_malloc(sizeof(ExtraDigitalOutputConfigVars), MALLOC_CAP_8BIT);
-    if (!mem) return false;
-    extraDigitalOutputCfgVars_ = new (mem) ExtraDigitalOutputConfigVars(digitalCfg_);
+    configDescriptors_ = new (mem) IOConfigDescriptorStorage(analogCfg_, digitalInCfg_, digitalCfg_);
+    const size_t internalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t psramAfter = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    LOGI("I/O config descriptors ready slots=%u/%u/%u bytes=%u memory=%s heap_delta internal=%ld psram=%ld",
+         (unsigned)ANALOG_CFG_SLOTS,
+         (unsigned)DIGITAL_INPUT_CFG_SLOTS,
+         (unsigned)DIGITAL_CFG_SLOTS,
+         (unsigned)sizeof(IOConfigDescriptorStorage),
+         psramBacked ? "psram" : "internal",
+         (long)internalAfter - (long)internalBefore,
+         (long)psramAfter - (long)psramBefore
+    );
     return true;
 }
 
@@ -575,20 +664,9 @@ bool IOModule::findDigitalSlotByIoId_(IoId id, uint8_t& slotIdxOut) const
 
 ConfigVariable<float,0>* IOModule::counterTotalVar_(uint8_t logicalIdx)
 {
-    if (logicalIdx >= MAX_DIGITAL_INPUTS) return nullptr;
-    if (!extraDigitalCounterCfgVars_ && !ensureDigitalCounterCfgVars_()) return nullptr;
-
-    switch (logicalIdx) {
-        case 0: return &extraDigitalCounterCfgVars_->i0TotalVar_;
-        case 1: return &extraDigitalCounterCfgVars_->i1TotalVar_;
-        case 2: return &extraDigitalCounterCfgVars_->i2TotalVar_;
-        case 3: return &extraDigitalCounterCfgVars_->i3TotalVar_;
-        case 4: return &extraDigitalCounterCfgVars_->i4TotalVar_;
-        case 5: return &extraDigitalCounterCfgVars_->i5TotalVar_;
-        case 6: return &extraDigitalCounterCfgVars_->i6TotalVar_;
-        case 7: return &extraDigitalCounterCfgVars_->i7TotalVar_;
-        default: return nullptr;
-    }
+    if (logicalIdx >= DIGITAL_INPUT_CFG_SLOTS) return nullptr;
+    if (!configDescriptors_ && !ensureConfigDescriptorStorage_()) return nullptr;
+    return &configDescriptors_->digitalInputs[logicalIdx].counterTotalVar;
 }
 
 float* IOModule::counterConfigTotalState_(uint8_t logicalIdx)
@@ -2100,12 +2178,18 @@ bool IOModule::getLedMask_(uint8_t& mask) const
 
 uint8_t IOModule::pcfPhysicalFromLogical_(uint8_t logicalMask) const
 {
-    return cfgData_.pcfActiveLow ? (uint8_t)~logicalMask : logicalMask;
+    const bool activeLow = (ledMaskExpanderId_ != IO_EXPANDER_INVALID)
+        ? expanderActiveLow_(ledMaskExpanderId_)
+        : cfgData_.pcfActiveLow;
+    return activeLow ? (uint8_t)~logicalMask : logicalMask;
 }
 
 uint8_t IOModule::pcfLogicalFromPhysical_(uint8_t physicalMask) const
 {
-    return cfgData_.pcfActiveLow ? (uint8_t)~physicalMask : physicalMask;
+    const bool activeLow = (ledMaskExpanderId_ != IO_EXPANDER_INVALID)
+        ? expanderActiveLow_(ledMaskExpanderId_)
+        : cfgData_.pcfActiveLow;
+    return activeLow ? (uint8_t)~physicalMask : physicalMask;
 }
 
 const IOBindingPortSpec* IOModule::bindingPortSpec_(PhysicalPortId portId) const
@@ -2117,6 +2201,184 @@ const IOBindingPortSpec* IOModule::bindingPortSpec_(PhysicalPortId portId) const
     return nullptr;
 }
 
+const IOExpanderSpec* IOModule::expanderSpec_(IOExpanderId expanderId) const
+{
+    if (expanderId == IO_EXPANDER_INVALID || expanderId >= IO_MAX_EXPANDERS) return nullptr;
+    if (runtimeExpanders_[expanderId].spec) return runtimeExpanders_[expanderId].spec;
+    if (!expanders_) return nullptr;
+    for (uint8_t i = 0; i < expanderCount_; ++i) {
+        if (expanders_[i].expanderId == expanderId) return &expanders_[i];
+    }
+    return nullptr;
+}
+
+IOExpanderConfig* IOModule::expanderConfig_(IOExpanderId expanderId)
+{
+    if (expanderId == IO_EXPANDER_INVALID || expanderId >= IO_MAX_EXPANDERS) return nullptr;
+    return &expanderCfg_[expanderId];
+}
+
+const IOExpanderConfig* IOModule::expanderConfig_(IOExpanderId expanderId) const
+{
+    if (expanderId == IO_EXPANDER_INVALID || expanderId >= IO_MAX_EXPANDERS) return nullptr;
+    return &expanderCfg_[expanderId];
+}
+
+bool IOModule::expanderEnabled_(IOExpanderId expanderId) const
+{
+    const IOExpanderConfig* cfg = expanderConfig_(expanderId);
+    return cfg ? cfg->enabled : false;
+}
+
+bool IOModule::expanderUsable_(IOExpanderId expanderId) const
+{
+    if (expanderId == IO_EXPANDER_INVALID || expanderId >= IO_MAX_EXPANDERS) return false;
+    return runtimeExpanders_[expanderId].configValid && expanderEnabled_(expanderId);
+}
+
+uint8_t IOModule::expanderAddress_(IOExpanderId expanderId) const
+{
+    const IOExpanderConfig* cfg = expanderConfig_(expanderId);
+    return cfg ? cfg->address : 0;
+}
+
+uint8_t IOModule::expanderMaskDefault_(IOExpanderId expanderId) const
+{
+    const IOExpanderConfig* cfg = expanderConfig_(expanderId);
+    return cfg ? cfg->maskDefault : 0;
+}
+
+bool IOModule::expanderActiveLow_(IOExpanderId expanderId) const
+{
+    const IOExpanderConfig* cfg = expanderConfig_(expanderId);
+    return cfg ? cfg->activeLow : false;
+}
+
+bool IOModule::validateExpanderTopology_()
+{
+    bool topologyValid = true;
+    bool expanderIdSeen[IO_MAX_EXPANDERS] = {false};
+
+    for (uint8_t i = 0; i < IO_MAX_EXPANDERS; ++i) {
+        runtimeExpanders_[i].configValid = false;
+    }
+
+    if (expanderCount_ > 0U && !expanders_) {
+        LOGE("IO expander topology is missing");
+        return false;
+    }
+
+    for (uint8_t i = 0; i < expanderCount_; ++i) {
+        const IOExpanderSpec& spec = expanders_[i];
+        if (spec.expanderId >= IO_MAX_EXPANDERS) {
+            LOGE("Invalid IO expander id=%u", (unsigned)spec.expanderId);
+            topologyValid = false;
+            continue;
+        }
+        if (expanderIdSeen[spec.expanderId]) {
+            LOGE("Duplicate IO expander id=%u", (unsigned)spec.expanderId);
+            runtimeExpanders_[spec.expanderId].configValid = false;
+            topologyValid = false;
+            continue;
+        }
+        expanderIdSeen[spec.expanderId] = true;
+        runtimeExpanders_[spec.expanderId].spec = &spec;
+        runtimeExpanders_[spec.expanderId].configValid =
+            spec.kind == IO_EXPANDER_KIND_PCF8574 ||
+            spec.kind == IO_EXPANDER_KIND_TCA9554 ||
+            spec.kind == IO_EXPANDER_KIND_MCP23017;
+        if (!runtimeExpanders_[spec.expanderId].configValid) {
+            LOGE("Invalid IO expander kind=%u for id=%u",
+                 (unsigned)spec.kind,
+                 (unsigned)spec.expanderId);
+            topologyValid = false;
+        }
+    }
+
+    for (uint8_t i = 0; i < bindingPortCount_; ++i) {
+        const IOBindingPortSpec& port = bindingPorts_[i];
+        if (port.portId == IO_PORT_INVALID) {
+            LOGE("Invalid binding port at index=%u", (unsigned)i);
+            topologyValid = false;
+            continue;
+        }
+
+        for (uint8_t previous = 0; previous < i; ++previous) {
+            const IOBindingPortSpec& other = bindingPorts_[previous];
+            if (other.portId == port.portId) {
+                LOGE("Duplicate binding port id=%u", (unsigned)port.portId);
+                topologyValid = false;
+            }
+        }
+
+        uint8_t requiredKind = IO_EXPANDER_KIND_NONE;
+        uint8_t maxChannel = 0;
+        if (port.kind == IO_PORT_KIND_PCF8574_OUTPUT) {
+            requiredKind = IO_EXPANDER_KIND_PCF8574;
+            maxChannel = 7U;
+        } else if (port.kind == IO_PORT_KIND_TCA9554_OUTPUT) {
+            requiredKind = IO_EXPANDER_KIND_TCA9554;
+            maxChannel = 7U;
+        } else if (port.kind == IO_PORT_KIND_MCP23017_INPUT ||
+                   port.kind == IO_PORT_KIND_MCP23017_OUTPUT) {
+            requiredKind = IO_EXPANDER_KIND_MCP23017;
+            maxChannel = 15U;
+        }
+        if (requiredKind == IO_EXPANDER_KIND_NONE) continue;
+
+        const IOExpanderSpec* expander = expanderSpec_(port.expanderId);
+        if (!expander || expander->kind != requiredKind || port.channel > maxChannel) {
+            LOGE("Invalid binding port=%u kind=%u channel=%u expander=%u",
+                 (unsigned)port.portId,
+                 (unsigned)port.kind,
+                 (unsigned)port.channel,
+                 (unsigned)port.expanderId);
+            topologyValid = false;
+            continue;
+        }
+
+        for (uint8_t previous = 0; previous < i; ++previous) {
+            const IOBindingPortSpec& other = bindingPorts_[previous];
+            if (other.expanderId == port.expanderId &&
+                other.channel == port.channel &&
+                (other.kind == IO_PORT_KIND_PCF8574_OUTPUT ||
+                 other.kind == IO_PORT_KIND_TCA9554_OUTPUT ||
+                 other.kind == IO_PORT_KIND_MCP23017_INPUT ||
+                 other.kind == IO_PORT_KIND_MCP23017_OUTPUT)) {
+                LOGE("Duplicate expander resource expander=%u channel=%u ports=%u/%u",
+                     (unsigned)port.expanderId,
+                     (unsigned)port.channel,
+                     (unsigned)other.portId,
+                     (unsigned)port.portId);
+                topologyValid = false;
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < IO_MAX_EXPANDERS; ++i) {
+        if (!runtimeExpanders_[i].configValid || !expanderEnabled_(i)) continue;
+        const uint8_t address = expanderAddress_(i);
+        if (address < 0x08U || address > 0x77U) {
+            LOGE("Invalid I2C address expander=%u addr=0x%02X", (unsigned)i, address);
+            runtimeExpanders_[i].configValid = false;
+            continue;
+        }
+        for (uint8_t previous = 0; previous < i; ++previous) {
+            const IOExpanderSpec* previousSpec = expanderSpec_(previous);
+            if (!previousSpec || !expanderEnabled_(previous)) continue;
+            if (expanderAddress_(previous) != address) continue;
+            LOGE("I2C address collision expanders=%u/%u addr=0x%02X",
+                 (unsigned)previous,
+                 (unsigned)i,
+                 address);
+            runtimeExpanders_[previous].configValid = false;
+            runtimeExpanders_[i].configValid = false;
+        }
+    }
+
+    return topologyValid;
+}
+
 bool IOModule::resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, uint8_t& channelOut, uint8_t& backendOut) const
 {
     const IOBindingPortSpec* spec = bindingPortSpec_(portId);
@@ -2126,42 +2388,42 @@ bool IOModule::resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, 
     switch (spec->kind) {
         case IO_PORT_KIND_ADS_INTERNAL_SINGLE:
             sourceOut = IO_SRC_ADS_INTERNAL_SINGLE;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_ADS1115_INT;
             return true;
         case IO_PORT_KIND_ADS_EXTERNAL_DIFF:
             sourceOut = IO_SRC_ADS_EXTERNAL_DIFF;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_ADS1115_EXT_DIFF;
             return true;
         case IO_PORT_KIND_DS18_WATER:
             sourceOut = IO_SRC_DS18_WATER;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_DS18B20;
             return true;
         case IO_PORT_KIND_DS18_AIR:
             sourceOut = IO_SRC_DS18_AIR;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_DS18B20;
             return true;
         case IO_PORT_KIND_SHT40:
             sourceOut = IO_SRC_SHT40;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_SHT40;
             return channelOut <= 1U;
         case IO_PORT_KIND_BMP280:
             sourceOut = IO_SRC_BMP280;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_BMP280;
             return channelOut <= 1U;
         case IO_PORT_KIND_BME680:
             sourceOut = IO_SRC_BME680;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_BME680;
             return channelOut <= 3U;
         case IO_PORT_KIND_INA226:
             sourceOut = IO_SRC_INA226;
-            channelOut = spec->param0;
+            channelOut = spec->channel;
             backendOut = IO_BACKEND_INA226;
             return channelOut <= 4U;
         default:
@@ -2169,22 +2431,38 @@ bool IOModule::resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, 
     }
 }
 
-bool IOModule::resolveDigitalInputBinding_(PhysicalPortId portId, uint8_t& pinOut, uint8_t& backendOut, uint8_t& channelOut) const
+bool IOModule::resolveDigitalInputBinding_(PhysicalPortId portId,
+                                           uint8_t& pinOut,
+                                           uint8_t& backendOut,
+                                           uint8_t& channelOut,
+                                           IOExpanderId& expanderOut) const
 {
     const IOBindingPortSpec* spec = bindingPortSpec_(portId);
     if (!spec) return false;
-    if (spec->kind != IO_PORT_KIND_GPIO_INPUT) return false;
 
-    pinOut = spec->param0;
-    backendOut = IO_BACKEND_GPIO;
-    channelOut = spec->param0;
-    return true;
+    if (spec->kind == IO_PORT_KIND_GPIO_INPUT) {
+        pinOut = spec->channel;
+        backendOut = IO_BACKEND_GPIO;
+        channelOut = spec->channel;
+        expanderOut = IO_EXPANDER_INVALID;
+        return true;
+    }
+    if (spec->kind == IO_PORT_KIND_MCP23017_INPUT) {
+        if (spec->channel > 15U) return false;
+        pinOut = 0U;
+        backendOut = IO_BACKEND_MCP23017;
+        channelOut = spec->channel;
+        expanderOut = spec->expanderId;
+        return true;
+    }
+    return false;
 }
 
 bool IOModule::resolveDigitalOutputBinding_(PhysicalPortId portId,
                                             uint8_t& pinOut,
                                             uint8_t& backendOut,
                                             uint8_t& channelOut,
+                                            IOExpanderId& expanderOut,
                                             bool& usesPcfOut,
                                             bool& usesTcaOut,
                                             bool& usesMcpOut) const
@@ -2193,9 +2471,10 @@ bool IOModule::resolveDigitalOutputBinding_(PhysicalPortId portId,
     if (!spec) return false;
 
     if (spec->kind == IO_PORT_KIND_GPIO_OUTPUT) {
-        pinOut = spec->param0;
+        pinOut = spec->channel;
         backendOut = IO_BACKEND_GPIO;
-        channelOut = spec->param0;
+        channelOut = spec->channel;
+        expanderOut = IO_EXPANDER_INVALID;
         usesPcfOut = false;
         usesTcaOut = false;
         usesMcpOut = false;
@@ -2204,7 +2483,8 @@ bool IOModule::resolveDigitalOutputBinding_(PhysicalPortId portId,
     if (spec->kind == IO_PORT_KIND_PCF8574_OUTPUT) {
         pinOut = 0U;
         backendOut = IO_BACKEND_PCF8574;
-        channelOut = spec->param0;
+        channelOut = spec->channel;
+        expanderOut = spec->expanderId;
         usesPcfOut = true;
         usesTcaOut = false;
         usesMcpOut = false;
@@ -2213,17 +2493,19 @@ bool IOModule::resolveDigitalOutputBinding_(PhysicalPortId portId,
     if (spec->kind == IO_PORT_KIND_TCA9554_OUTPUT) {
         pinOut = 0U;
         backendOut = IO_BACKEND_TCA9554;
-        channelOut = spec->param0;
+        channelOut = spec->channel;
+        expanderOut = spec->expanderId;
         usesPcfOut = false;
         usesTcaOut = true;
         usesMcpOut = false;
         return true;
     }
     if (spec->kind == IO_PORT_KIND_MCP23017_OUTPUT) {
-        if (spec->param0 > 15U) return false;
+        if (spec->channel > 15U) return false;
         pinOut = 0U;
         backendOut = IO_BACKEND_MCP23017;
-        channelOut = spec->param0;
+        channelOut = spec->channel;
+        expanderOut = spec->expanderId;
         usesPcfOut = false;
         usesTcaOut = false;
         usesMcpOut = true;
@@ -2348,6 +2630,10 @@ bool IOModule::configureRuntime_()
 {
     if (runtimeReady_) return true;
     if (!cfgData_.enabled) return false;
+    if (!validateExpanderTopology_()) {
+        LOGE("I/O topology validation failed");
+        return false;
+    }
 
     bool needAnalogSource[IO_SRC_COUNT] = {false};
 
@@ -2399,31 +2685,53 @@ bool IOModule::configureRuntime_()
 
         analogSlots_[i].endpoint = allocAnalogEndpoint_(analogSlots_[i].def.id);
         if (!analogSlots_[i].endpoint) continue;
-        registry_.add(analogSlots_[i].endpoint);
+        if (!registry_.add(analogSlots_[i].endpoint)) {
+            LOGE("I/O registry full while adding analog endpoint id=%s count=%u capacity=%u",
+                 analogSlots_[i].def.id,
+                 (unsigned)registry_.count(),
+                 (unsigned)IO_REGISTRY_MAX_ENDPOINTS);
+            return false;
+        }
     }
 
     bool needPcfOutput = false;
     bool needTcaOutput = false;
     bool needMcpOutput = false;
-    bool mcpProbeFailed = false;
-    bool needTcaPreserveStartup = false;
+    bool needMcpInput = false;
+    bool tcaPreserveStartup[IO_MAX_EXPANDERS] = {false};
     for (uint8_t i = 0; i < MAX_DIGITAL_SLOTS; ++i) {
         const DigitalSlot& s = digitalSlots_[i];
-        if (!s.used || s.kind != DIGITAL_SLOT_OUTPUT) continue;
-        PhysicalPortId bindingPort = s.outDef.bindingPort;
-        IOOutputStartupPolicy startupPolicy = s.outDef.startupPolicy;
-        if (s.logicalIdx < DIGITAL_CFG_SLOTS) {
-            bindingPort = digitalCfg_[s.logicalIdx].bindingPort;
-            startupPolicy = digitalCfg_[s.logicalIdx].startupPolicy;
+        if (!s.used) continue;
+
+        PhysicalPortId bindingPort = IO_PORT_INVALID;
+        IOOutputStartupPolicy startupPolicy = IOOutputStartupPolicy::ApplyInitial;
+        if (s.kind == DIGITAL_SLOT_INPUT) {
+            bindingPort = s.inDef.bindingPort;
+            if (s.logicalIdx < DIGITAL_INPUT_CFG_SLOTS) {
+                bindingPort = digitalInCfg_[s.logicalIdx].bindingPort;
+            }
+        } else if (s.kind == DIGITAL_SLOT_OUTPUT) {
+            bindingPort = s.outDef.bindingPort;
+            startupPolicy = s.outDef.startupPolicy;
+            if (s.logicalIdx < DIGITAL_CFG_SLOTS) {
+                bindingPort = digitalCfg_[s.logicalIdx].bindingPort;
+                startupPolicy = digitalCfg_[s.logicalIdx].startupPolicy;
+            }
         }
+
         const IOBindingPortSpec* spec = bindingPortSpec_(bindingPort);
+        if (spec && spec->kind == IO_PORT_KIND_MCP23017_INPUT) {
+            needMcpInput = true;
+        }
+        if (s.kind != DIGITAL_SLOT_OUTPUT) continue;
         if (spec && spec->kind == IO_PORT_KIND_PCF8574_OUTPUT) {
             needPcfOutput = true;
         }
         if (spec && spec->kind == IO_PORT_KIND_TCA9554_OUTPUT) {
             needTcaOutput = true;
-            if (startupPolicy == IOOutputStartupPolicy::PreserveHardwareState) {
-                needTcaPreserveStartup = true;
+            if (startupPolicy == IOOutputStartupPolicy::PreserveHardwareState &&
+                spec->expanderId < IO_MAX_EXPANDERS) {
+                tcaPreserveStartup[spec->expanderId] = true;
             }
         }
         if (spec && spec->kind == IO_PORT_KIND_MCP23017_OUTPUT) {
@@ -2444,7 +2752,8 @@ bool IOModule::configureRuntime_()
         cfgData_.ina226Enabled ||
         needPcfOutput ||
         needTcaOutput ||
-        needMcpOutput;
+        needMcpOutput ||
+        needMcpInput;
 
     if (needI2c) {
         // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
@@ -2490,7 +2799,8 @@ bool IOModule::configureRuntime_()
             uint8_t pin = 0U;
             uint8_t backend = IO_BACKEND_GPIO;
             uint8_t channel = 0U;
-            if (!resolveDigitalInputBinding_(s.inDef.bindingPort, pin, backend, channel)) {
+            IOExpanderId expanderId = IO_EXPANDER_INVALID;
+            if (!resolveDigitalInputBinding_(s.inDef.bindingPort, pin, backend, channel, expanderId)) {
                 if (s.inDef.bindingPort != IO_PORT_INVALID) {
                     LOGW("Digital input %s unresolved binding_port=%u",
                          s.endpointId,
@@ -2500,16 +2810,42 @@ bool IOModule::configureRuntime_()
             }
             s.backend = backend;
             s.channel = channel;
-            IDigitalCounterDriver* driver = allocGpioDriver_(
-                s.endpointId,
-                pin,
-                false,
-                s.inDef.activeHigh,
-                s.inDef.pullMode,
-                s.inDef.mode == IO_DIGITAL_INPUT_COUNTER,
-                s.inDef.edgeMode,
-                s.inDef.counterDebounceUs
-            );
+            s.expanderId = expanderId;
+            if (backend == IO_BACKEND_MCP23017) {
+                if (s.inDef.pullMode == IO_PULL_DOWN) {
+                    LOGW("Digital input %s MCP23017 pull-down unsupported; using pull-none", s.endpointId);
+                    s.inDef.pullMode = IO_PULL_NONE;
+                }
+                if (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
+                    LOGW("Digital input %s MCP23017 counter mode unsupported; using state mode", s.endpointId);
+                    s.inDef.mode = IO_DIGITAL_INPUT_STATE;
+                }
+            }
+
+            IDigitalPinDriver* driver = nullptr;
+            IDigitalCounterDriver* counterDriver = nullptr;
+            if (backend == IO_BACKEND_MCP23017) {
+                Mcp23017Driver* mcp = beginMcpExpander_(s.expanderId);
+                if (!mcp) {
+                    LOGW("Digital input %s requires MCP23017 expander=%u but it is unavailable",
+                         s.endpointId,
+                         (unsigned)s.expanderId);
+                    continue;
+                }
+                driver = allocMcpBitDriver_(s.endpointId, mcp, channel, s.inDef.activeHigh, false, s.inDef.pullMode);
+            } else {
+                counterDriver = allocGpioDriver_(
+                    s.endpointId,
+                    pin,
+                    false,
+                    s.inDef.activeHigh,
+                    s.inDef.pullMode,
+                    s.inDef.mode == IO_DIGITAL_INPUT_COUNTER,
+                    s.inDef.edgeMode,
+                    s.inDef.counterDebounceUs
+                );
+                driver = counterDriver;
+            }
             if (!driver) {
                 LOGW("Digital input %s driver alloc failed pin=%u binding_port=%u mode=%u debounce_us=%lu",
                      s.endpointId,
@@ -2538,8 +2874,8 @@ bool IOModule::configureRuntime_()
             if (s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) {
                 eraseLegacyCounterPersistedTotal_(s.logicalIdx);
                 int32_t initialRawCount = 0;
-                if (driver) {
-                    (void)driver->readCount(initialRawCount);
+                if (counterDriver) {
+                    (void)counterDriver->readCount(initialRawCount);
                 }
 
                 const IODigitalInputSlotConfig* cfg = (s.logicalIdx < MAX_DIGITAL_INPUTS) ? &digitalInCfg_[s.logicalIdx] : nullptr;
@@ -2560,7 +2896,13 @@ bool IOModule::configureRuntime_()
                 const float scaledValue = ioRoundToPrecision(s.counterScaledTotal, precision);
                 static_cast<DigitalSensorEndpoint*>(s.endpoint)->updateFloat(scaledValue, true, millis());
             }
-            registry_.add(s.endpoint);
+            if (!registry_.add(s.endpoint)) {
+                LOGE("I/O registry full while adding digital input id=%s count=%u capacity=%u",
+                     s.endpointId,
+                     (unsigned)registry_.count(),
+                     (unsigned)IO_REGISTRY_MAX_ENDPOINTS);
+                return false;
+            }
             (void)processDigitalInputDefinition_(i, millis());
             continue;
         }
@@ -2588,10 +2930,33 @@ bool IOModule::configureRuntime_()
         uint8_t pin = 0U;
         uint8_t backend = IO_BACKEND_GPIO;
         uint8_t channel = 0U;
+        IOExpanderId expanderId = IO_EXPANDER_INVALID;
         bool usesPcfOut = false;
         bool usesTcaOut = false;
         bool usesMcpOut = false;
-        if (!resolveDigitalOutputBinding_(s.outDef.bindingPort, pin, backend, channel, usesPcfOut, usesTcaOut, usesMcpOut)) {
+        bool bindingAlreadyUsed = false;
+        if (s.outDef.bindingPort != IO_PORT_INVALID) {
+            for (uint8_t previous = 0; previous < i; ++previous) {
+                const DigitalSlot& other = digitalSlots_[previous];
+                if (!other.used || other.kind != DIGITAL_SLOT_OUTPUT) continue;
+                PhysicalPortId otherBinding = other.outDef.bindingPort;
+                if (other.logicalIdx < DIGITAL_CFG_SLOTS) {
+                    otherBinding = digitalCfg_[other.logicalIdx].bindingPort;
+                }
+                if (otherBinding == s.outDef.bindingPort) {
+                    bindingAlreadyUsed = true;
+                    LOGE("Digital outputs %s/%s share binding_port=%u; %s disabled",
+                         other.endpointId[0] ? other.endpointId : other.outDef.id,
+                         s.outDef.id,
+                         (unsigned)s.outDef.bindingPort,
+                         s.outDef.id);
+                    break;
+                }
+            }
+        }
+        if (bindingAlreadyUsed) continue;
+
+        if (!resolveDigitalOutputBinding_(s.outDef.bindingPort, pin, backend, channel, expanderId, usesPcfOut, usesTcaOut, usesMcpOut)) {
             if (s.outDef.bindingPort != IO_PORT_INVALID) {
                 LOGW("Digital output %s unresolved binding_port=%u",
                      s.endpointId,
@@ -2601,89 +2966,46 @@ bool IOModule::configureRuntime_()
         }
         s.backend = backend;
         s.channel = channel;
+        s.expanderId = expanderId;
         if (s.outDef.retainOnWarmReboot && !usesTcaOut) {
             LOGW("Digital output %s retain_on_warm_reboot ignored: backend is not TCA9554", s.endpointId);
         }
 
         IDigitalPinDriver* driver = nullptr;
+        const bool effectiveActiveHigh = (usesPcfOut || usesTcaOut || usesMcpOut)
+            ? (s.outDef.activeHigh != expanderActiveLow_(s.expanderId))
+            : s.outDef.activeHigh;
         if (usesPcfOut) {
-            if (needTcaOutput) {
-                LOGW("Digital output %s uses PCF8574 but TCA9554 outputs are also configured; mixed expanders not supported", s.endpointId);
+            IMaskOutputDriver* pcf = beginMaskExpander_(s.expanderId, IO_EXPANDER_KIND_PCF8574, false);
+            if (!pcf) {
+                LOGW("Digital output %s requires PCF8574 expander=%u but it is unavailable",
+                     s.endpointId,
+                     (unsigned)s.expanderId);
                 continue;
             }
-            if (!cfgData_.pcfEnabled) {
-                LOGW("Digital output %s requires PCF8574 but module is disabled", s.endpointId);
-                continue;
-            }
-            if (!pcfDriver_) {
-                IMaskOutputDriver* pcfMaskDriver = allocPcfDriver_("pcf8574", &i2cBus_, cfgData_.pcfAddress);
-                if (!pcfMaskDriver) {
-                    LOGW("PCF8574 pool exhausted");
-                    continue;
-                }
-                pcfDriver_ = static_cast<Pcf8574Driver*>(pcfMaskDriver);
-                if (!makeMaskProvider(pcfDriver_).begin()) {
-                    LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
-                    pcfDriver_ = nullptr;
-                    continue;
-                }
-            }
-            driver = allocPcfBitDriver_(s.outDef.id, pcfDriver_, channel, s.outDef.activeHigh);
+            driver = allocPcfBitDriver_(s.outDef.id, static_cast<Pcf8574Driver*>(pcf), channel, effectiveActiveHigh);
         } else if (usesTcaOut) {
-            if (needPcfOutput) {
-                LOGW("Digital output %s uses TCA9554 but PCF8574 outputs are also configured; mixed expanders not supported", s.endpointId);
+            IMaskOutputDriver* tca = beginMaskExpander_(s.expanderId,
+                                                        IO_EXPANDER_KIND_TCA9554,
+                                                        s.expanderId < IO_MAX_EXPANDERS && tcaPreserveStartup[s.expanderId]);
+            if (!tca) {
+                LOGW("Digital output %s requires TCA9554 expander=%u but it is unavailable",
+                     s.endpointId,
+                     (unsigned)s.expanderId);
                 continue;
             }
-            if (!cfgData_.pcfEnabled) {
-                LOGW("Digital output %s requires TCA9554 but expander module is disabled", s.endpointId);
-                continue;
-            }
-            if (!tcaDriver_) {
-                IMaskOutputDriver* tcaMaskDriver = allocTcaDriver_("tca9554", &i2cBus_, cfgData_.pcfAddress);
-                if (!tcaMaskDriver) {
-                    LOGW("TCA9554 pool exhausted");
-                    continue;
-                }
-                tcaDriver_ = static_cast<Tca9554Driver*>(tcaMaskDriver);
-                const bool tcaBeginOk = needTcaPreserveStartup
-                    ? tcaDriver_->beginPreserveHardwareState()
-                    : makeMaskProvider(tcaDriver_).begin();
-                if (!tcaBeginOk) {
-                    LOGW("TCA9554 not detected at 0x%02X", cfgData_.pcfAddress);
-                    tcaDriver_ = nullptr;
-                    continue;
-                }
-            }
-            driver = allocTcaBitDriver_(s.outDef.id, tcaDriver_, channel, s.outDef.activeHigh);
+            driver = allocTcaBitDriver_(s.outDef.id, static_cast<Tca9554Driver*>(tca), channel, effectiveActiveHigh);
         } else if (usesMcpOut) {
-            if (needPcfOutput) {
-                LOGW("Digital output %s uses MCP23017 but PCF8574 outputs are also configured; mixed expanders not supported", s.endpointId);
+            Mcp23017Driver* mcp = beginMcpExpander_(s.expanderId);
+            if (!mcp) {
+                LOGW("Digital output %s requires MCP23017 expander=%u but it is unavailable",
+                     s.endpointId,
+                     (unsigned)s.expanderId);
                 continue;
             }
-            if (mcpProbeFailed) {
-                LOGW("Digital output %s requires MCP23017 but expander is unavailable", s.endpointId);
-                continue;
-            }
-            if (!cfgData_.mcp23017Enabled) {
-                LOGW("Digital output %s requires MCP23017 but module is disabled", s.endpointId);
-                continue;
-            }
-            if (!mcpDriver_) {
-                mcpDriver_ = allocMcpDriver_("mcp23017", &i2cBus_, cfgData_.mcp23017Address);
-                if (!mcpDriver_) {
-                    LOGW("MCP23017 pool exhausted");
-                    continue;
-                }
-                if (!mcpDriver_->begin()) {
-                    LOGW("MCP23017 not detected at 0x%02X", cfgData_.mcp23017Address);
-                    mcpDriver_ = nullptr;
-                    mcpProbeFailed = true;
-                    continue;
-                }
-            }
-            driver = allocMcpBitDriver_(s.outDef.id, mcpDriver_, channel, s.outDef.activeHigh);
+            driver = allocMcpBitDriver_(s.outDef.id, mcp, channel, effectiveActiveHigh, true);
         } else {
-            driver = allocGpioDriver_(s.outDef.id, pin, true, s.outDef.activeHigh);
+            driver = allocGpioDriver_(s.outDef.id, pin, true, effectiveActiveHigh);
         }
         if (!driver) continue;
 
@@ -2698,7 +3020,13 @@ bool IOModule::configureRuntime_()
             &s
         ));
         if (!s.endpoint) continue;
-        registry_.add(s.endpoint);
+        if (!registry_.add(s.endpoint)) {
+            LOGE("I/O registry full while adding digital output id=%s count=%u capacity=%u",
+                 s.endpointId,
+                 (unsigned)registry_.count(),
+                 (unsigned)IO_REGISTRY_MAX_ENDPOINTS);
+            return false;
+        }
 
         bool actualOn = s.outDef.initialOn;
         const bool preserveStartup =
@@ -2754,9 +3082,21 @@ bool IOModule::configureRuntime_()
         LOGI("INA226 probe 0x%02X: %s", cfgData_.ina226Address, present ? "found" : "not found");
     }
 
-    if (needTcaOutput && !needPcfOutput && cfgData_.pcfEnabled) {
-        const bool present = i2cBus_.probe(cfgData_.pcfAddress);
-        LOGI("TCA9554 probe 0x%02X: %s", cfgData_.pcfAddress, present ? "found" : "not found");
+    if (needPcfOutput || needTcaOutput || needMcpInput || needMcpOutput) {
+        for (uint8_t expIdx = 0; expIdx < IO_MAX_EXPANDERS; ++expIdx) {
+            const IOExpanderSpec* spec = expanderSpec_(expIdx);
+            if (!spec || !expanderUsable_(spec->expanderId)) continue;
+            const uint8_t address = expanderAddress_(spec->expanderId);
+            const bool present = i2cBus_.probe(address);
+            const char* name = (spec->kind == IO_EXPANDER_KIND_TCA9554) ? "TCA9554" :
+                               (spec->kind == IO_EXPANDER_KIND_PCF8574) ? "PCF8574" :
+                               (spec->kind == IO_EXPANDER_KIND_MCP23017) ? "MCP23017" : "expander";
+            LOGI("%s probe expander=%u addr=0x%02X: %s",
+                 name,
+                 (unsigned)spec->expanderId,
+                 address,
+                 present ? "found" : "not found");
+        }
     }
 
     if (needAnalogSource[IO_SRC_ADS_INTERNAL_SINGLE]) {
@@ -2912,52 +3252,52 @@ bool IOModule::configureRuntime_()
         if (expanderUsedByDigitalOutputs) {
             LOGI("Status LED mask disabled: expander is mapped to digital outputs");
         } else {
-        IMaskOutputDriver* driver = nullptr;
-        if (needTcaOutput && !needPcfOutput) {
-            driver = tcaDriver_ ? static_cast<IMaskOutputDriver*>(tcaDriver_)
-                                : allocTcaDriver_("tca9554_led", &i2cBus_, cfgData_.pcfAddress);
-            if (driver && !tcaDriver_) {
-                tcaDriver_ = static_cast<Tca9554Driver*>(driver);
-                if (!makeMaskProvider(driver).begin()) {
-                    LOGW("TCA9554 not detected at 0x%02X", cfgData_.pcfAddress);
-                    tcaDriver_ = nullptr;
-                    driver = nullptr;
+            IMaskOutputDriver* driver = nullptr;
+            uint8_t defaultMask = cfgData_.pcfMaskDefault;
+            for (uint8_t expIdx = 0; expIdx < IO_MAX_EXPANDERS && !driver; ++expIdx) {
+                const IOExpanderSpec* spec = expanderSpec_(expIdx);
+                if (!spec) continue;
+                if (spec->kind == IO_EXPANDER_KIND_PCF8574 || spec->kind == IO_EXPANDER_KIND_TCA9554) {
+                    driver = beginMaskExpander_(spec->expanderId, spec->kind, false);
+                    if (driver) {
+                        ledMaskExpanderId_ = spec->expanderId;
+                        defaultMask = expanderMaskDefault_(spec->expanderId);
+                    }
                 }
             }
-        } else {
-            driver = pcfDriver_ ? static_cast<IMaskOutputDriver*>(pcfDriver_)
-                                : allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
-            if (driver && !pcfDriver_) {
-                pcfDriver_ = static_cast<Pcf8574Driver*>(driver);
-                if (!makeMaskProvider(driver).begin()) {
+            if (!driver && !expanders_) {
+                driver = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
+                if (driver && !makeMaskProvider(driver).begin()) {
                     LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
-                    pcfDriver_ = nullptr;
                     driver = nullptr;
                 }
             }
-        }
-        if (!driver) {
-            LOGW("%s pool exhausted",
-                 (needTcaOutput && !needPcfOutput) ? "TCA9554" : "PCF8574");
-        }
-        if (driver) {
-            ledMaskProvider_ = makeMaskProvider(driver);
-            ledMaskEp_ = allocMaskEndpoint_(
-                "status_leds_mask",
-                [](void* ctx, uint8_t mask) -> bool {
-                    return static_cast<IMaskOutputDriver*>(ctx)->writeMask(mask);
-                },
-                [](void* ctx, uint8_t* mask) -> bool {
-                    if (!mask) return false;
-                    return static_cast<IMaskOutputDriver*>(ctx)->readMask(*mask);
-                },
-                driver
-            );
-            if (ledMaskEp_) {
-                registry_.add(ledMaskEp_);
-                setLedMask_(cfgData_.pcfMaskDefault, millis());
+            if (!driver) {
+                LOGW("Status LED mask expander unavailable");
             }
-        }
+            if (driver) {
+                ledMaskProvider_ = makeMaskProvider(driver);
+                ledMaskEp_ = allocMaskEndpoint_(
+                    "status_leds_mask",
+                    [](void* ctx, uint8_t mask) -> bool {
+                        return static_cast<IMaskOutputDriver*>(ctx)->writeMask(mask);
+                    },
+                    [](void* ctx, uint8_t* mask) -> bool {
+                        if (!mask) return false;
+                        return static_cast<IMaskOutputDriver*>(ctx)->readMask(*mask);
+                    },
+                    driver
+                );
+                if (ledMaskEp_) {
+                    if (!registry_.add(ledMaskEp_)) {
+                        LOGE("I/O registry full while adding status LED mask count=%u capacity=%u",
+                             (unsigned)registry_.count(),
+                             (unsigned)IO_REGISTRY_MAX_ENDPOINTS);
+                        return false;
+                    }
+                    setLedMask_(defaultMask, millis());
+                }
+            }
         }
     }
 
@@ -3141,33 +3481,103 @@ IDigitalPinDriver* IOModule::allocTcaBitDriver_(const char* driverId, Tca9554Dri
     return new (mem) Tca9554BitDriver(driverId, parent, bit, activeHigh);
 }
 
-IDigitalPinDriver* IOModule::allocMcpBitDriver_(const char* driverId, Mcp23017Driver* parent, uint8_t bit, bool activeHigh)
+IDigitalPinDriver* IOModule::allocMcpBitDriver_(const char* driverId,
+                                                Mcp23017Driver* parent,
+                                                uint8_t bit,
+                                                bool activeHigh,
+                                                bool output,
+                                                uint8_t inputPullMode)
 {
-    if (mcpBitDriverPoolUsed_ >= MAX_DIGITAL_OUTPUTS) return nullptr;
+    if (mcpBitDriverPoolUsed_ >= MAX_DIGITAL_SLOTS) return nullptr;
     void* mem = heap_caps_malloc(sizeof(Mcp23017BitDriver), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!mem) mem = heap_caps_malloc(sizeof(Mcp23017BitDriver), MALLOC_CAP_8BIT);
     if (!mem) return nullptr;
     ++mcpBitDriverPoolUsed_;
-    return new (mem) Mcp23017BitDriver(driverId, parent, bit, activeHigh);
+    return new (mem) Mcp23017BitDriver(driverId, parent, bit, activeHigh, output, inputPullMode);
+}
+
+IMaskOutputDriver* IOModule::beginMaskExpander_(IOExpanderId expanderId, uint8_t expectedKind, bool preserveHardwareState)
+{
+    if (expanderId >= IO_MAX_EXPANDERS) return nullptr;
+    const IOExpanderSpec* spec = expanderSpec_(expanderId);
+    if (!spec || spec->kind != expectedKind) return nullptr;
+    if (!expanderUsable_(expanderId)) return nullptr;
+
+    RuntimeExpander& rt = runtimeExpanders_[expanderId];
+    rt.spec = spec;
+    if (rt.beginAttempted) {
+        if (!rt.beginOk) return nullptr;
+        if (expectedKind == IO_EXPANDER_KIND_PCF8574) return rt.pcf;
+        if (expectedKind == IO_EXPANDER_KIND_TCA9554) return rt.tca;
+        return nullptr;
+    }
+
+    rt.beginAttempted = true;
+    const uint8_t address = expanderAddress_(expanderId);
+    if (expectedKind == IO_EXPANDER_KIND_PCF8574) {
+        rt.pcf = static_cast<Pcf8574Driver*>(allocPcfDriver_("pcf8574", &i2cBus_, address));
+        if (!rt.pcf) return nullptr;
+        rt.beginOk = makeMaskProvider(rt.pcf).begin();
+        if (!rt.beginOk) {
+            LOGW("PCF8574 expander=%u not detected at 0x%02X", (unsigned)expanderId, address);
+            return nullptr;
+        }
+        return rt.pcf;
+    }
+    if (expectedKind == IO_EXPANDER_KIND_TCA9554) {
+        rt.tca = static_cast<Tca9554Driver*>(allocTcaDriver_("tca9554", &i2cBus_, address));
+        if (!rt.tca) return nullptr;
+        rt.beginOk = preserveHardwareState ? rt.tca->beginPreserveHardwareState()
+                                           : makeMaskProvider(rt.tca).begin();
+        if (!rt.beginOk) {
+            LOGW("TCA9554 expander=%u not detected at 0x%02X", (unsigned)expanderId, address);
+            return nullptr;
+        }
+        return rt.tca;
+    }
+    return nullptr;
+}
+
+Mcp23017Driver* IOModule::beginMcpExpander_(IOExpanderId expanderId)
+{
+    if (expanderId >= IO_MAX_EXPANDERS) return nullptr;
+    const IOExpanderSpec* spec = expanderSpec_(expanderId);
+    if (!spec || spec->kind != IO_EXPANDER_KIND_MCP23017) return nullptr;
+    if (!expanderUsable_(expanderId)) return nullptr;
+
+    RuntimeExpander& rt = runtimeExpanders_[expanderId];
+    rt.spec = spec;
+    if (rt.beginAttempted) return rt.beginOk ? rt.mcp : nullptr;
+
+    rt.beginAttempted = true;
+    const uint8_t address = expanderAddress_(expanderId);
+    rt.mcp = allocMcpDriver_("mcp23017", &i2cBus_, address);
+    if (!rt.mcp) return nullptr;
+    rt.beginOk = rt.mcp->begin();
+    if (!rt.beginOk) {
+        LOGW("MCP23017 expander=%u not detected at 0x%02X", (unsigned)expanderId, address);
+        return nullptr;
+    }
+    return rt.mcp;
 }
 
 IMaskOutputDriver* IOModule::allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address)
 {
-    if (pcfDriverPoolUsed_ >= 1) return nullptr;
+    if (pcfDriverPoolUsed_ >= IO_MAX_EXPANDERS) return nullptr;
     void* mem = pcfDriverPool_[pcfDriverPoolUsed_++];
     return new (mem) Pcf8574Driver(driverId, bus, address);
 }
 
 IMaskOutputDriver* IOModule::allocTcaDriver_(const char* driverId, I2CBus* bus, uint8_t address)
 {
-    if (tcaDriverPoolUsed_ >= 1) return nullptr;
+    if (tcaDriverPoolUsed_ >= IO_MAX_EXPANDERS) return nullptr;
     void* mem = tcaDriverPool_[tcaDriverPoolUsed_++];
     return new (mem) Tca9554Driver(driverId, bus, address);
 }
 
 Mcp23017Driver* IOModule::allocMcpDriver_(const char* driverId, I2CBus* bus, uint8_t address)
 {
-    if (mcpDriverPoolUsed_ >= 1) return nullptr;
+    if (mcpDriverPoolUsed_ >= IO_MAX_EXPANDERS) return nullptr;
     void* mem = mcpDriverPool_[mcpDriverPoolUsed_++];
     return new (mem) Mcp23017Driver(driverId, bus, address);
 }
@@ -3217,7 +3627,7 @@ bool IOModule::endpointIndexFromId_(const char* id, uint8_t& idxOut) const
 void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
 {
     constexpr uint8_t kCfgModuleId = (uint8_t)ConfigModuleId::Io;
-    if (!ensureScalableStorage_()) return;
+    if (!ensureScalableStorage_() || !ensureConfigDescriptorStorage_()) return;
 
     cfgStore_ = &cfg;
     cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
@@ -3260,105 +3670,54 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(pcfActiveLowVar_, kCfgModuleId, kCfgBranchIoPcf857x);
     cfg.registerVar(mcp23017EnabledVar_, kCfgModuleId, kCfgBranchIoMcp23017);
     cfg.registerVar(mcp23017AddressVar_, kCfgModuleId, kCfgBranchIoMcp23017);
+#define FLOW_IO_REGISTER_EXPANDER_CFG(INDEX, BRANCH) \
+    cfg.registerVar(exp##INDEX##EnabledVar_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(exp##INDEX##AddressVar_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(exp##INDEX##MaskDefaultVar_, kCfgModuleId, BRANCH); \
+    cfg.registerVar(exp##INDEX##ActiveLowVar_, kCfgModuleId, BRANCH);
+    FLOW_IO_REGISTER_EXPANDER_CFG(0, kCfgBranchIoExp0)
+    FLOW_IO_REGISTER_EXPANDER_CFG(1, kCfgBranchIoExp1)
+    FLOW_IO_REGISTER_EXPANDER_CFG(2, kCfgBranchIoExp2)
+    FLOW_IO_REGISTER_EXPANDER_CFG(3, kCfgBranchIoExp3)
+#undef FLOW_IO_REGISTER_EXPANDER_CFG
     cfg.registerVar(traceEnabledVar_, kCfgModuleId, kCfgBranchIoDebug);
     cfg.registerVar(tracePeriodVar_, kCfgModuleId, kCfgBranchIoDebug);
 
-#define FLOW_IO_REGISTER_ANALOG_CFG(INDEX, BRANCH) \
-    cfg.registerVar(a##INDEX##NameVar_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(a##INDEX##BindingVar_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(a##INDEX##C0Var_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(a##INDEX##C1Var_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(a##INDEX##PrecVar_, kCfgModuleId, BRANCH);
-    FLOW_IO_REGISTER_ANALOG_CFG(0, kCfgBranchIoA0)
-    FLOW_IO_REGISTER_ANALOG_CFG(1, kCfgBranchIoA1)
-    FLOW_IO_REGISTER_ANALOG_CFG(2, kCfgBranchIoA2)
-    FLOW_IO_REGISTER_ANALOG_CFG(3, kCfgBranchIoA3)
-    FLOW_IO_REGISTER_ANALOG_CFG(4, kCfgBranchIoA4)
-    FLOW_IO_REGISTER_ANALOG_CFG(5, kCfgBranchIoA5)
-#undef FLOW_IO_REGISTER_ANALOG_CFG
-
-    if (ensureExtraAnalogCfgVars_()) {
-        for (uint8_t i = ExtraAnalogConfigVars::FIRST_SLOT; i < ANALOG_CFG_SLOTS; ++i) {
-            if (i >= (ExtraAnalogConfigVars::FIRST_SLOT + ExtraAnalogConfigVars::SLOT_COUNT)) break;
-            ExtraAnalogConfigVars::SlotVars& vars = extraAnalogCfgVars_->slots[i - ExtraAnalogConfigVars::FIRST_SLOT];
-            const uint8_t branch = analogCfgBranch_(i);
-            cfg.registerVar(vars.nameVar_, kCfgModuleId, branch);
-            cfg.registerVar(vars.bindingVar_, kCfgModuleId, branch);
-            cfg.registerVar(vars.c0Var_, kCfgModuleId, branch);
-            cfg.registerVar(vars.c1Var_, kCfgModuleId, branch);
-            cfg.registerVar(vars.precVar_, kCfgModuleId, branch);
-        }
-    } else {
-        LOGE("failed to allocate extra analog config vars");
+    for (uint8_t i = 0; i < ANALOG_CFG_SLOTS; ++i) {
+        IOConfigDescriptorStorage::AnalogSlot& vars = configDescriptors_->analog[i];
+        const uint8_t branch = analogCfgBranch_(i);
+        cfg.registerVar(vars.nameVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.bindingVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.c0Var, kCfgModuleId, branch);
+        cfg.registerVar(vars.c1Var, kCfgModuleId, branch);
+        cfg.registerVar(vars.precisionVar, kCfgModuleId, branch);
     }
 
-    cfg.registerVar(i0NameVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0BindingVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0ActiveHighVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PullModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0EdgeModeVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0C0Var_, kCfgModuleId, kCfgBranchIoI0); cfg.registerVar(i0PrecVar_, kCfgModuleId, kCfgBranchIoI0);
-    cfg.registerVar(i1NameVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1BindingVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1ActiveHighVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PullModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1EdgeModeVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1C0Var_, kCfgModuleId, kCfgBranchIoI1); cfg.registerVar(i1PrecVar_, kCfgModuleId, kCfgBranchIoI1);
-    cfg.registerVar(i2NameVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2BindingVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2ActiveHighVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PullModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2EdgeModeVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2C0Var_, kCfgModuleId, kCfgBranchIoI2); cfg.registerVar(i2PrecVar_, kCfgModuleId, kCfgBranchIoI2);
-    cfg.registerVar(i3NameVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3BindingVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3ActiveHighVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PullModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3EdgeModeVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3C0Var_, kCfgModuleId, kCfgBranchIoI3); cfg.registerVar(i3PrecVar_, kCfgModuleId, kCfgBranchIoI3);
-    cfg.registerVar(i4NameVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4BindingVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4ActiveHighVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PullModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4EdgeModeVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4C0Var_, kCfgModuleId, kCfgBranchIoI4); cfg.registerVar(i4PrecVar_, kCfgModuleId, kCfgBranchIoI4);
-    if (DIGITAL_INPUT_CFG_SLOTS > 5U) { cfg.registerVar(i5NameVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5BindingVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5ActiveHighVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5PullModeVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5EdgeModeVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5C0Var_, kCfgModuleId, kCfgBranchIoI5); cfg.registerVar(i5PrecVar_, kCfgModuleId, kCfgBranchIoI5); }
-    if (DIGITAL_INPUT_CFG_SLOTS > 6U) { cfg.registerVar(i6NameVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6BindingVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6ActiveHighVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6PullModeVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6EdgeModeVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6C0Var_, kCfgModuleId, kCfgBranchIoI6); cfg.registerVar(i6PrecVar_, kCfgModuleId, kCfgBranchIoI6); }
-    if (DIGITAL_INPUT_CFG_SLOTS > 7U) { cfg.registerVar(i7NameVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7BindingVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7ActiveHighVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7PullModeVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7EdgeModeVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7CounterDebounceVar_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7C0Var_, kCfgModuleId, kCfgBranchIoI7); cfg.registerVar(i7PrecVar_, kCfgModuleId, kCfgBranchIoI7); }
-
-    if (ensureDigitalInputModeCfgVars_()) {
-        ExtraDigitalInputModeConfigVars& modes = *extraDigitalInputModeCfgVars_;
-        cfg.registerVar(modes.i0ModeVar_, kCfgModuleId, kCfgBranchIoI0);
-        cfg.registerVar(modes.i1ModeVar_, kCfgModuleId, kCfgBranchIoI1);
-        cfg.registerVar(modes.i2ModeVar_, kCfgModuleId, kCfgBranchIoI2);
-        cfg.registerVar(modes.i3ModeVar_, kCfgModuleId, kCfgBranchIoI3);
-        cfg.registerVar(modes.i4ModeVar_, kCfgModuleId, kCfgBranchIoI4);
-        if (DIGITAL_INPUT_CFG_SLOTS > 5U) cfg.registerVar(modes.i5ModeVar_, kCfgModuleId, kCfgBranchIoI5);
-        if (DIGITAL_INPUT_CFG_SLOTS > 6U) cfg.registerVar(modes.i6ModeVar_, kCfgModuleId, kCfgBranchIoI6);
-        if (DIGITAL_INPUT_CFG_SLOTS > 7U) cfg.registerVar(modes.i7ModeVar_, kCfgModuleId, kCfgBranchIoI7);
-    } else {
-        LOGE("failed to allocate digital input mode config vars");
+    for (uint8_t i = 0; i < DIGITAL_INPUT_CFG_SLOTS; ++i) {
+        IOConfigDescriptorStorage::DigitalInputSlot& vars = configDescriptors_->digitalInputs[i];
+        const uint8_t branch = digitalInputCfgBranch_(i);
+        cfg.registerVar(vars.nameVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.bindingVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.activeHighVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.pullModeVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.edgeModeVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.counterDebounceVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.c0Var, kCfgModuleId, branch);
+        cfg.registerVar(vars.precisionVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.modeVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.counterTotalVar, kCfgModuleId, branch);
     }
 
-    if (ensureDigitalCounterCfgVars_()) {
-        ExtraDigitalCounterConfigVars& totals = *extraDigitalCounterCfgVars_;
-        cfg.registerVar(totals.i0TotalVar_, kCfgModuleId, kCfgBranchIoI0);
-        cfg.registerVar(totals.i1TotalVar_, kCfgModuleId, kCfgBranchIoI1);
-        cfg.registerVar(totals.i2TotalVar_, kCfgModuleId, kCfgBranchIoI2);
-        cfg.registerVar(totals.i3TotalVar_, kCfgModuleId, kCfgBranchIoI3);
-        cfg.registerVar(totals.i4TotalVar_, kCfgModuleId, kCfgBranchIoI4);
-        if (DIGITAL_INPUT_CFG_SLOTS > 5U) cfg.registerVar(totals.i5TotalVar_, kCfgModuleId, kCfgBranchIoI5);
-        if (DIGITAL_INPUT_CFG_SLOTS > 6U) cfg.registerVar(totals.i6TotalVar_, kCfgModuleId, kCfgBranchIoI6);
-        if (DIGITAL_INPUT_CFG_SLOTS > 7U) cfg.registerVar(totals.i7TotalVar_, kCfgModuleId, kCfgBranchIoI7);
-    } else {
-        LOGE("failed to allocate digital counter config vars");
-    }
-
-    cfg.registerVar(d0NameVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0BindingVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0ActiveHighVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0InitialOnVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0RetainWarmVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0MomentaryVar_, kCfgModuleId, kCfgBranchIoD0); cfg.registerVar(d0PulseVar_, kCfgModuleId, kCfgBranchIoD0);
-    cfg.registerVar(d1NameVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1BindingVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1ActiveHighVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1InitialOnVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1RetainWarmVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1MomentaryVar_, kCfgModuleId, kCfgBranchIoD1); cfg.registerVar(d1PulseVar_, kCfgModuleId, kCfgBranchIoD1);
-    cfg.registerVar(d2NameVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2BindingVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2ActiveHighVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2InitialOnVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2RetainWarmVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2MomentaryVar_, kCfgModuleId, kCfgBranchIoD2); cfg.registerVar(d2PulseVar_, kCfgModuleId, kCfgBranchIoD2);
-    cfg.registerVar(d3NameVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3BindingVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3ActiveHighVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3InitialOnVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3RetainWarmVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3MomentaryVar_, kCfgModuleId, kCfgBranchIoD3); cfg.registerVar(d3PulseVar_, kCfgModuleId, kCfgBranchIoD3);
-    cfg.registerVar(d4NameVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4BindingVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4ActiveHighVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4InitialOnVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4RetainWarmVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4MomentaryVar_, kCfgModuleId, kCfgBranchIoD4); cfg.registerVar(d4PulseVar_, kCfgModuleId, kCfgBranchIoD4);
-    cfg.registerVar(d5NameVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5BindingVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5ActiveHighVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5InitialOnVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5RetainWarmVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5MomentaryVar_, kCfgModuleId, kCfgBranchIoD5); cfg.registerVar(d5PulseVar_, kCfgModuleId, kCfgBranchIoD5);
-    cfg.registerVar(d6NameVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6BindingVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6ActiveHighVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6InitialOnVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6RetainWarmVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6MomentaryVar_, kCfgModuleId, kCfgBranchIoD6); cfg.registerVar(d6PulseVar_, kCfgModuleId, kCfgBranchIoD6);
-    cfg.registerVar(d7NameVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7BindingVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7ActiveHighVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7InitialOnVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7RetainWarmVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7MomentaryVar_, kCfgModuleId, kCfgBranchIoD7); cfg.registerVar(d7PulseVar_, kCfgModuleId, kCfgBranchIoD7);
-
-    if (ensureExtraDigitalOutputCfgVars_()) {
-        ExtraDigitalOutputConfigVars& extra = *extraDigitalOutputCfgVars_;
-#define FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(INDEX, BRANCH) \
-        cfg.registerVar(extra.d##INDEX##NameVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##BindingVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##ActiveHighVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##InitialOnVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##RetainWarmVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##MomentaryVar_, kCfgModuleId, BRANCH); \
-        cfg.registerVar(extra.d##INDEX##PulseVar_, kCfgModuleId, BRANCH);
-        if (DIGITAL_CFG_SLOTS > 8U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(8, kCfgBranchIoD8) }
-        if (DIGITAL_CFG_SLOTS > 9U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(9, kCfgBranchIoD9) }
-        if (DIGITAL_CFG_SLOTS > 10U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(10, kCfgBranchIoD10) }
-        if (DIGITAL_CFG_SLOTS > 11U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(11, kCfgBranchIoD11) }
-        if (DIGITAL_CFG_SLOTS > 12U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(12, kCfgBranchIoD12) }
-        if (DIGITAL_CFG_SLOTS > 13U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(13, kCfgBranchIoD13) }
-        if (DIGITAL_CFG_SLOTS > 14U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(14, kCfgBranchIoD14) }
-        if (DIGITAL_CFG_SLOTS > 15U) { FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG(15, kCfgBranchIoD15) }
-#undef FLOW_IO_REGISTER_EXTRA_DIGITAL_OUTPUT_CFG
-    } else {
-        LOGE("failed to allocate extra digital output config vars");
+    for (uint8_t i = 0; i < DIGITAL_CFG_SLOTS; ++i) {
+        IOConfigDescriptorStorage::DigitalOutputSlot& vars = configDescriptors_->digitalOutputs[i];
+        const uint8_t branch = digitalOutputCfgBranch_(i);
+        cfg.registerVar(vars.nameVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.bindingVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.activeHighVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.initialOnVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.retainWarmVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.momentaryVar, kCfgModuleId, branch);
+        cfg.registerVar(vars.pulseVar, kCfgModuleId, branch);
     }
 
     LOGI("I/O config registered");
@@ -3388,6 +3747,30 @@ void IOModule::onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services)
     }
     for (uint8_t i = 0; i < DIGITAL_CFG_SLOTS; ++i) {
         digitalCfg_[i].bindingPort = normalizeConfiguredBindingPort(digitalCfg_[i].bindingPort);
+    }
+    Preferences prefs;
+    if (prefs.begin(NvsKeys::StorageNamespace, true)) {
+        if (const IOExpanderSpec* exp0 = expanderSpec_(0)) {
+            if ((exp0->kind == IO_EXPANDER_KIND_PCF8574 || exp0->kind == IO_EXPANDER_KIND_TCA9554) &&
+                !prefs.isKey(NvsKeys::Io::IO_X0AD) &&
+                prefs.isKey(NvsKeys::Io::IO_PCFAD)) {
+                expanderCfg_[0].enabled = cfgData_.pcfEnabled;
+                expanderCfg_[0].address = cfgData_.pcfAddress;
+                expanderCfg_[0].maskDefault = cfgData_.pcfMaskDefault;
+                expanderCfg_[0].activeLow = cfgData_.pcfActiveLow;
+                LOGI("io.expander00 using legacy pcf857x config addr=0x%02X", expanderCfg_[0].address);
+            }
+        }
+        if (const IOExpanderSpec* exp1 = expanderSpec_(1)) {
+            if (exp1->kind == IO_EXPANDER_KIND_MCP23017 &&
+                !prefs.isKey(NvsKeys::Io::IO_X1AD) &&
+                prefs.isKey(NvsKeys::Io::IO_MCPAD)) {
+                expanderCfg_[1].enabled = cfgData_.mcp23017Enabled;
+                expanderCfg_[1].address = cfgData_.mcp23017Address;
+                LOGI("io.expander01 using legacy mcp23017 config addr=0x%02X", expanderCfg_[1].address);
+            }
+        }
+        prefs.end();
     }
     const bool sdaValid = (cfgData_.i2cSda >= 0) && digitalPinIsValid((uint8_t)cfgData_.i2cSda);
     const bool sclValid = (cfgData_.i2cScl >= 0) && digitalPinIsValid((uint8_t)cfgData_.i2cScl);
