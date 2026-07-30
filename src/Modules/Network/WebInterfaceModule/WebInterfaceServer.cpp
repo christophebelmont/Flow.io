@@ -43,7 +43,6 @@
 #include <WiFi.h>
 #include <ETH.h>
 #include <ArduinoJson.h>
-#include <HTTPClient.h>
 #include <SPIFFS.h>
 #include <FS.h>
 #include <esp_heap_caps.h>
@@ -626,189 +625,96 @@ static uint16_t summarizeConfigPatch_(const char* patchJson, char* modulesOut, s
     return fieldCount;
 }
 
-struct FirmwareManifestChunkState {
-    static constexpr size_t kUrlLen = 192U;
-    static constexpr size_t kPrefixLen = 384U;
+const char* firmwareManifestCheckStateName_(FirmwareManifestCheckState state)
+{
+    switch (state) {
+        case FirmwareManifestCheckState::Idle: return "idle";
+        case FirmwareManifestCheckState::Queued: return "queued";
+        case FirmwareManifestCheckState::Downloading: return "downloading";
+        case FirmwareManifestCheckState::Ready: return "ready";
+        case FirmwareManifestCheckState::Error: return "error";
+        default: return "unknown";
+    }
+}
 
-    ~FirmwareManifestChunkState()
+struct FirmwareManifestResponseChunkState {
+    static constexpr size_t kPrefixReserve = 512U;
+
+    ~FirmwareManifestResponseChunkState()
     {
-        http.end();
+        if (data) heap_caps_free(data);
     }
 
-    bool begin(const char* manifestUrl, char* errOut, size_t errOutLen)
+    bool begin(const FirmwareUpdateService* service,
+               const FirmwareManifestCheckSnapshot& snapshot)
     {
-        if (!manifestUrl || manifestUrl[0] == '\0') {
-            writeError(errOut, errOutLen, "manifest url missing");
+        if (!service || !service->copyManifestResult ||
+            snapshot.state != FirmwareManifestCheckState::Ready ||
+            snapshot.payloadLen == 0U) {
             return false;
         }
 
-        char safeUrl[kUrlLen] = {0};
+        char safeUrl[sizeof(snapshot.manifestUrl)] = {0};
         char current[48] = {0};
-        snprintf(safeUrl, sizeof(safeUrl), "%s", manifestUrl);
+        snprintf(safeUrl, sizeof(safeUrl), "%s", snapshot.manifestUrl);
         snprintf(current, sizeof(current), "%s", FirmwareVersion::Full);
         sanitizeJsonString_(safeUrl);
         sanitizeJsonString_(current);
 
-        const int prefixWritten = snprintf(prefix,
-                                           sizeof(prefix),
-                                           "{\"ok\":true,\"manifest_url\":\"%s\",\"current\":{\"flowios3\":\"%s\",\"esp32s3\":\"%s\",\"waveshare\":\"%s\"},\"manifest\":",
-                                           safeUrl,
-                                           current,
-                                           current,
-                                           current);
-        if (prefixWritten <= 0 || (size_t)prefixWritten >= sizeof(prefix)) {
-            writeError(errOut, errOutLen, "manifest prefix too long");
-            return false;
-        }
-        prefixLen = (size_t)prefixWritten;
+        capacity = kPrefixReserve + snapshot.payloadLen + 2U;
+#if defined(FLOW_PROFILE_WAVESHARE)
+        data = static_cast<char*>(
+            heap_caps_malloc(capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        );
+#else
+        data = static_cast<char*>(heap_caps_malloc(capacity, MALLOC_CAP_8BIT));
+#endif
+        if (!data) return false;
 
-        http.setReuse(false);
-        http.setConnectTimeout(Limits::FirmwareUpdate::Http::ConnectTimeoutMs);
-        http.setTimeout(Limits::FirmwareUpdate::Http::RequestTimeoutMs);
-        if (!http.begin(manifestUrl)) {
-            LOGE("HTTP begin failed resource=manifest url=%s", manifestUrl);
-            writeError(errOut, errOutLen, "serveur HTTP injoignable");
-            return false;
-        }
+        const int prefixWritten =
+            snprintf(data,
+                     kPrefixReserve,
+                     "{\"ok\":true,\"request_id\":%lu,\"state\":\"ready\","
+                     "\"manifest_url\":\"%s\",\"current\":{\"flowios3\":\"%s\","
+                     "\"esp32s3\":\"%s\",\"waveshare\":\"%s\"},\"manifest\":",
+                     (unsigned long)snapshot.requestId,
+                     safeUrl,
+                     current,
+                     current,
+                     current);
+        if (prefixWritten <= 0 || (size_t)prefixWritten >= kPrefixReserve) return false;
 
-        const int code = http.GET();
-        if (code != HTTP_CODE_OK) {
-            writeHttpCodeError(manifestUrl, code, errOut, errOutLen);
-            http.end();
-            return false;
-        }
-
-        remaining = http.getSize();
-        if (remaining == 0) {
-            writeError(errOut, errOutLen, "manifest empty");
-            http.end();
+        const size_t prefixLen = (size_t)prefixWritten;
+        size_t copiedLen = 0U;
+        if (!service->copyManifestResult(service->ctx,
+                                         snapshot.requestId,
+                                         data + prefixLen,
+                                         capacity - prefixLen,
+                                         &copiedLen) ||
+            copiedLen != snapshot.payloadLen) {
             return false;
         }
 
-        stream = http.getStreamPtr();
-        if (!stream) {
-            writeError(errOut, errOutLen, "manifest stream unavailable");
-            http.end();
-            return false;
-        }
-        lastReadMs = millis();
+        length = prefixLen + copiedLen;
+        data[length++] = '}';
+        data[length] = '\0';
         return true;
     }
 
     size_t fill(uint8_t* buffer, size_t maxLen)
     {
-        if (!buffer || maxLen == 0U) return 0U;
-        if (suffixDone) return 0U;
-
-        size_t written = 0U;
-        copyStatic(prefix, prefixLen, prefixPos, buffer, maxLen, written);
-        if (written >= maxLen) return written;
-
-        while (!manifestDone && written < maxLen) {
-            if (!stream) {
-                manifestDone = true;
-                break;
-            }
-
-            const int available = stream->available();
-            if (available <= 0) {
-                if (remaining == 0) {
-                    manifestDone = true;
-                    break;
-                }
-                if (!http.connected()) {
-                    manifestDone = true;
-                    break;
-                }
-                if ((millis() - lastReadMs) > Limits::FirmwareUpdate::Http::StreamReadTimeoutMs) {
-                    manifestDone = true;
-                    break;
-                }
-                return written > 0U ? written : RESPONSE_TRY_AGAIN;
-            }
-
-            size_t wanted = maxLen - written;
-            if (remaining > 0 && wanted > (size_t)remaining) wanted = (size_t)remaining;
-            if (wanted > (size_t)available) wanted = (size_t)available;
-            if (wanted == 0U) {
-                manifestDone = true;
-                break;
-            }
-
-            const size_t got = stream->readBytes(buffer + written, wanted);
-            if (got == 0U) {
-                return written > 0U ? written : RESPONSE_TRY_AGAIN;
-            }
-            written += got;
-            manifestBytes += got;
-            lastReadMs = millis();
-            if (remaining > 0) {
-                remaining -= (int32_t)got;
-                if (remaining <= 0) manifestDone = true;
-            }
-        }
-
-        if (manifestDone && manifestBytes == 0U) {
-            copyStatic("null", 4U, nullPos, buffer, maxLen, written);
-            if (written >= maxLen) return written;
-        }
-
-        if (manifestDone) {
-            copyStatic("}", 1U, suffixPos, buffer, maxLen, written);
-            if (suffixPos >= 1U) suffixDone = true;
-        }
-        return written;
+        if (!buffer || maxLen == 0U || !data || position >= length) return 0U;
+        const size_t remaining = length - position;
+        const size_t count = (remaining < maxLen) ? remaining : maxLen;
+        memcpy(buffer, data + position, count);
+        position += count;
+        return count;
     }
 
-    HTTPClient http;
-    Stream* stream = nullptr;
-    int32_t remaining = -1;
-    uint32_t lastReadMs = 0U;
-    char prefix[kPrefixLen] = {0};
-    size_t prefixLen = 0U;
-    size_t prefixPos = 0U;
-    size_t nullPos = 0U;
-    size_t suffixPos = 0U;
-    size_t manifestBytes = 0U;
-    bool manifestDone = false;
-    bool suffixDone = false;
-
-private:
-    static void writeError(char* out, size_t outLen, const char* msg)
-    {
-        if (!out || outLen == 0U) return;
-        snprintf(out, outLen, "%s", msg ? msg : "failed");
-    }
-
-    static void writeHttpCodeError(const char* url, int code, char* errOut, size_t errOutLen)
-    {
-        char msg[96] = {0};
-        if (code == 404) {
-            snprintf(msg, sizeof(msg), "manifest introuvable (404)");
-        } else if (code < 0) {
-            snprintf(msg, sizeof(msg), "serveur HTTP injoignable");
-        } else {
-            snprintf(msg, sizeof(msg), "erreur HTTP %d", code);
-        }
-        LOGE("HTTP request failed resource=manifest code=%d url=%s", code, url ? url : "-");
-        writeError(errOut, errOutLen, msg);
-    }
-
-    static void copyStatic(const char* src,
-                           size_t srcLen,
-                           size_t& pos,
-                           uint8_t* dest,
-                           size_t destLen,
-                           size_t& written)
-    {
-        if (!src || pos >= srcLen || written >= destLen) return;
-        const size_t room = destLen - written;
-        const size_t left = srcLen - pos;
-        const size_t count = left < room ? left : room;
-        memcpy(dest + written, src + pos, count);
-        written += count;
-        pos += count;
-    }
+    char* data = nullptr;
+    size_t capacity = 0U;
+    size_t length = 0U;
+    size_t position = 0U;
 };
 
 const char* httpMethodName_(uint32_t method);
@@ -4300,7 +4206,24 @@ static const char kWebInterfaceFallbackPage[] PROGMEM = R"HTML(
   async function checkManifest() {
     setBusy(true);
     try {
-      const out = await api("/api/fwupdate/check");
+      const started = await api("/api/fwupdate/check", { method: "POST" });
+      const requestId = Number(started && started.request_id);
+      if (!Number.isFinite(requestId) || requestId <= 0) {
+        throw new Error("identifiant de vérification invalide");
+      }
+      const deadline = Date.now() + 85000;
+      let out = null;
+      while (Date.now() < deadline) {
+        out = await api("/api/fwupdate/check?request_id=" + encodeURIComponent(String(requestId)));
+        if (out && out.state === "ready") break;
+        if (!out || (out.state !== "queued" && out.state !== "downloading")) {
+          throw new Error("état de vérification inattendu");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      if (!out || out.state !== "ready") {
+        throw new Error("délai de vérification du manifest dépassé");
+      }
       put(fwCfgMsg, out, "ok");
     } catch (e) {
       put(fwCfgMsg, e.message, "bad");
@@ -5961,27 +5884,32 @@ void WebInterfaceModule::startServer_()
         request->send(200, "application/json", out);
     });
 
-    server_.on("/api/fwupdate/check", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    server_.on("/api/fwupdate/check", HTTP_POST, [this](AsyncWebServerRequest* request) {
         HttpLatencyScope latency(request, "/api/fwupdate/check");
         if (!fwUpdateSvc_ && services_) {
             fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
         }
-        if (!fwUpdateSvc_ || !fwUpdateSvc_->manifestUrl) {
+        if (!fwUpdateSvc_ || !fwUpdateSvc_->startManifestCheck) {
             request->send(503, "application/json",
                           "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"fwupdate.check\"}}");
             return;
         }
 
-        char url[FirmwareManifestChunkState::kUrlLen] = {0};
         char err[128] = {0};
-        if (!fwUpdateSvc_->manifestUrl(fwUpdateSvc_->ctx, url, sizeof(url), err, sizeof(err))) {
+        uint32_t requestId = 0U;
+        if (!fwUpdateSvc_->startManifestCheck(fwUpdateSvc_->ctx,
+                                              &requestId,
+                                              err,
+                                              sizeof(err))) {
             sanitizeJsonString_(err);
             char msg[320] = {0};
             const int n = snprintf(msg,
                                    sizeof(msg),
                                    "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\",\"msg\":\"%s\"}}",
                                    err[0] ? err : "failed");
-            request->send(409,
+            const int status =
+                strstr(err, "storage unavailable") ? 503 : 409;
+            request->send(status,
                           "application/json",
                           (n > 0 && (size_t)n < sizeof(msg))
                               ? msg
@@ -5989,22 +5917,97 @@ void WebInterfaceModule::startServer_()
             return;
         }
 
-        auto state = std::make_shared<FirmwareManifestChunkState>();
-        if (!state || !state->begin(url, err, sizeof(err))) {
-            sanitizeJsonString_(err);
-            char msg[320] = {0};
-            const int n = snprintf(msg,
-                                   sizeof(msg),
-                                   "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\",\"msg\":\"%s\"}}",
-                                   err[0] ? err : "failed");
-            request->send(409,
+        char out[128] = {0};
+        const int n = snprintf(out,
+                               sizeof(out),
+                               "{\"ok\":true,\"request_id\":%lu,\"state\":\"queued\"}",
+                               (unsigned long)requestId);
+        request->send((n > 0 && (size_t)n < sizeof(out)) ? 202 : 500,
+                      "application/json",
+                      (n > 0 && (size_t)n < sizeof(out))
+                          ? out
+                          : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\"}}");
+    });
+
+    server_.on("/api/fwupdate/check", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/fwupdate/check");
+        if (!fwUpdateSvc_ && services_) {
+            fwUpdateSvc_ = services_->get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
+        }
+        if (!fwUpdateSvc_ || !fwUpdateSvc_->manifestCheckStatus ||
+            !fwUpdateSvc_->copyManifestResult) {
+            request->send(503, "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"fwupdate.check\"}}");
+            return;
+        }
+
+        const int32_t requestIdRaw = requestIntParam_(request, "request_id", 0);
+        if (requestIdRaw <= 0) {
+            request->send(400,
                           "application/json",
-                          (n > 0 && (size_t)n < sizeof(msg))
-                              ? msg
+                          "{\"ok\":false,\"err\":{\"code\":\"BadRequest\",\"where\":\"fwupdate.check.request_id\"}}");
+            return;
+        }
+
+        FirmwareManifestCheckSnapshot snapshot{};
+        const uint32_t requestId = (uint32_t)requestIdRaw;
+        if (!fwUpdateSvc_->manifestCheckStatus(fwUpdateSvc_->ctx,
+                                               requestId,
+                                               &snapshot)) {
+            request->send(404,
+                          "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"NotFound\",\"where\":\"fwupdate.check.request_id\"}}");
+            return;
+        }
+
+        if (snapshot.state == FirmwareManifestCheckState::Queued ||
+            snapshot.state == FirmwareManifestCheckState::Downloading) {
+            char out[160] = {0};
+            const int n = snprintf(out,
+                                   sizeof(out),
+                                   "{\"ok\":true,\"request_id\":%lu,\"state\":\"%s\",\"ts_ms\":%lu}",
+                                   (unsigned long)snapshot.requestId,
+                                   firmwareManifestCheckStateName_(snapshot.state),
+                                   (unsigned long)snapshot.updatedAtMs);
+            request->send((n > 0 && (size_t)n < sizeof(out)) ? 202 : 500,
+                          "application/json",
+                          (n > 0 && (size_t)n < sizeof(out))
+                              ? out
                               : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\"}}");
             return;
         }
 
+        if (snapshot.state == FirmwareManifestCheckState::Error) {
+            sanitizeJsonString_(snapshot.message);
+            char out[320] = {0};
+            const int n = snprintf(out,
+                                   sizeof(out),
+                                   "{\"ok\":false,\"request_id\":%lu,\"state\":\"error\","
+                                   "\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\",\"msg\":\"%s\"}}",
+                                   (unsigned long)snapshot.requestId,
+                                   snapshot.message[0] ? snapshot.message : "failed");
+            request->send((n > 0 && (size_t)n < sizeof(out)) ? 502 : 500,
+                          "application/json",
+                          (n > 0 && (size_t)n < sizeof(out))
+                              ? out
+                              : "{\"ok\":false,\"err\":{\"code\":\"Failed\",\"where\":\"fwupdate.check\"}}");
+            return;
+        }
+
+        if (snapshot.state != FirmwareManifestCheckState::Ready) {
+            request->send(409,
+                          "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"InvalidState\",\"where\":\"fwupdate.check\"}}");
+            return;
+        }
+
+        auto state = std::make_shared<FirmwareManifestResponseChunkState>();
+        if (!state || !state->begin(fwUpdateSvc_, snapshot)) {
+            request->send(503,
+                          "application/json",
+                          "{\"ok\":false,\"err\":{\"code\":\"LowMemory\",\"where\":\"fwupdate.check.response\"}}");
+            return;
+        }
         AsyncWebServerResponse* response =
             request->beginChunkedResponse("application/json",
                                           [state](uint8_t* buffer, size_t maxLen, size_t) -> size_t {

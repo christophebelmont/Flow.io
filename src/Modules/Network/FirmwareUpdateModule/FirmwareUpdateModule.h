@@ -76,6 +76,12 @@ private:
         char msg[kMsgLen] = {0};
     };
 
+    struct ManifestCheckJob {
+        bool pending = false;
+        uint32_t requestId = 0;
+        char url[kUrlLen] = {0};
+    };
+
     struct ConfigData {
         char updateHost[64] = "";
         char updatePath[64] = "/binary";
@@ -108,6 +114,11 @@ private:
     portMUX_TYPE lock_ = portMUX_INITIALIZER_UNLOCKED;
     UpdateJob queuedJob_{};
     UpdateStatus status_{};
+    ManifestCheckJob manifestCheckJob_{};
+    FirmwareManifestCheckSnapshot manifestCheck_{};
+    char* manifestPayload_ = nullptr;
+    uint32_t nextManifestRequestId_ = 0;
+    uint8_t manifestCopyReaders_ = 0;
     bool nextionRebootQueued_ = false;
     bool busy_ = false;
     bool hmiOtaActive_ = false;
@@ -125,13 +136,21 @@ private:
     bool statusJson_(char* out, size_t outLen);
     bool isBusy_();
     bool configJson_(char* out, size_t outLen) const;
-    bool checkManifestJsonStream_(Print& out, char* errOut, size_t errOutLen);
-    bool manifestUrl_(char* out, size_t outLen, char* errOut, size_t errOutLen);
+    bool startManifestCheck_(uint32_t* requestIdOut, char* errOut, size_t errOutLen);
+    bool manifestCheckStatus_(uint32_t requestId, FirmwareManifestCheckSnapshot* out);
+    bool copyManifestResult_(uint32_t requestId,
+                             char* out,
+                             size_t outLen,
+                             size_t* copiedLenOut);
     bool setConfig_(const char* updateHost,
                     const char* updatePath,
                     char* errOut,
                     size_t errOutLen);
     bool runJob_(const UpdateJob& job);
+    bool runManifestCheck_(const ManifestCheckJob& job,
+                           size_t* payloadLenOut,
+                           char* errOut,
+                           size_t errOutLen);
     bool runWaveshareUpdate_(const char* url, char* errOut, size_t errOutLen);
     bool runNextionUpdate_(const char* url, char* errOut, size_t errOutLen);
     bool runNextionReboot_(char* errOut, size_t errOutLen);
@@ -163,8 +182,9 @@ private:
         ServiceBinding::bind<&FirmwareUpdateModule::statusJson_>,
         ServiceBinding::bind<&FirmwareUpdateModule::isBusy_>,
         ServiceBinding::bind<&FirmwareUpdateModule::configJson_>,
-        ServiceBinding::bind<&FirmwareUpdateModule::checkManifestJsonStream_>,
-        ServiceBinding::bind<&FirmwareUpdateModule::manifestUrl_>,
+        ServiceBinding::bind<&FirmwareUpdateModule::startManifestCheck_>,
+        ServiceBinding::bind<&FirmwareUpdateModule::manifestCheckStatus_>,
+        ServiceBinding::bind<&FirmwareUpdateModule::copyManifestResult_>,
         ServiceBinding::bind<&FirmwareUpdateModule::setConfig_>,
         this
     };

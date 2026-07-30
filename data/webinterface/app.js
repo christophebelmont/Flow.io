@@ -3935,7 +3935,33 @@
       try {
         setUpgradeCardsEmpty(tr('updates.checking', 'Vérification du manifest...'));
         setUpgradeMessage(tr('updates.checking', 'Vérification du manifest...'));
-        const data = await fetchOkJson('/api/fwupdate/check', { cache: 'no-store' }, 'échec vérification');
+        const started = await fetchOkJson(
+          '/api/fwupdate/check',
+          { method: 'POST', cache: 'no-store' },
+          'échec lancement vérification'
+        );
+        const requestId = Number(started && started.request_id);
+        if (!Number.isFinite(requestId) || requestId <= 0) {
+          throw new Error('identifiant de vérification invalide');
+        }
+
+        const deadlineMs = Date.now() + 85000;
+        let data = null;
+        while (Date.now() < deadlineMs) {
+          data = await fetchOkJson(
+            '/api/fwupdate/check?request_id=' + encodeURIComponent(String(requestId)),
+            { cache: 'no-store' },
+            'échec vérification'
+          );
+          if (data && data.state === 'ready') break;
+          if (!data || (data.state !== 'queued' && data.state !== 'downloading')) {
+            throw new Error('état de vérification inattendu');
+          }
+          await waitMs(400);
+        }
+        if (!data || data.state !== 'ready') {
+          throw new Error('délai de vérification du manifest dépassé');
+        }
         populateUpgradeManifestSelections(data);
         setUpgradeMessage(describeManifestUpdates(data));
       } catch (err) {

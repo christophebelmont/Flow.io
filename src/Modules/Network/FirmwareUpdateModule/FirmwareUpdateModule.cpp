@@ -12,6 +12,7 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <string.h>
+#include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 
 #include "App/BuildFlags.h"
@@ -75,6 +76,55 @@ const UartSpec& panelUartSpec_(const BoardSpec& board)
     if (!spec) spec = boardFindUart(board, "hmi");
     return spec ? *spec : kFallback;
 }
+
+bool manifestCheckIsActive_(FirmwareManifestCheckState state)
+{
+    return state == FirmwareManifestCheckState::Queued ||
+           state == FirmwareManifestCheckState::Downloading;
+}
+
+class BoundedBufferStream final : public Stream {
+public:
+    BoundedBufferStream(char* data, size_t capacity)
+        : data_(reinterpret_cast<uint8_t*>(data)), capacity_(capacity)
+    {
+    }
+
+    size_t write(uint8_t value) override
+    {
+        return write(&value, 1U);
+    }
+
+    size_t write(const uint8_t* data, size_t len) override
+    {
+        if (!data || len == 0U) return 0U;
+        const size_t room = (length_ < capacity_) ? (capacity_ - length_) : 0U;
+        const size_t count = (len < room) ? len : room;
+        if (count > 0U && data_) {
+            memcpy(data_ + length_, data, count);
+            length_ += count;
+        }
+        if (count != len) {
+            overflow_ = true;
+            setWriteError();
+        }
+        return count;
+    }
+
+    int available() override { return 0; }
+    int read() override { return -1; }
+    int peek() override { return -1; }
+    void flush() override {}
+
+    size_t length() const { return length_; }
+    bool overflowed() const { return overflow_; }
+
+private:
+    uint8_t* data_ = nullptr;
+    size_t capacity_ = 0;
+    size_t length_ = 0;
+    bool overflow_ = false;
+};
 
 }  // namespace
 
@@ -436,12 +486,14 @@ bool FirmwareUpdateModule::isBusy_()
     bool busy = false;
     bool pending = false;
     bool nextionReboot = false;
+    bool manifestCheckActive = false;
     portENTER_CRITICAL(&lock_);
     busy = busy_;
     pending = queuedJob_.pending;
     nextionReboot = nextionRebootQueued_;
+    manifestCheckActive = manifestCheckIsActive_(manifestCheck_.state);
     portEXIT_CRITICAL(&lock_);
-    return busy || pending || nextionReboot;
+    return busy || pending || nextionReboot || manifestCheckActive;
 }
 
 bool FirmwareUpdateModule::configJson_(char* out, size_t outLen) const
@@ -463,92 +515,108 @@ bool FirmwareUpdateModule::configJson_(char* out, size_t outLen) const
     return n > 0 && (size_t)n < outLen;
 }
 
-bool FirmwareUpdateModule::checkManifestJsonStream_(Print& out, char* errOut, size_t errOutLen)
+bool FirmwareUpdateModule::startManifestCheck_(uint32_t* requestIdOut,
+                                               char* errOut,
+                                               size_t errOutLen)
 {
-    bool isBusy = false;
-    bool hasPending = false;
-    portENTER_CRITICAL(&lock_);
-    isBusy = busy_;
-    hasPending = queuedJob_.pending;
-    portEXIT_CRITICAL(&lock_);
-    if (isBusy || hasPending) {
-        writeSimpleError_(errOut, errOutLen, "updater busy");
+    if (!requestIdOut) {
+        writeSimpleError_(errOut, errOutLen, "request id output missing");
         return false;
     }
+    *requestIdOut = 0;
 
     char url[kUrlLen] = {0};
     if (!resolveUpdateUrl_("manifest.json", url, sizeof(url), errOut, errOutLen)) {
         return false;
     }
 
-    HTTPClient http;
-    configureDownloadHttp_(http);
-    if (!http.begin(url)) {
-        writeHttpBeginFailedError_("manifest", url, errOut, errOutLen);
+    if (!manifestPayload_) {
+        writeSimpleError_(errOut, errOutLen, "manifest storage unavailable");
         return false;
     }
 
-    const int code = http.GET();
-    if (code != HTTP_CODE_OK) {
-        writeHttpCodeFailedError_("manifest", url, http, code, errOut, errOutLen);
-        http.end();
-        return false;
-    }
-
-    const String payload = http.getString();
-    http.end();
-    if (payload.length() == 0U) {
-        writeSimpleError_(errOut, errOutLen, "manifest empty");
-        return false;
-    }
-
-    size_t jsonCapacity = payload.length() + 1024U;
-    if (jsonCapacity < 4096U) jsonCapacity = 4096U;
-    DynamicJsonDocument doc(jsonCapacity);
-    const DeserializationError jsonErr = deserializeJson(doc, payload);
-    if (jsonErr || !doc.is<JsonObjectConst>()) {
-        writeSimpleError_(errOut, errOutLen, "manifest invalid json");
-        return false;
-    }
-
-    char safeUrl[kUrlLen] = {0};
-    char current[48] = {0};
-    snprintf(safeUrl, sizeof(safeUrl), "%s", url);
-    snprintf(current, sizeof(current), "%s", FirmwareVersion::Full);
-    sanitizeJsonString_(safeUrl);
-    sanitizeJsonString_(current);
-
-    out.print("{\"ok\":true,\"manifest_url\":\"");
-    out.print(safeUrl);
-    out.print("\",\"current\":{\"flowios3\":\"");
-    out.print(current);
-    out.print("\",\"esp32s3\":\"");
-    out.print(current);
-    out.print("\",\"waveshare\":\"");
-    out.print(current);
-    out.print("\"},\"manifest\":");
-    out.print(payload);
-    out.print("}");
-    return true;
-}
-
-bool FirmwareUpdateModule::manifestUrl_(char* out, size_t outLen, char* errOut, size_t errOutLen)
-{
-    if (!out || outLen == 0) return false;
-    out[0] = '\0';
-
-    bool isBusy = false;
-    bool hasPending = false;
     portENTER_CRITICAL(&lock_);
-    isBusy = busy_;
-    hasPending = queuedJob_.pending;
-    portEXIT_CRITICAL(&lock_);
-    if (isBusy || hasPending) {
+    if (busy_ || queuedJob_.pending || nextionRebootQueued_ ||
+        manifestCheckIsActive_(manifestCheck_.state) || manifestCopyReaders_ > 0U) {
+        portEXIT_CRITICAL(&lock_);
         writeSimpleError_(errOut, errOutLen, "updater busy");
         return false;
     }
 
-    return resolveUpdateUrl_("manifest.json", out, outLen, errOut, errOutLen);
+    ++nextManifestRequestId_;
+    if (nextManifestRequestId_ == 0U) {
+        ++nextManifestRequestId_;
+    }
+    manifestCheckJob_ = {};
+    manifestCheckJob_.pending = true;
+    manifestCheckJob_.requestId = nextManifestRequestId_;
+    snprintf(manifestCheckJob_.url, sizeof(manifestCheckJob_.url), "%s", url);
+
+    manifestCheck_ = {};
+    manifestCheck_.requestId = nextManifestRequestId_;
+    manifestCheck_.state = FirmwareManifestCheckState::Queued;
+    manifestCheck_.updatedAtMs = millis();
+    snprintf(manifestCheck_.manifestUrl, sizeof(manifestCheck_.manifestUrl), "%s", url);
+    snprintf(manifestCheck_.message, sizeof(manifestCheck_.message), "queued");
+    manifestPayload_[0] = '\0';
+    *requestIdOut = nextManifestRequestId_;
+    portEXIT_CRITICAL(&lock_);
+
+    LOGI("Manifest check queued request=%lu url=%s",
+         (unsigned long)*requestIdOut,
+         url);
+    return true;
+}
+
+bool FirmwareUpdateModule::manifestCheckStatus_(uint32_t requestId,
+                                                FirmwareManifestCheckSnapshot* out)
+{
+    if (!out || requestId == 0U) return false;
+    portENTER_CRITICAL(&lock_);
+    if (manifestCheck_.requestId != requestId) {
+        portEXIT_CRITICAL(&lock_);
+        return false;
+    }
+    *out = manifestCheck_;
+    portEXIT_CRITICAL(&lock_);
+    return true;
+}
+
+bool FirmwareUpdateModule::copyManifestResult_(uint32_t requestId,
+                                               char* out,
+                                               size_t outLen,
+                                               size_t* copiedLenOut)
+{
+    if (copiedLenOut) *copiedLenOut = 0U;
+    if (!out || outLen == 0U || requestId == 0U || !manifestPayload_) return false;
+
+    size_t payloadLen = 0U;
+    portENTER_CRITICAL(&lock_);
+    if (manifestCheck_.requestId != requestId ||
+        manifestCheck_.state != FirmwareManifestCheckState::Ready ||
+        manifestCheck_.payloadLen == 0U ||
+        outLen <= manifestCheck_.payloadLen) {
+        portEXIT_CRITICAL(&lock_);
+        return false;
+    }
+    payloadLen = manifestCheck_.payloadLen;
+    if (manifestCopyReaders_ < UINT8_MAX) {
+        ++manifestCopyReaders_;
+    } else {
+        portEXIT_CRITICAL(&lock_);
+        return false;
+    }
+    portEXIT_CRITICAL(&lock_);
+
+    memcpy(out, manifestPayload_, payloadLen);
+    out[payloadLen] = '\0';
+
+    portENTER_CRITICAL(&lock_);
+    if (manifestCopyReaders_ > 0U) --manifestCopyReaders_;
+    portEXIT_CRITICAL(&lock_);
+
+    if (copiedLenOut) *copiedLenOut = payloadLen;
+    return true;
 }
 
 bool FirmwareUpdateModule::setConfig_(const char* updateHost,
@@ -563,11 +631,13 @@ bool FirmwareUpdateModule::setConfig_(const char* updateHost,
 
     bool isBusy = false;
     bool hasPending = false;
+    bool manifestCheckActive = false;
     portENTER_CRITICAL(&lock_);
     isBusy = busy_;
     hasPending = queuedJob_.pending;
+    manifestCheckActive = manifestCheckIsActive_(manifestCheck_.state);
     portEXIT_CRITICAL(&lock_);
-    if (isBusy || hasPending) {
+    if (isBusy || hasPending || manifestCheckActive) {
         writeSimpleError_(errOut, errOutLen, "updater busy");
         return false;
     }
@@ -600,7 +670,8 @@ bool FirmwareUpdateModule::startUpdate_(FirmwareUpdateTarget target,
     }
 
     portENTER_CRITICAL(&lock_);
-    if (busy_ || queuedJob_.pending) {
+    if (busy_ || queuedJob_.pending || nextionRebootQueued_ ||
+        manifestCheckIsActive_(manifestCheck_.state) || manifestCopyReaders_ > 0U) {
         portEXIT_CRITICAL(&lock_);
         writeSimpleError_(errOut, errOutLen, "updater busy");
         return false;
@@ -622,7 +693,8 @@ bool FirmwareUpdateModule::queueNextionReboot_(char* errOut, size_t errOutLen)
     }
 
     portENTER_CRITICAL(&lock_);
-    if (busy_ || queuedJob_.pending || nextionRebootQueued_) {
+    if (busy_ || queuedJob_.pending || nextionRebootQueued_ ||
+        manifestCheckIsActive_(manifestCheck_.state) || manifestCopyReaders_ > 0U) {
         portEXIT_CRITICAL(&lock_);
         writeSimpleError_(errOut, errOutLen, "updater busy");
         return false;
@@ -1013,6 +1085,96 @@ bool FirmwareUpdateModule::runJob_(const UpdateJob& job)
     return true;
 }
 
+bool FirmwareUpdateModule::runManifestCheck_(const ManifestCheckJob& job,
+                                             size_t* payloadLenOut,
+                                             char* errOut,
+                                             size_t errOutLen)
+{
+    if (payloadLenOut) *payloadLenOut = 0U;
+    if (!manifestPayload_) {
+        writeSimpleError_(errOut, errOutLen, "manifest storage unavailable");
+        return false;
+    }
+
+    if (!netAccessSvc_ && services_) {
+        netAccessSvc_ = services_->get<NetworkAccessService>(ServiceId::NetworkAccess);
+    }
+    bool netReady = false;
+    if (netAccessSvc_ && netAccessSvc_->isWebReachable) {
+        netReady = netAccessSvc_->isWebReachable(netAccessSvc_->ctx);
+    } else if (wifiSvc_ && wifiSvc_->isConnected) {
+        netReady = wifiSvc_->isConnected(wifiSvc_->ctx);
+    }
+    if (!netReady) {
+        writeSimpleError_(errOut, errOutLen, "network not connected");
+        return false;
+    }
+
+    constexpr size_t kPayloadCapacity = Limits::FirmwareUpdate::Buffers::ManifestResponseJson;
+    manifestPayload_[0] = '\0';
+
+    HTTPClient http;
+    configureDownloadHttp_(http);
+    if (!http.begin(job.url)) {
+        writeHttpBeginFailedError_("manifest", job.url, errOut, errOutLen);
+        return false;
+    }
+
+    const int code = http.GET();
+    if (code != HTTP_CODE_OK) {
+        writeHttpCodeFailedError_("manifest", job.url, http, code, errOut, errOutLen);
+        http.end();
+        return false;
+    }
+
+    const int announcedSize = http.getSize();
+    if (announcedSize == 0) {
+        writeSimpleError_(errOut, errOutLen, "manifest empty");
+        http.end();
+        return false;
+    }
+    if (announcedSize > 0 && (size_t)announcedSize > kPayloadCapacity) {
+        writeSimpleError_(errOut, errOutLen, "manifest too large");
+        http.end();
+        return false;
+    }
+
+    BoundedBufferStream sink(manifestPayload_, kPayloadCapacity);
+    const int written = http.writeToStream(&sink);
+    const bool overflowed = sink.overflowed();
+    const size_t payloadLen = sink.length();
+    http.end();
+
+    if (overflowed) {
+        writeSimpleError_(errOut, errOutLen, "manifest too large");
+        return false;
+    }
+    if (written < 0) {
+        writeSimpleError_(errOut, errOutLen, "manifest read failed");
+        return false;
+    }
+    if (payloadLen == 0U) {
+        writeSimpleError_(errOut, errOutLen, "manifest empty");
+        return false;
+    }
+
+    manifestPayload_[payloadLen] = '\0';
+    size_t jsonCapacity = payloadLen + 1024U;
+    if (jsonCapacity < Limits::FirmwareUpdate::Buffers::ManifestParseJson) {
+        jsonCapacity = Limits::FirmwareUpdate::Buffers::ManifestParseJson;
+    }
+    DynamicJsonDocument doc(jsonCapacity);
+    const DeserializationError jsonErr =
+        deserializeJson(doc, static_cast<const char*>(manifestPayload_), payloadLen);
+    if (jsonErr || !doc.is<JsonObjectConst>()) {
+        writeSimpleError_(errOut, errOutLen, "manifest invalid json");
+        return false;
+    }
+
+    if (payloadLenOut) *payloadLenOut = payloadLen;
+    return true;
+}
+
 bool FirmwareUpdateModule::cmdStatus_(void* userCtx, const CommandRequest&, char* reply, size_t replyLen)
 {
     FirmwareUpdateModule* self = static_cast<FirmwareUpdateModule*>(userCtx);
@@ -1117,6 +1279,30 @@ void FirmwareUpdateModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(updateHostVar_);
     cfg.registerVar(updatePathVar_);
 
+    constexpr size_t kManifestStorageBytes =
+        Limits::FirmwareUpdate::Buffers::ManifestResponseJson + 1U;
+#if defined(FLOW_PROFILE_WAVESHARE)
+    manifestPayload_ = static_cast<char*>(
+        heap_caps_calloc(1, kManifestStorageBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+    );
+#else
+    manifestPayload_ = static_cast<char*>(
+        heap_caps_calloc(1, kManifestStorageBytes, MALLOC_CAP_8BIT)
+    );
+#endif
+    if (!manifestPayload_) {
+        LOGE("Manifest storage allocation failed bytes=%u", (unsigned)kManifestStorageBytes);
+    } else {
+        LOGI("Manifest storage ready bytes=%u%s",
+             (unsigned)kManifestStorageBytes,
+#if defined(FLOW_PROFILE_WAVESHARE)
+             " memory=psram"
+#else
+             ""
+#endif
+        );
+    }
+
     if (!services.add(ServiceId::FirmwareUpdate, &firmwareUpdateSvc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::FirmwareUpdate));
     }
@@ -1136,7 +1322,9 @@ void FirmwareUpdateModule::init(ConfigStore& cfg, ServiceRegistry& services)
 void FirmwareUpdateModule::loop()
 {
     UpdateJob job{};
+    ManifestCheckJob manifestJob{};
     bool runNextionReboot = false;
+    bool runManifestCheck = false;
 
     portENTER_CRITICAL(&lock_);
     if (busy_) {
@@ -1152,6 +1340,16 @@ void FirmwareUpdateModule::loop()
         busy_ = true;
         job = queuedJob_;
         queuedJob_.pending = false;
+    } else if (manifestCheckJob_.pending) {
+        busy_ = true;
+        manifestJob = manifestCheckJob_;
+        manifestCheckJob_.pending = false;
+        runManifestCheck = true;
+        if (manifestCheck_.requestId == manifestJob.requestId) {
+            manifestCheck_.state = FirmwareManifestCheckState::Downloading;
+            manifestCheck_.updatedAtMs = millis();
+            snprintf(manifestCheck_.message, sizeof(manifestCheck_.message), "downloading");
+        }
     } else {
         portEXIT_CRITICAL(&lock_);
         vTaskDelay(pdMS_TO_TICKS(60));
@@ -1165,6 +1363,39 @@ void FirmwareUpdateModule::loop()
             LOGE("Nextion reboot failed reason=%s", err[0] ? err : "unknown");
         } else {
             LOGI("Nextion reboot done");
+        }
+    } else if (runManifestCheck) {
+        size_t payloadLen = 0U;
+        char err[128] = {0};
+        const bool ok =
+            runManifestCheck_(manifestJob, &payloadLen, err, sizeof(err));
+
+        portENTER_CRITICAL(&lock_);
+        if (manifestCheck_.requestId == manifestJob.requestId) {
+            manifestCheck_.updatedAtMs = millis();
+            if (ok) {
+                manifestCheck_.state = FirmwareManifestCheckState::Ready;
+                manifestCheck_.payloadLen = payloadLen;
+                snprintf(manifestCheck_.message, sizeof(manifestCheck_.message), "ready");
+            } else {
+                manifestCheck_.state = FirmwareManifestCheckState::Error;
+                manifestCheck_.payloadLen = 0U;
+                snprintf(manifestCheck_.message,
+                         sizeof(manifestCheck_.message),
+                         "%s",
+                         err[0] ? err : "manifest check failed");
+            }
+        }
+        portEXIT_CRITICAL(&lock_);
+
+        if (ok) {
+            LOGI("Manifest check ready request=%lu bytes=%u",
+                 (unsigned long)manifestJob.requestId,
+                 (unsigned)payloadLen);
+        } else {
+            LOGE("Manifest check failed request=%lu reason=%s",
+                 (unsigned long)manifestJob.requestId,
+                 err[0] ? err : "unknown");
         }
     } else {
         runJob_(job);
