@@ -150,6 +150,31 @@ void SystemMonitorModule::init(ConfigStore& cfg, ServiceRegistry& services) {
     logHub  = services.get<LogHubService>(ServiceId::LogHub);
     haSvc_  = services.get<HAService>(ServiceId::Ha);
 
+#if defined(configUSE_TRACE_FACILITY) && (configUSE_TRACE_FACILITY == 1) && \
+    !defined(FLOW_PROFILE_MICRONOVA)
+#if defined(FLOW_PROFILE_WAVESHARE)
+    constexpr uint32_t taskSnapshotCaps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+    constexpr const char* taskSnapshotMemory = "PSRAM";
+#else
+    constexpr uint32_t taskSnapshotCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    constexpr const char* taskSnapshotMemory = "internal";
+#endif
+    taskStatusSnapshot_ = static_cast<TaskStatus_t*>(
+        heap_caps_calloc(kTaskStatusSnapshotCapacity, sizeof(TaskStatus_t), taskSnapshotCaps)
+    );
+    if (taskStatusSnapshot_) {
+        LOGI("Task snapshot allocated capacity=%u bytes=%lu memory=%s",
+             (unsigned)kTaskStatusSnapshotCapacity,
+             (unsigned long)(kTaskStatusSnapshotCapacity * sizeof(TaskStatus_t)),
+             taskSnapshotMemory);
+    } else {
+        LOGW("Task snapshot unavailable capacity=%u bytes=%lu memory=%s",
+             (unsigned)kTaskStatusSnapshotCapacity,
+             (unsigned long)(kTaskStatusSnapshotCapacity * sizeof(TaskStatus_t)),
+             taskSnapshotMemory);
+    }
+#endif
+
 #if FLOW_WEB_HEAP_FORENSICS
 #if defined(FLOW_PROFILE_WAVESHARE)
     heapWatchSamples_ = static_cast<HeapWatchSample*>(
@@ -270,11 +295,10 @@ void SystemMonitorModule::logHeapStats() {
     SystemStats::collect(snap);
 
     if (!logHub || !logHub->getStats) {
-        LOGD("Heap total8 free=%lu min=%lu largest=%lu frag=%u%% internal free=%lu min=%lu largest=%lu frag=%u%%",
+        LOGD("Heap total8 free=%lu min=%lu largest=%lu internal free=%lu min=%lu largest=%lu internal_frag=%u%%",
              (unsigned long)snap.heap.freeBytes,
              (unsigned long)snap.heap.minFreeBytes,
              (unsigned long)snap.heap.largestFreeBlock,
-             (unsigned int)snap.heap.fragPercent,
              (unsigned long)snap.heap.internalFreeBytes,
              (unsigned long)snap.heap.internalMinFreeBytes,
              (unsigned long)snap.heap.internalLargestFreeBlock,
@@ -284,11 +308,10 @@ void SystemMonitorModule::logHeapStats() {
 
     LogHubStatsSnapshot stats{};
     logHub->getStats(logHub->ctx, &stats);
-    LOGD("Heap total8 free=%lu min=%lu largest=%lu frag=%u%% internal free=%lu min=%lu largest=%lu frag=%u%% LogQ=%u/%u drop=%lu trunc=%lu",
+    LOGD("Heap total8 free=%lu min=%lu largest=%lu internal free=%lu min=%lu largest=%lu internal_frag=%u%% LogQ=%u/%u drop=%lu trunc=%lu",
          (unsigned long)snap.heap.freeBytes,
          (unsigned long)snap.heap.minFreeBytes,
          (unsigned long)snap.heap.largestFreeBlock,
-         (unsigned int)snap.heap.fragPercent,
          (unsigned long)snap.heap.internalFreeBytes,
          (unsigned long)snap.heap.internalMinFreeBytes,
          (unsigned long)snap.heap.internalLargestFreeBlock,
@@ -342,31 +365,25 @@ void SystemMonitorModule::logTaskStacks() {
 
 #if defined(configUSE_TRACE_FACILITY) && (configUSE_TRACE_FACILITY == 1)
     UBaseType_t liveTaskCount = uxTaskGetNumberOfTasks();
-    TaskStatus_t* liveTasks = nullptr;
     if (liveTaskCount == 0U) {
         LOGD("Stack none");
         return;
     }
-    if (liveTaskCount > 0U) {
-#if defined(FLOW_PROFILE_WAVESHARE)
-        liveTasks = static_cast<TaskStatus_t*>(
-            heap_caps_malloc(liveTaskCount * sizeof(TaskStatus_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
-        );
-#else
-        liveTasks = static_cast<TaskStatus_t*>(pvPortMalloc(liveTaskCount * sizeof(TaskStatus_t)));
-#endif
-    }
+    TaskStatus_t* const liveTasks = taskStatusSnapshot_;
     if (!liveTasks) {
-        LOGW("Stack snapshot unavailable (tasks=%u)", (unsigned)liveTaskCount);
+        LOGW("Stack snapshot unavailable (persistent buffer not allocated tasks=%u)",
+             (unsigned)liveTaskCount);
         return;
     }
-    liveTaskCount = uxTaskGetSystemState(liveTasks, liveTaskCount, nullptr);
+    if (liveTaskCount > kTaskStatusSnapshotCapacity) {
+        LOGW("Stack snapshot capacity exceeded tasks=%u capacity=%u",
+             (unsigned)liveTaskCount,
+             (unsigned)kTaskStatusSnapshotCapacity);
+        return;
+    }
+    liveTaskCount =
+        uxTaskGetSystemState(liveTasks, (UBaseType_t)kTaskStatusSnapshotCapacity, nullptr);
     if (liveTaskCount == 0U) {
-#if defined(FLOW_PROFILE_WAVESHARE)
-        heap_caps_free(liveTasks);
-#else
-        vPortFree(liveTasks);
-#endif
         LOGD("Stack none");
         return;
     }
@@ -486,13 +503,6 @@ void SystemMonitorModule::logTaskStacks() {
         if (removedEndedTasks > 0U) {
             LOGD("Stack pruned ended tasks=%u", (unsigned)removedEndedTasks);
         }
-#if defined(configUSE_TRACE_FACILITY) && (configUSE_TRACE_FACILITY == 1)
-#if defined(FLOW_PROFILE_WAVESHARE)
-        heap_caps_free(liveTasks);
-#else
-        vPortFree(liveTasks);
-#endif
-#endif
         return;
     }
 
@@ -534,13 +544,6 @@ void SystemMonitorModule::logTaskStacks() {
     if (removedEndedTasks > 0U) {
         LOGD("Stack pruned ended tasks=%u", (unsigned)removedEndedTasks);
     }
-#if defined(configUSE_TRACE_FACILITY) && (configUSE_TRACE_FACILITY == 1)
-#if defined(FLOW_PROFILE_WAVESHARE)
-    heap_caps_free(liveTasks);
-#else
-    vPortFree(liveTasks);
-#endif
-#endif
 }
 
 void SystemMonitorModule::logTrackedBuffers()

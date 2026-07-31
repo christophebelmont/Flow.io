@@ -53,6 +53,10 @@ public:
     void setModuleManager(ModuleManager* mm) { moduleManager = mm; }
 
 private:
+    // Covers all ModuleManager-owned tasks plus FreeRTOS/network runtime tasks.
+    // The buffer is allocated once during init and retained for the firmware lifetime.
+    static constexpr size_t kTaskStatusSnapshotCapacity =
+        Limits::Core::Capacity::MaxModuleTasks + 32U;
     static constexpr uint32_t kHeapWatchSamplePeriodMs = 50U;
     static constexpr uint32_t kHeapWatchTripFreeBytes = 2048U;
     static constexpr uint32_t kHeapWatchRecoverFreeBytes = 8192U;
@@ -104,6 +108,7 @@ private:
     const ConfigStoreService* cfgSvc = nullptr;
     const LogHubService* logHub = nullptr;
     const HAService* haSvc_ = nullptr;
+    TaskStatus_t* taskStatusSnapshot_ = nullptr;
     bool haEntitiesRegistered_ = false;
 
     uint32_t lastJsonDumpMs = 0;
