@@ -188,8 +188,8 @@ inline constexpr I2cBusSpec kWaveshareESP32S3I2c[] = {
  *   bus GPIO pins are not.
  */
 inline constexpr OneWireBusSpec kWaveshareESP32S3OneWire[] = {
-    {"temp_probe_1", BoardSignal::TempProbe1, 47}, // Water DS18B20 probe bus on GPIO47.
-    {"temp_probe_2", BoardSignal::TempProbe2, 48}, // Air DS18B20 probe bus on GPIO48.
+    {"temp_probe_1", BoardSignal::TempProbe1, 20}, // Water DS18B20 probe bus on GPIO20.
+    {"temp_probe_2", BoardSignal::TempProbe2, 19}, // Air DS18B20 probe bus on GPIO19.
 };
 
 /*

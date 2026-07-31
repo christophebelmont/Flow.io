@@ -34,7 +34,7 @@ struct IOModuleConfig {
     bool bmp280Enabled = false;
     uint8_t bmp280Address = 0x76;
     int32_t bmp280PollMs = 1000;
-    bool bme680Enabled = false;
+    bool bme680Enabled = true;
     uint8_t bme680Address = 0x77;
     int32_t bme680PollMs = 2000;
     bool ina226Enabled = false;
