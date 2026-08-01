@@ -85,6 +85,8 @@ void run()
     gContext.identity = &profile.identity;
     gContext.supervisorRuntime = profile.supervisorRuntime;
 
+    (void)gContext.services.add(ServiceId::I2cBus, &gContext.primaryI2cBusService);
+
     if (profile.setup) {
         profile.setup(gContext);
     }

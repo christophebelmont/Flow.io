@@ -1,6 +1,6 @@
 {
   "translations": {
-    "cfgdocs.hmi.leds.enabled.help": "Active le bandeau de LEDs en façade certaines cartes flow.io/Poolmaster.",
+    "cfgdocs.hmi.leds.enabled.help": "Active le bandeau de LEDs en façade piloté par le PCF8574A dédié à l'adresse I2C 0x3C.",
     "cfgdocs.hmi.leds.enabled.label": "Activation LEDs facade",
     "cfgdocs.hmi.leds.waveshare_enabled.help": "Active la LED WS2812 Waveshare.",
     "cfgdocs.hmi.leds.waveshare_enabled.label": "LED Waveshare active",

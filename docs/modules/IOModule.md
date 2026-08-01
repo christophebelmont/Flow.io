@@ -48,7 +48,6 @@ Jobs planifiés en interne:
 ## Services exposés
 
 - `io` -> `IOServiceV2`
-- `status_leds` -> `StatusLedsService`
 
 Fonctions principales de `IOServiceV2`:
 
@@ -196,10 +195,10 @@ Branches de configuration exposées par le module:
 Paramètres principaux:
 
 - activation module: `enabled`
-- bus I2C principal: `i2c_sda`, `i2c_scl`
+- initialisation du bus I2C principal partagé: `i2c_sda`, `i2c_scl`
 - polling: `ads_poll_ms`, `ds_poll_ms`, `digital_poll_ms`
 - ADS: adresses, gain, rate
-- PCF8574: enable, adresse, masque par défaut, logique active low
+- expanders PCF8574/TCA9554/MCP23017: activation, adresse et polarité par instance `expanderXX`
 - traces: `trace_enabled`, `trace_period_ms`
 - calibration et précision des entrées analogiques
 - binding, `activeHigh`, `momentary`, `pulseMs` des sorties digitales
@@ -315,7 +314,7 @@ Cette synchronisation repose sur:
 ## Particularités de fonctionnement
 
 - les sorties peuvent être impulsionnelles (`momentary`)
-- le masque PCF8574 est exposé via `StatusLedsService`
+- les PCF8574 déclarés dans `expanderXX` sont réservés aux endpoints IO génériques
 - les compteurs digitaux peuvent être persistés en NVS
 - le module maintient `IoCycleInfo` pour exposer la liste des `IoId` modifiés sur le dernier cycle
 - les labels exposés par `endpointLabel()` viennent des définitions construites par le profil

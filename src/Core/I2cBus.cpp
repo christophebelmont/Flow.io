@@ -1,11 +1,11 @@
 /**
- * @file I2CBus.cpp
- * @brief Implementation file.
+ * @file I2cBus.cpp
+ * @brief Shared primary I2C bus implementation.
  */
 
-#include "I2CBus.h"
+#include "Core/I2cBus.h"
 #include "Core/I2cGlobalMutex.h"
-#define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::IOModule)
+#define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::Core)
 #include "Core/ModuleLog.h"
 #include <Arduino.h>
 

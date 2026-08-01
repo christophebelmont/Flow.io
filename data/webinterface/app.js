@@ -56,6 +56,9 @@
     let loadedWebAssetVersion = '';
     let supervisorFirmwareVersion = '-';
     let nextionDisplayVersion = '';
+    let nextionDisplayVersionDetected = false;
+    let nextionDisplayVersionCompatible = false;
+    let nextionDisplayExpectedVersion = '';
     let supervisorUptimeMs = 0;
     let supervisorHeap = {};
     let webProfileName = 'Supervisor';
@@ -1054,12 +1057,15 @@
             supervisorFirmwareVersion = trimmed;
           }
         }
-        if (Object.prototype.hasOwnProperty.call(data, 'nextion_display_version')) {
-          const rawNextionVersion = String(data.nextion_display_version || '').trim();
-          if (rawNextionVersion && rawNextionVersion !== '0') {
-            nextionDisplayVersion = rawNextionVersion;
-          }
-        }
+        const rawNextionVersion = String(data.nextion_display_version || '').trim();
+        nextionDisplayVersion = rawNextionVersion && rawNextionVersion !== '0' ? rawNextionVersion : '';
+        nextionDisplayVersionDetected = Object.prototype.hasOwnProperty.call(data, 'nextion_display_version_detected')
+          ? data.nextion_display_version_detected === true
+          : !!nextionDisplayVersion;
+        nextionDisplayVersionCompatible = Object.prototype.hasOwnProperty.call(data, 'nextion_display_version_compatible')
+          ? data.nextion_display_version_compatible === true
+          : nextionDisplayVersionDetected;
+        nextionDisplayExpectedVersion = String(data.nextion_display_expected_version || '').trim();
         supervisorUptimeMs = Number(data.upms) || 0;
         supervisorHeap = (data.heap && typeof data.heap === 'object') ? data.heap : {};
         renderUpgradeCatalog();
@@ -3690,17 +3696,33 @@
         const available = latest
           ? { version: latest.version, build: latest.buildDate }
           : { version: '-', build: '-' };
+        const nextionUnavailable = def.key === 'nextion'
+          && (!nextionDisplayVersionDetected || !nextionDisplayVersionCompatible);
         const comparableCurrent = current.version && current.version !== '-';
         const comparableAvailable = available.version && available.version !== '-';
-        const updateAvailable = comparableAvailable && (!comparableCurrent || compareFirmwareVersions(available.version, current.version) > 0);
+        const updateAvailable = !nextionUnavailable
+          && comparableAvailable
+          && (!comparableCurrent || compareFirmwareVersions(available.version, current.version) > 0);
+        const unavailableMessage = nextionDisplayVersionDetected
+          ? tr('updates.nextion.incompatible', 'Version Nextion incompatible')
+          : tr('updates.nextion.notDetected', 'Nextion non détecté');
+        const expectedVersion = formatDetectedNextionVersion(nextionDisplayExpectedVersion);
+        const unavailableComment = nextionDisplayVersionDetected && expectedVersion !== '-'
+          ? tr('updates.nextion.incompatibleDetail', 'Version attendue : {version}.')
+            .replace('{version}', expectedVersion)
+          : tr('updates.nextion.notDetectedDetail', 'Vérifiez la connexion de l’écran puis redémarrez le système.');
         return Object.assign({}, def, {
           current: current,
           available: available,
           updateAvailable: updateAvailable,
+          unavailable: nextionUnavailable,
+          unavailableMessage: nextionUnavailable ? unavailableMessage : '',
           entry: latest,
-          comments: latest && latest.notes
-            ? latest.notes
-            : (updateAvailable ? def.commentsAvailable : def.commentsCurrent)
+          comments: nextionUnavailable
+            ? unavailableComment
+            : (latest && latest.notes
+              ? latest.notes
+              : (updateAvailable ? def.commentsAvailable : def.commentsCurrent))
         });
       });
     }
@@ -3728,12 +3750,16 @@
       return badge;
     }
 
-    function createUpgradeStatusBadge(updateAvailable) {
+    function createUpgradeStatusBadge(row) {
       const badge = document.createElement('span');
-      badge.className = 'update-status-badge ' + (updateAvailable ? 'is-available' : 'is-current');
-      badge.textContent = updateAvailable
-        ? tr('updates.status.available', 'Mise à jour disponible')
-        : tr('updates.status.current', 'À jour');
+      badge.className = 'update-status-badge ' + (row.unavailable
+        ? 'is-unavailable'
+        : (row.updateAvailable ? 'is-available' : 'is-current'));
+      badge.textContent = row.unavailable
+        ? row.unavailableMessage
+        : (row.updateAvailable
+          ? tr('updates.status.available', 'Mise à jour disponible')
+          : tr('updates.status.current', 'À jour'));
       return badge;
     }
 
@@ -3750,9 +3776,11 @@
       button.appendChild(icon);
       button.appendChild(label);
       const entry = row && row.entry;
-      button.disabled = !(entry && entry.endpoint && entry.url);
+      button.disabled = !!(row && row.unavailable) || !(entry && entry.endpoint && entry.url);
       button.title = button.disabled
-        ? tr('updates.checkRequired', 'Vérifiez les mises à jour avant de lancer cette action.')
+        ? (row && row.unavailable
+          ? row.unavailableMessage
+          : tr('updates.checkRequired', 'Vérifiez les mises à jour avant de lancer cette action.'))
         : tr('updates.updateButton', 'Mettre à jour');
       bindClickAction(button, () => {
         if (!entry) return;
@@ -3768,7 +3796,8 @@
       upgradeCards.classList.remove('has-error');
       rows.forEach((row) => {
         const card = document.createElement('article');
-        card.className = 'update-summary-card update-summary-' + row.tone;
+        card.className = 'update-summary-card update-summary-' + row.tone + (row.unavailable ? ' is-disabled' : '');
+        if (row.unavailable) card.setAttribute('aria-disabled', 'true');
         card.appendChild(createUpgradeComponentBadge(row, 'update-component-badge-lg'));
 
         const body = document.createElement('div');
@@ -3801,17 +3830,19 @@
         const stateIcon = document.createElement('span');
         stateIcon.className = 'ui-msr update-summary-state';
         stateIcon.setAttribute('aria-hidden', 'true');
-        stateIcon.textContent = row.updateAvailable ? 'arrow_upward' : 'horizontal_rule';
+        stateIcon.textContent = row.unavailable ? 'link_off' : (row.updateAvailable ? 'arrow_upward' : 'horizontal_rule');
         card.appendChild(stateIcon);
 
         const foot = document.createElement('div');
         foot.className = 'update-summary-foot';
         const dot = document.createElement('span');
-        dot.className = 'update-dot ' + (row.updateAvailable ? 'is-green' : 'is-blue');
+        dot.className = 'update-dot ' + (row.unavailable ? 'is-gray' : (row.updateAvailable ? 'is-green' : 'is-blue'));
         foot.appendChild(dot);
-        foot.appendChild(document.createTextNode(row.updateAvailable
-          ? tr('updates.status.available', 'Mise à jour disponible')
-          : tr('updates.status.current', 'À jour')));
+        foot.appendChild(document.createTextNode(row.unavailable
+          ? row.unavailableMessage
+          : (row.updateAvailable
+            ? tr('updates.status.available', 'Mise à jour disponible')
+            : tr('updates.status.current', 'À jour'))));
         card.appendChild(foot);
 
         upgradeCards.appendChild(card);
@@ -3823,6 +3854,10 @@
       upgradeTableBody.innerHTML = '';
       rows.forEach((row) => {
         const trEl = document.createElement('tr');
+        if (row.unavailable) {
+          trEl.className = 'is-disabled';
+          trEl.setAttribute('aria-disabled', 'true');
+        }
 
         const componentCell = document.createElement('td');
         const component = document.createElement('div');
@@ -3848,7 +3883,7 @@
         trEl.appendChild(availableCell);
 
         const statusCell = document.createElement('td');
-        statusCell.appendChild(createUpgradeStatusBadge(row.updateAvailable));
+        statusCell.appendChild(createUpgradeStatusBadge(row));
         trEl.appendChild(statusCell);
 
         const commentsCell = document.createElement('td');

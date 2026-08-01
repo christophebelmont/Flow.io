@@ -27,6 +27,7 @@ depuis le `ConfigStore` et applique les changements simples immédiatement.
 - `command`
 - `time`
 - `wifi`
+- `i2c_bus`
 
 ## Service exposé
 
@@ -116,16 +117,17 @@ Trois branches de config dédiées sont exposées:
 - `hmi/nextion`
   - `enabled`: active/désactive l'écriture vers l'écran Nextion
 - `hmi/leds`
-  - `enabled`: active/désactive les écritures de masque logique vers `StatusLedsService`
+  - `enabled`: active/désactive le bandeau de LEDs PCF8574A dédié
   - `waveshare_enabled`: active/désactive la LED WS2812 Waveshare d'état système
 - `hmi/venice`
   - `enabled`: active/désactive l'émetteur RF433 Venice
   - `tx_gpio`: GPIO TX du module 433 MHz
   - la période, le canal et l'identifiant capteur restent fixés aux valeurs par défaut du driver
 
-Quand `hmi/leds/enabled=false`, le `HMIModule` cesse simplement d'écrire le
-masque LEDs. Cela laisse le PCF8574 disponible pour d'autres usages côté
-`IOModule`.
+Le bandeau frontal est piloté directement par `HMIModule` via le bus I2C
+partagé. Son PCF8574AM/TR est fixé à l'adresse `0x3C` et ses huit sorties sont
+actives à l'état bas. Quand `hmi/leds/enabled=false`, les huit LEDs sont
+explicitement éteintes. Cette puce dédiée n'est pas exposée comme expander IO.
 
 ## Identité visuelle LED WS2812 Waveshare
 

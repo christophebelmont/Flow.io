@@ -28,7 +28,7 @@ Aucun.
 
 Module config: `system` (`moduleId = ConfigModuleId::System`, branche locale `1`)
 - `lang` (`sys_lang`)
-- `devicename` (`sys_dname`), défaut `flowio`, utilisé par l'interface web et l'annonce mDNS
+- `devicename` (`sys_dname`), défaut `flowio`, utilisé par l'interface web et les annonces DHCP/mDNS ; en DHCP, la valeur par défaut est annoncée sous la forme unique `FlowIO-XXXXXX`
 
 ## Commandes
 

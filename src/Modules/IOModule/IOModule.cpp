@@ -168,7 +168,6 @@ static constexpr uint8_t kCfgBranchIoGpio = 24;
 static constexpr uint8_t kCfgBranchIoAds1115 = 25;
 static constexpr uint8_t kCfgBranchIoAdsInt = 26;
 static constexpr uint8_t kCfgBranchIoAdsExt = 27;
-static constexpr uint8_t kCfgBranchIoPcf857x = 28;
 static constexpr uint8_t kCfgBranchIoSht40 = 29;
 static constexpr uint8_t kCfgBranchIoBmp280 = 30;
 static constexpr uint8_t kCfgBranchIoBme680 = 31;
@@ -315,7 +314,6 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     {25, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoAds1115}, "io/drivers/ads1115", "io/drivers/ads1115", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {26, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoAdsInt}, "io/drivers/ads1115_int", "io/drivers/ads1115_int", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {27, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoAdsExt}, "io/drivers/ads1115_ext", "io/drivers/ads1115_ext", (uint8_t)MqttPublishPriority::Normal, nullptr},
-    {28, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoPcf857x}, "io/drivers/pcf857x", "io/drivers/pcf857x", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {29, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoSht40}, "io/drivers/sht40", "io/drivers/sht40", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {30, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBmp280}, "io/drivers/bmp280", "io/drivers/bmp280", (uint8_t)MqttPublishPriority::Normal, nullptr},
     {31, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoBme680}, "io/drivers/bme680", "io/drivers/bme680", (uint8_t)MqttPublishPriority::Normal, nullptr},
@@ -387,8 +385,7 @@ static bool isInputEndpointIdLocal(const char* id)
 static bool isOutputEndpointIdLocal(const char* id)
 {
     if (!id || id[0] == '\0') return false;
-    if (id[0] == 'd' && hasDecimalSuffixLocal(id + 1)) return true;
-    return strcmp(id, "status_leds_mask") == 0;
+    return id[0] == 'd' && hasDecimalSuffixLocal(id + 1);
 }
 
 static const char* ioEdgeModeLabelLocal(uint8_t edgeMode)
@@ -1933,26 +1930,6 @@ IoStatus IOModule::ioTick_(uint32_t nowMs)
     if (!cfgData_.enabled) return IO_ERR_NOT_READY;
     if (!runtimeReady_) return IO_ERR_NOT_READY;
 
-    if (pcfLastEnabled_ != cfgData_.pcfEnabled) {
-        if (!cfgData_.pcfEnabled && ledMaskEp_) {
-            uint8_t offLogical = 0;
-            uint8_t offPhysical = pcfPhysicalFromLogical_(offLogical);
-            ledMaskEp_->setMask(offPhysical, nowMs);
-            pcfLogicalMask_ = offLogical;
-            pcfLogicalValid_ = true;
-            pcfEnableNeedsReinitWarned_ = false;
-        } else if (cfgData_.pcfEnabled) {
-            if (ledMaskEp_) {
-                setLedMask_(cfgData_.pcfMaskDefault, nowMs);
-                pcfEnableNeedsReinitWarned_ = false;
-            } else if (!pcfEnableNeedsReinitWarned_) {
-                LOGW("pcf_enabled changed at runtime but PCF endpoint was not provisioned at init; reboot required");
-                pcfEnableNeedsReinitWarned_ = true;
-            }
-        }
-        pcfLastEnabled_ = cfgData_.pcfEnabled;
-    }
-
     beginIoCycle_(nowMs);
     scheduler_.tick(nowMs);
     traceDigitalCounters_(nowMs);
@@ -2121,75 +2098,6 @@ IoStatus IOModule::ioListInvalidSensors_(IoId* outIds, uint8_t maxIds, uint8_t* 
     }
 
     return IO_OK;
-}
-
-bool IOModule::getLedMaskSvc_(uint8_t* mask) const
-{
-    if (!mask) return false;
-    return getLedMask_(*mask);
-}
-
-bool IOModule::setLedMask_(uint8_t mask, uint32_t tsMs)
-{
-    if (!cfgData_.pcfEnabled) return false;
-    if (!ledMaskEp_) return false;
-    uint8_t physical = pcfPhysicalFromLogical_(mask);
-    bool ok = ledMaskEp_->setMask(physical, tsMs);
-    if (ok) {
-        pcfLogicalMask_ = mask;
-        pcfLogicalValid_ = true;
-    }
-    return ok;
-}
-
-bool IOModule::turnLedOn_(uint8_t bit, uint32_t tsMs)
-{
-    if (!cfgData_.pcfEnabled) return false;
-    if (bit > 7) return false;
-    uint8_t mask = 0;
-    if (!getLedMask_(mask)) mask = 0;
-    mask = (uint8_t)(mask | (uint8_t)(1u << bit));
-    return setLedMask_(mask, tsMs);
-}
-
-bool IOModule::turnLedOff_(uint8_t bit, uint32_t tsMs)
-{
-    if (!cfgData_.pcfEnabled) return false;
-    if (bit > 7) return false;
-    uint8_t mask = 0;
-    if (!getLedMask_(mask)) mask = 0;
-    mask = (uint8_t)(mask & (uint8_t)~(1u << bit));
-    return setLedMask_(mask, tsMs);
-}
-
-bool IOModule::getLedMask_(uint8_t& mask) const
-{
-    if (!cfgData_.pcfEnabled) return false;
-    if (pcfLogicalValid_) {
-        mask = pcfLogicalMask_;
-        return true;
-    }
-    if (!ledMaskEp_) return false;
-    uint8_t physical = 0;
-    if (!ledMaskEp_->getMask(physical)) return false;
-    mask = pcfLogicalFromPhysical_(physical);
-    return true;
-}
-
-uint8_t IOModule::pcfPhysicalFromLogical_(uint8_t logicalMask) const
-{
-    const bool activeLow = (ledMaskExpanderId_ != IO_EXPANDER_INVALID)
-        ? expanderActiveLow_(ledMaskExpanderId_)
-        : cfgData_.pcfActiveLow;
-    return activeLow ? (uint8_t)~logicalMask : logicalMask;
-}
-
-uint8_t IOModule::pcfLogicalFromPhysical_(uint8_t physicalMask) const
-{
-    const bool activeLow = (ledMaskExpanderId_ != IO_EXPANDER_INVALID)
-        ? expanderActiveLow_(ledMaskExpanderId_)
-        : cfgData_.pcfActiveLow;
-    return activeLow ? (uint8_t)~physicalMask : physicalMask;
 }
 
 const IOBindingPortSpec* IOModule::bindingPortSpec_(PhysicalPortId portId) const
@@ -2756,16 +2664,20 @@ bool IOModule::configureRuntime_()
         needMcpInput;
 
     if (needI2c) {
-        // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
-        i2cBus_.begin(cfgData_.i2cSda, cfgData_.i2cScl);
-        if (!i2cBus_.beginOk()) {
-            LOGW("i2c.begin failed sda=%d scl=%d freq=%lu",
-                 i2cBus_.beginSda(),
-                 i2cBus_.beginScl(),
-                 (unsigned long)i2cBus_.beginFrequencyHz());
+        if (!i2cBus_) {
+            LOGE("shared I2C bus service unavailable");
+            return false;
         }
-        const bool ads48Present = i2cBus_.probe(0x48);
-        const bool ads49Present = i2cBus_.probe(0x49);
+        // Concrete bus/driver assembly is centralized here so the rest of the module can stay on kernel types.
+        i2cBus_->begin(cfgData_.i2cSda, cfgData_.i2cScl);
+        if (!i2cBus_->beginOk()) {
+            LOGW("i2c.begin failed sda=%d scl=%d freq=%lu",
+                 i2cBus_->beginSda(),
+                 i2cBus_->beginScl(),
+                 (unsigned long)i2cBus_->beginFrequencyHz());
+        }
+        const bool ads48Present = i2cBus_->probe(0x48);
+        const bool ads49Present = i2cBus_->probe(0x49);
         LOGI("ADS1115 probe 0x48: %s", ads48Present ? "found" : "not found");
         LOGI("ADS1115 probe 0x49: %s", ads49Present ? "found" : "not found");
     }
@@ -3063,22 +2975,22 @@ bool IOModule::configureRuntime_()
     adsExternalCfg.differentialPairs = true;
 
     if (needAnalogSource[IO_SRC_SHT40] || cfgData_.sht40Enabled) {
-        const bool present = i2cBus_.probe(cfgData_.sht40Address);
+        const bool present = i2cBus_->probe(cfgData_.sht40Address);
         LOGI("SHT40 probe 0x%02X: %s", cfgData_.sht40Address, present ? "found" : "not found");
     }
 
     if (needAnalogSource[IO_SRC_BMP280] || cfgData_.bmp280Enabled) {
-        const bool present = i2cBus_.probe(cfgData_.bmp280Address);
+        const bool present = i2cBus_->probe(cfgData_.bmp280Address);
         LOGI("BMP280 probe 0x%02X: %s", cfgData_.bmp280Address, present ? "found" : "not found");
     }
 
     if (needAnalogSource[IO_SRC_BME680] || cfgData_.bme680Enabled) {
-        const bool present = i2cBus_.probe(cfgData_.bme680Address);
+        const bool present = i2cBus_->probe(cfgData_.bme680Address);
         LOGI("BME680 probe 0x%02X: %s", cfgData_.bme680Address, present ? "found" : "not found");
     }
 
     if (needAnalogSource[IO_SRC_INA226] || cfgData_.ina226Enabled) {
-        const bool present = i2cBus_.probe(cfgData_.ina226Address);
+        const bool present = i2cBus_->probe(cfgData_.ina226Address);
         LOGI("INA226 probe 0x%02X: %s", cfgData_.ina226Address, present ? "found" : "not found");
     }
 
@@ -3087,7 +2999,7 @@ bool IOModule::configureRuntime_()
             const IOExpanderSpec* spec = expanderSpec_(expIdx);
             if (!spec || !expanderUsable_(spec->expanderId)) continue;
             const uint8_t address = expanderAddress_(spec->expanderId);
-            const bool present = i2cBus_.probe(address);
+            const bool present = i2cBus_->probe(address);
             const char* name = (spec->kind == IO_EXPANDER_KIND_TCA9554) ? "TCA9554" :
                                (spec->kind == IO_EXPANDER_KIND_PCF8574) ? "PCF8574" :
                                (spec->kind == IO_EXPANDER_KIND_MCP23017) ? "MCP23017" : "expander";
@@ -3100,7 +3012,7 @@ bool IOModule::configureRuntime_()
     }
 
     if (needAnalogSource[IO_SRC_ADS_INTERNAL_SINGLE]) {
-        IAnalogSourceDriver* driver = allocAdsDriver_("ads_internal", &i2cBus_, adsInternalCfg);
+        IAnalogSourceDriver* driver = allocAdsDriver_("ads_internal", i2cBus_, adsInternalCfg);
         if (!driver) {
             LOGW("ADS internal pool exhausted");
         } else
@@ -3115,7 +3027,7 @@ bool IOModule::configureRuntime_()
     }
 
     if (needAnalogSource[IO_SRC_ADS_EXTERNAL_DIFF]) {
-        IAnalogSourceDriver* driver = allocAdsDriver_("ads_external", &i2cBus_, adsExternalCfg);
+        IAnalogSourceDriver* driver = allocAdsDriver_("ads_external", i2cBus_, adsExternalCfg);
         if (!driver) {
             LOGW("ADS external pool exhausted");
         } else
@@ -3171,7 +3083,7 @@ bool IOModule::configureRuntime_()
             shtCfg.address = cfgData_.sht40Address;
             shtCfg.pollMs = (cfgData_.sht40PollMs < 250) ? 250U : (uint32_t)cfgData_.sht40PollMs;
 
-            IAnalogSourceDriver* driver = allocSht40Driver_("sht40", &i2cBus_, shtCfg);
+            IAnalogSourceDriver* driver = allocSht40Driver_("sht40", i2cBus_, shtCfg);
             if (!driver) {
                 LOGW("SHT40 pool exhausted");
             } else {
@@ -3191,7 +3103,7 @@ bool IOModule::configureRuntime_()
             bmpCfg.address = cfgData_.bmp280Address;
             bmpCfg.pollMs = (cfgData_.bmp280PollMs < 100) ? 100U : (uint32_t)cfgData_.bmp280PollMs;
 
-            IAnalogSourceDriver* driver = allocBmp280Driver_("bmp280", &i2cBus_, bmpCfg);
+            IAnalogSourceDriver* driver = allocBmp280Driver_("bmp280", i2cBus_, bmpCfg);
             if (!driver) {
                 LOGW("BMP280 pool exhausted");
             } else {
@@ -3211,7 +3123,7 @@ bool IOModule::configureRuntime_()
             bmeCfg.address = cfgData_.bme680Address;
             bmeCfg.pollMs = (cfgData_.bme680PollMs < 250) ? 250U : (uint32_t)cfgData_.bme680PollMs;
 
-            IAnalogSourceDriver* driver = allocBme680Driver_("bme680", &i2cBus_, bmeCfg);
+            IAnalogSourceDriver* driver = allocBme680Driver_("bme680", i2cBus_, bmeCfg);
             if (!driver) {
                 LOGW("BME680 pool exhausted");
             } else {
@@ -3232,70 +3144,13 @@ bool IOModule::configureRuntime_()
             inaCfg.pollMs = (cfgData_.ina226PollMs < 100) ? 100U : (uint32_t)cfgData_.ina226PollMs;
             inaCfg.shuntOhms = (cfgData_.ina226ShuntOhms > 0.0f) ? cfgData_.ina226ShuntOhms : 0.1f;
 
-            IAnalogSourceDriver* driver = allocIna226Driver_("ina226", &i2cBus_, inaCfg);
+            IAnalogSourceDriver* driver = allocIna226Driver_("ina226", i2cBus_, inaCfg);
             if (!driver) {
                 LOGW("INA226 pool exhausted");
             } else {
                 IOAnalogProvider provider = makeAnalogProvider(driver);
                 if (provider.begin()) {
                     analogProviders_[IO_SRC_INA226] = provider;
-                }
-            }
-        }
-    }
-
-    if (cfgData_.pcfEnabled) {
-        // Do not expose/use the status LED mask endpoint when the expander lines
-        // are already allocated to digital outputs (relays). Writing a global mask
-        // would overwrite output startup states.
-        const bool expanderUsedByDigitalOutputs = needPcfOutput || needTcaOutput;
-        if (expanderUsedByDigitalOutputs) {
-            LOGI("Status LED mask disabled: expander is mapped to digital outputs");
-        } else {
-            IMaskOutputDriver* driver = nullptr;
-            uint8_t defaultMask = cfgData_.pcfMaskDefault;
-            for (uint8_t expIdx = 0; expIdx < IO_MAX_EXPANDERS && !driver; ++expIdx) {
-                const IOExpanderSpec* spec = expanderSpec_(expIdx);
-                if (!spec) continue;
-                if (spec->kind == IO_EXPANDER_KIND_PCF8574 || spec->kind == IO_EXPANDER_KIND_TCA9554) {
-                    driver = beginMaskExpander_(spec->expanderId, spec->kind, false);
-                    if (driver) {
-                        ledMaskExpanderId_ = spec->expanderId;
-                        defaultMask = expanderMaskDefault_(spec->expanderId);
-                    }
-                }
-            }
-            if (!driver && !expanders_) {
-                driver = allocPcfDriver_("pcf8574_led", &i2cBus_, cfgData_.pcfAddress);
-                if (driver && !makeMaskProvider(driver).begin()) {
-                    LOGW("PCF8574 not detected at 0x%02X", cfgData_.pcfAddress);
-                    driver = nullptr;
-                }
-            }
-            if (!driver) {
-                LOGW("Status LED mask expander unavailable");
-            }
-            if (driver) {
-                ledMaskProvider_ = makeMaskProvider(driver);
-                ledMaskEp_ = allocMaskEndpoint_(
-                    "status_leds_mask",
-                    [](void* ctx, uint8_t mask) -> bool {
-                        return static_cast<IMaskOutputDriver*>(ctx)->writeMask(mask);
-                    },
-                    [](void* ctx, uint8_t* mask) -> bool {
-                        if (!mask) return false;
-                        return static_cast<IMaskOutputDriver*>(ctx)->readMask(*mask);
-                    },
-                    driver
-                );
-                if (ledMaskEp_) {
-                    if (!registry_.add(ledMaskEp_)) {
-                        LOGE("I/O registry full while adding status LED mask count=%u capacity=%u",
-                             (unsigned)registry_.count(),
-                             (unsigned)IO_REGISTRY_MAX_ENDPOINTS);
-                        return false;
-                    }
-                    setLedMask_(defaultMask, millis());
                 }
             }
         }
@@ -3336,13 +3191,10 @@ bool IOModule::configureRuntime_()
     scheduler_.add(dinJob);
 
     runtimeReady_ = true;
-    pcfLastEnabled_ = cfgData_.pcfEnabled;
-
     const char* expanderState = "off";
-    if (cfgData_.pcfEnabled) {
-        if (needTcaOutput && !needPcfOutput) expanderState = "tca9554";
-        else expanderState = "pcf8574";
-    }
+    if (needTcaOutput) expanderState = "tca9554";
+    else if (needPcfOutput) expanderState = "pcf8574";
+    else if (needMcpOutput || needMcpInput) expanderState = "mcp23017";
 
     LOGI("I/O ready (ads=%ldms ds=%ldms i2c_ai=%s din=%ldms endpoints=%u expander=%s)",
          (long)adsJob.periodMs,
@@ -3515,7 +3367,7 @@ IMaskOutputDriver* IOModule::beginMaskExpander_(IOExpanderId expanderId, uint8_t
     rt.beginAttempted = true;
     const uint8_t address = expanderAddress_(expanderId);
     if (expectedKind == IO_EXPANDER_KIND_PCF8574) {
-        rt.pcf = static_cast<Pcf8574Driver*>(allocPcfDriver_("pcf8574", &i2cBus_, address));
+        rt.pcf = static_cast<Pcf8574Driver*>(allocPcfDriver_("pcf8574", i2cBus_, address));
         if (!rt.pcf) return nullptr;
         rt.beginOk = makeMaskProvider(rt.pcf).begin();
         if (!rt.beginOk) {
@@ -3525,7 +3377,7 @@ IMaskOutputDriver* IOModule::beginMaskExpander_(IOExpanderId expanderId, uint8_t
         return rt.pcf;
     }
     if (expectedKind == IO_EXPANDER_KIND_TCA9554) {
-        rt.tca = static_cast<Tca9554Driver*>(allocTcaDriver_("tca9554", &i2cBus_, address));
+        rt.tca = static_cast<Tca9554Driver*>(allocTcaDriver_("tca9554", i2cBus_, address));
         if (!rt.tca) return nullptr;
         rt.beginOk = preserveHardwareState ? rt.tca->beginPreserveHardwareState()
                                            : makeMaskProvider(rt.tca).begin();
@@ -3551,7 +3403,7 @@ Mcp23017Driver* IOModule::beginMcpExpander_(IOExpanderId expanderId)
 
     rt.beginAttempted = true;
     const uint8_t address = expanderAddress_(expanderId);
-    rt.mcp = allocMcpDriver_("mcp23017", &i2cBus_, address);
+    rt.mcp = allocMcpDriver_("mcp23017", i2cBus_, address);
     if (!rt.mcp) return nullptr;
     rt.beginOk = rt.mcp->begin();
     if (!rt.beginOk) {
@@ -3580,13 +3432,6 @@ Mcp23017Driver* IOModule::allocMcpDriver_(const char* driverId, I2CBus* bus, uin
     if (mcpDriverPoolUsed_ >= IO_MAX_EXPANDERS) return nullptr;
     void* mem = mcpDriverPool_[mcpDriverPoolUsed_++];
     return new (mem) Mcp23017Driver(driverId, bus, address);
-}
-
-Pcf8574MaskEndpoint* IOModule::allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx)
-{
-    if (maskEndpointPoolUsed_ >= 1) return nullptr;
-    void* mem = maskEndpointPool_[maskEndpointPoolUsed_++];
-    return new (mem) Pcf8574MaskEndpoint(endpointId, writeFn, readFn, fnCtx);
 }
 
 bool IOModule::writeDigitalOut_(void* ctx, bool on)
@@ -3632,13 +3477,15 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfgStore_ = &cfg;
     cfgSvc_ = services.get<ConfigStoreService>(ServiceId::ConfigStore);
     logHub_ = services.get<LogHubService>(ServiceId::LogHub);
+    const I2cBusService* i2cBusSvc = services.get<I2cBusService>(ServiceId::I2cBus);
+    i2cBus_ = i2cBusSvc ? i2cBusSvc->bus : nullptr;
+    if (!i2cBus_) {
+        LOGE("service unavailable: %s", toString(ServiceId::I2cBus));
+    }
     const DataStoreService* dsSvc = services.get<DataStoreService>(ServiceId::DataStore);
     dataStore_ = dsSvc ? dsSvc->store : nullptr;
     if (!services.add(ServiceId::Io, &ioSvc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::Io));
-    }
-    if (!services.add(ServiceId::StatusLeds, &statusLedsSvc_)) {
-        LOGE("service registration failed: %s", toString(ServiceId::StatusLeds));
     }
 
     cfg.registerVar(enabledVar_, kCfgModuleId, kCfgBranchIo);
@@ -3664,10 +3511,6 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(ina226AddressVar_, kCfgModuleId, kCfgBranchIoIna226);
     cfg.registerVar(ina226PollVar_, kCfgModuleId, kCfgBranchIoIna226);
     cfg.registerVar(ina226ShuntOhmsVar_, kCfgModuleId, kCfgBranchIoIna226);
-    cfg.registerVar(pcfEnabledVar_, kCfgModuleId, kCfgBranchIoPcf857x);
-    cfg.registerVar(pcfAddressVar_, kCfgModuleId, kCfgBranchIoPcf857x);
-    cfg.registerVar(pcfMaskDefaultVar_, kCfgModuleId, kCfgBranchIoPcf857x);
-    cfg.registerVar(pcfActiveLowVar_, kCfgModuleId, kCfgBranchIoPcf857x);
     cfg.registerVar(mcp23017EnabledVar_, kCfgModuleId, kCfgBranchIoMcp23017);
     cfg.registerVar(mcp23017AddressVar_, kCfgModuleId, kCfgBranchIoMcp23017);
 #define FLOW_IO_REGISTER_EXPANDER_CFG(INDEX, BRANCH) \
@@ -3750,17 +3593,6 @@ void IOModule::onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services)
     }
     Preferences prefs;
     if (prefs.begin(NvsKeys::StorageNamespace, true)) {
-        if (const IOExpanderSpec* exp0 = expanderSpec_(0)) {
-            if ((exp0->kind == IO_EXPANDER_KIND_PCF8574 || exp0->kind == IO_EXPANDER_KIND_TCA9554) &&
-                !prefs.isKey(NvsKeys::Io::IO_X0AD) &&
-                prefs.isKey(NvsKeys::Io::IO_PCFAD)) {
-                expanderCfg_[0].enabled = cfgData_.pcfEnabled;
-                expanderCfg_[0].address = cfgData_.pcfAddress;
-                expanderCfg_[0].maskDefault = cfgData_.pcfMaskDefault;
-                expanderCfg_[0].activeLow = cfgData_.pcfActiveLow;
-                LOGI("io.expander00 using legacy pcf857x config addr=0x%02X", expanderCfg_[0].address);
-            }
-        }
         if (const IOExpanderSpec* exp1 = expanderSpec_(1)) {
             if (exp1->kind == IO_EXPANDER_KIND_MCP23017 &&
                 !prefs.isKey(NvsKeys::Io::IO_X1AD) &&

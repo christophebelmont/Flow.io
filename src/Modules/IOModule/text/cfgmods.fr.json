@@ -32,9 +32,6 @@
     "io/drivers/ina226/address": {
       "display_format": "hex"
     },
-    "io/drivers/pcf857x/address": {
-      "display_format": "hex"
-    },
     "io/drivers/sht40/address": {
       "display_format": "hex"
     },

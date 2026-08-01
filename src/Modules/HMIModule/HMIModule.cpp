@@ -627,6 +627,12 @@ bool HMIModule::getDisplayVersion_(char* out, size_t outLen) const
 
 HMIModule::HMIModule(const BoardSpec& board)
 {
+    const I2cBusSpec* ioBus = boardFindI2cBus(board, "io");
+    if (ioBus) {
+        frontLedI2cSda_ = ioBus->sdaPin;
+        frontLedI2cScl_ = ioBus->sclPin;
+        frontLedI2cFrequencyHz_ = ioBus->frequencyHz;
+    }
     const IoPointSpec* tx433 = boardFindIoPoint(board, BoardSignal::Tx433);
     if (tx433) {
         cfgData_.veniceTxGpio = tx433->pin;
@@ -652,7 +658,8 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     timeSvc_ = services.get<TimeService>(ServiceId::Time);
     wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
     localeSvc_ = services.get<LocaleService>(ServiceId::Locale);
-    statusLedsSvc_ = services.get<StatusLedsService>(ServiceId::StatusLeds);
+    const I2cBusService* i2cBusSvc = services.get<I2cBusService>(ServiceId::I2cBus);
+    i2cBus_ = i2cBusSvc ? i2cBusSvc->bus : nullptr;
     netAccessSvc_ = services.get<NetworkAccessService>(ServiceId::NetworkAccess);
     auto* ebSvc = services.get<EventBusService>(ServiceId::EventBus);
     eventBus_ = ebSvc ? ebSvc->bus : nullptr;
@@ -781,9 +788,9 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
         LOGW("WS2812 status LED init failed on gpio=%d", (int)wsCfg.gpio);
     }
 
-    LOGI("HMI service registered with driver=%s led_panel=%s ws2812=%s",
+    LOGI("HMI service registered with driver=%s led_panel_i2c=%s ws2812=%s",
          driver_ ? driver_->driverId() : "none",
-         statusLedsSvc_ ? "on" : "off",
+         i2cBus_ ? "available" : "unavailable",
          ws2812Ready ? "on" : "off");
 }
 
@@ -793,6 +800,7 @@ void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
     refreshNetworkExpectations_();
     refreshLocale_();
     applyOutputConfig_();
+    applyFrontLedPanelConfig_();
     refreshHomeBindings_();
     queueHomePublish_(kHomePublishAll);
     applyLedMask_(true);
@@ -1710,11 +1718,51 @@ void HMIModule::logHmiLedDebug_(uint32_t nowMs)
          sensorFaultRef);
 }
 
+bool HMIModule::ensureFrontLedPanelReady_()
+{
+    if (!kFrontLedsSupported) return false;
+    if (frontLedPanel_.isReady()) return true;
+    if (!i2cBus_) return false;
+
+    if (!i2cBus_->beginOk()) {
+        i2cBus_->begin(frontLedI2cSda_, frontLedI2cScl_, frontLedI2cFrequencyHz_);
+    }
+    if (!i2cBus_->beginOk()) return false;
+    if (!frontLedPanel_.begin(*i2cBus_)) return false;
+
+    ledMaskValid_ = false;
+    LOGI("PCF8574A LED panel ready addr=0x%02X active_low=true",
+         (unsigned)Pcf8574LedPanelDriver::Address);
+    return true;
+}
+
+void HMIModule::applyFrontLedPanelConfig_()
+{
+    if (!kFrontLedsSupported) return;
+    if (!ensureFrontLedPanelReady_()) {
+        ledMaskValid_ = false;
+        LOGW("PCF8574A LED panel unavailable addr=0x%02X",
+             (unsigned)Pcf8574LedPanelDriver::Address);
+        return;
+    }
+    if (!frontLedPanel_.setEnabled(cfgData_.ledsEnabled)) {
+        ledMaskValid_ = false;
+        LOGW("PCF8574A LED panel enable update failed");
+        return;
+    }
+    ledMaskValid_ = false;
+}
+
 void HMIModule::applyLedMask_(bool force)
 {
     if (!kFrontLedsSupported) return;
-    if (!cfgData_.ledsEnabled) return;
-    if (!statusLedsSvc_ || !statusLedsSvc_->setMask) return;
+    if (!cfgData_.ledsEnabled) {
+        if (frontLedPanel_.isReady()) (void)frontLedPanel_.setEnabled(false);
+        ledMaskValid_ = false;
+        return;
+    }
+    if (!ensureFrontLedPanelReady_()) return;
+    if (!frontLedPanel_.isEnabled() && !frontLedPanel_.setEnabled(true)) return;
 
     PoolLogicModeFlags modes{};
     bool networkConnected = false;
@@ -1758,7 +1806,7 @@ void HMIModule::applyLedMask_(bool force)
     }
 
     if (!force && ledMaskValid_ && ledMaskLast_ == mask) return;
-    if (statusLedsSvc_->setMask(statusLedsSvc_->ctx, mask, millis())) {
+    if (frontLedPanel_.writeLogicalMask(mask)) {
         ledMaskLast_ = mask;
         ledMaskValid_ = true;
     }
@@ -1836,6 +1884,7 @@ void HMIModule::onEvent_(const Event& e)
         }
         if (p->module[0] && strncmp(p->module, kHmiModulePrefix, strlen(kHmiModulePrefix)) == 0) {
             applyOutputConfig_();
+            applyFrontLedPanelConfig_();
             ledDirty = cfgData_.ledsEnabled;
             if (cfgData_.nextionEnabled || cfgData_.remoteUdpEnabled) {
                 homePublishMask |= kHomePublishAll;
@@ -2976,7 +3025,8 @@ void HMIModule::loop()
             applyLedMask_(true);
         }
 
-        if (statusLedsSvc_ && (uint32_t)(now - lastLedPageToggleMs_) >= kLedPageTogglePeriodMs) {
+        if (frontLedPanel_.isReady() &&
+            (uint32_t)(now - lastLedPageToggleMs_) >= kLedPageTogglePeriodMs) {
             lastLedPageToggleMs_ = now;
             const uint8_t nextPage = (ledPage_ == 1U) ? 2U : 1U;
             ledPage_ = nextPage;
@@ -2986,6 +3036,12 @@ void HMIModule::loop()
             applyLedMask_();
             lastLedApplyTryMs_ = now;
         }
+    } else if (kFrontLedsSupported &&
+               frontLedPanel_.isReady() &&
+               frontLedPanel_.isEnabled() &&
+               (uint32_t)(now - lastLedApplyTryMs_) >= 1000U) {
+        (void)frontLedPanel_.setEnabled(false);
+        lastLedApplyTryMs_ = now;
     }
     serviceRtcBridge_(now);
     queueClockPublishIfDue_(now);

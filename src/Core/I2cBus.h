@@ -1,7 +1,7 @@
 #pragma once
 /**
- * @file I2CBus.h
- * @brief Shared I2C bus with mutex.
+ * @file I2cBus.h
+ * @brief Shared access wrapper for the primary I2C controller.
  */
 
 #include <stdint.h>
@@ -9,10 +9,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+/**
+ * @brief Process-wide primary I2C bus shared by hardware-facing modules.
+ *
+ * The bus uses the global Arduino `Wire` controller. `AppContext` owns the
+ * single instance and publishes it through `I2cBusService`; modules must not
+ * create private instances for the same controller. Callers must hold the bus
+ * lock while performing a transaction that can run concurrently with another
+ * module.
+ */
 class I2CBus {
 public:
-    // IOModule is fixed on I2C bus 0 (global Wire). Only SDA/SCL/frequency are configurable.
-    void begin(int sda, int scl, uint32_t frequencyHz = 100000);
+    void begin(int sda, int scl, uint32_t frequencyHz = 100000U);
     bool beginOk() const { return lastBeginOk_; }
     int beginSda() const { return lastBeginSda_; }
     int beginScl() const { return lastBeginScl_; }

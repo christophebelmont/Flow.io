@@ -318,6 +318,7 @@ body.web-icons-disabled .status-flag-check.is-true{font-size:13px;}
 .upgrade-card-field-icon{font-size:12px;color:#7A8FA5;line-height:1;margin-top:0;}
 .upgrade-card-field span{line-height:0.92;overflow-wrap:anywhere;}
 .update-summary-card{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:start;min-height:184px;padding:26px 24px 20px;border:1px solid var(--border);border-radius:var(--radius);background:#FFFFFF;box-shadow:0 8px 24px rgba(7,26,53,0.05);overflow:hidden;}
+.update-summary-card.is-disabled{filter:grayscale(1);opacity:0.52;box-shadow:none;}
 .update-summary-card::after{content:"";position:absolute;left:24px;right:24px;bottom:60px;height:1px;background:var(--border);}
 .update-summary-body{display:grid;gap:16px;min-width:0;}
 .update-summary-body h3{margin:4px 0 2px;font-size:20px;line-height:1.15;font-weight:800;color:var(--primary);}
@@ -333,6 +334,7 @@ body.web-icons-disabled .status-flag-check.is-true{font-size:13px;}
 .update-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
 .update-dot.is-green{background:#18A957;}
 .update-dot.is-blue{background:#1682E8;}
+.update-dot.is-gray{background:#7D8998;}
 .update-component-badge{width:31px;height:31px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:0 0 31px;box-shadow:none;background:#EAF4FF;color:var(--primary);}
 .update-component-badge .ui-msr{font-size:18px;color:currentColor;font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;}
 .update-component-badge-lg{width:49px;height:49px;flex-basis:49px;}
@@ -346,6 +348,7 @@ body.web-icons-disabled .status-flag-check.is-true{font-size:13px;}
 .updates-table th:first-child,.updates-table td:first-child{border-left:0;}
 .updates-table thead th{border-top:0;color:var(--text);font-size:14px;font-weight:800;background:#FBFDFF;white-space:nowrap;}
 .updates-table tbody td{font-size:14px;color:var(--text-muted);line-height:1.45;}
+.updates-table tbody tr.is-disabled{filter:grayscale(1);opacity:0.52;}
 .update-component-cell{display:flex;align-items:center;gap:16px;min-width:0;}
 .update-component-cell .update-component-badge{width:34px;height:34px;flex-basis:34px;}
 .update-component-cell .update-component-badge .ui-msr{font-size:19px;}
@@ -364,6 +367,7 @@ body.web-icons-disabled .status-flag-check.is-true{font-size:13px;}
 .update-status-badge{display:inline-flex;align-items:center;justify-content:center;min-width:118px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:700;white-space:nowrap;}
 .update-status-badge.is-available{background:#DDF5E7;color:#10813F;}
 .update-status-badge.is-current{background:#E7F2FF;color:var(--primary);}
+.update-status-badge.is-unavailable{max-width:190px;background:#E7E9EC;color:#566170;white-space:normal;text-align:center;line-height:1.25;}
 .update-action-btn{min-width:154px;min-height:44px;border:1px solid #6FB7FF;background:#FFFFFF;color:var(--primary);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;white-space:nowrap;}
 .update-action-btn:hover,.update-action-btn:active{background:#F2F8FF;color:var(--primary);border-color:#3A98F2;}
 .update-action-btn:disabled{opacity:0.45;cursor:not-allowed;}

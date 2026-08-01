@@ -5,6 +5,7 @@
  */
 
 #include "App/BuildFlags.h"
+#include "Core/I2cBus.h"
 #include "Core/Module.h"
 #include "Core/NvsKeys.h"
 #include "Core/ServiceBinding.h"
@@ -14,6 +15,7 @@
 #include "Modules/HMIModule/ConfigMenuModel.h"
 #include "Modules/HMIModule/Drivers/HmiDriverTypes.h"
 #include "Modules/HMIModule/Drivers/NextionDriver.h"
+#include "Modules/HMIModule/Drivers/Pcf8574LedPanelDriver.h"
 #include "Modules/HMIModule/Drivers/RemoteHmiUdpDriver.h"
 #include "Modules/HMIModule/Drivers/TfaVeniceRf433Sink.h"
 #include "Modules/HMIModule/Drivers/Ws2812StatusLedDriver.h"
@@ -113,7 +115,7 @@ private:
     const TimeService* timeSvc_ = nullptr;
     const WifiService* wifiSvc_ = nullptr;
     const LocaleService* localeSvc_ = nullptr;
-    const StatusLedsService* statusLedsSvc_ = nullptr;
+    I2CBus* i2cBus_ = nullptr;
     const NetworkAccessService* netAccessSvc_ = nullptr;
     ServiceRegistry* services_ = nullptr;
     EventBus* eventBus_ = nullptr;
@@ -123,6 +125,7 @@ private:
     RemoteHmiUdpDriver remoteUdp_;
     HmiUdpServerModule* remoteUdpServer_ = nullptr;
     TfaVeniceRf433Sink venice_;
+    Pcf8574LedPanelDriver frontLedPanel_;
     Ws2812StatusLedDriver ws2812StatusLed_;
     IHmiDriver* driver_ = nullptr;
 
@@ -156,6 +159,9 @@ private:
 #else
         true;
 #endif
+    int8_t frontLedI2cSda_ = -1;
+    int8_t frontLedI2cScl_ = -1;
+    uint32_t frontLedI2cFrequencyHz_ = 100000U;
     uint32_t homePublishMask_ = 0U;
     portMUX_TYPE homePublishMux_ = portMUX_INITIALIZER_UNLOCKED;
     IoId phIoId_ = ioIdFromSlot(analogInputSlot(1));
@@ -237,6 +243,8 @@ private:
     void setBootComplete_();
     bool setLedEnabled_(bool enabled);
     bool setLedBrightness_(uint8_t brightness);
+    bool ensureFrontLedPanelReady_();
+    void applyFrontLedPanelConfig_();
     bool getDisplayVersion_(char* out, size_t outLen) const;
     bool readRtcSvc_(HmiRtcDateTime* out, uint16_t timeoutMs);
     bool writeRtcSvc_(const HmiRtcDateTime* value);

@@ -41,10 +41,6 @@ struct IOModuleConfig {
     uint8_t ina226Address = 0x40;
     int32_t ina226PollMs = 500;
     float ina226ShuntOhms = 0.1f;
-    bool pcfEnabled = FLOW_WIRDEF_IO_PCFEN;
-    uint8_t pcfAddress = FLOW_WIRDEF_IO_PCFAD;
-    uint8_t pcfMaskDefault = FLOW_WIRDEF_IO_PCFMK;
-    bool pcfActiveLow = FLOW_WIRDEF_IO_PCFAL;
     bool mcp23017Enabled = true;
     uint8_t mcp23017Address = 0x21;
     bool traceEnabled = FLOW_MODDEF_IO_TREN;

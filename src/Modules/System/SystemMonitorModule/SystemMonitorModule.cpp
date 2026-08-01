@@ -63,6 +63,39 @@ MemoryPressureState deriveMemoryPressureState_(const SystemStatsSnapshot& snap)
     return MemoryPressureState::Normal;
 }
 
+MemoryPressureState applyMemoryPressureHysteresis_(const SystemStatsSnapshot& snap,
+                                                   MemoryPressureState previous)
+{
+    const MemoryPressureState derived = deriveMemoryPressureState_(snap);
+    if ((uint8_t)derived >= (uint8_t)previous) return derived;
+
+    const uint32_t freeBytes = snap.heap.internalFreeBytes;
+    const uint32_t largestBytes = snap.heap.internalLargestFreeBlock;
+    const uint8_t frag = snap.heap.internalFragPercent;
+
+    // Escalation uses the strict thresholds above immediately. Recovery needs
+    // extra margin so short-lived heap allocations cannot make adjacent states
+    // alternate and emit a warning on every sysmon pass.
+    switch (previous) {
+    case MemoryPressureState::Panic:
+        if (freeBytes < 14000U && largestBytes < 6000U && frag > 50U) return previous;
+        break;
+    case MemoryPressureState::Critical:
+        if (freeBytes < 18000U && largestBytes < 8500U && frag > 40U) return previous;
+        break;
+    case MemoryPressureState::Shedding:
+        if (freeBytes < 24000U && largestBytes < 12000U && frag > 30U) return previous;
+        break;
+    case MemoryPressureState::Constrained:
+        if (freeBytes < 28000U && largestBytes < 16000U && frag > 22U) return previous;
+        break;
+    case MemoryPressureState::Normal:
+    default:
+        break;
+    }
+    return derived;
+}
+
 const char* memoryPressureStateStr_(MemoryPressureState st)
 {
     switch (st) {
@@ -841,7 +874,8 @@ void SystemMonitorModule::pollMemoryPressureReboot_(uint32_t now)
 
     SystemStatsSnapshot snap{};
     SystemStats::collect(snap);
-    const MemoryPressureState state = deriveMemoryPressureState_(snap);
+    const MemoryPressureState state = applyMemoryPressureHysteresis_(
+        snap, (MemoryPressureState)memoryPressureState_);
     const uint8_t stateRaw = (uint8_t)state;
 
     if (stateRaw != memoryPressureState_) {

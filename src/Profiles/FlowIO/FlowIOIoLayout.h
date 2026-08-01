@@ -15,7 +15,7 @@ enum : IOExpanderId {
 };
 
 inline constexpr IOExpanderSpec kExpanders[] = {
-    {ExpanderPcf8574, IO_EXPANDER_KIND_PCF8574, FLOW_WIRDEF_IO_PCFEN, FLOW_WIRDEF_IO_PCFAD, FLOW_WIRDEF_IO_PCFMK, FLOW_WIRDEF_IO_PCFAL},
+    {ExpanderPcf8574, IO_EXPANDER_KIND_PCF8574, true, 0x20, 0x00, true},
 };
 
 enum : PhysicalPortId {

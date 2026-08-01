@@ -207,27 +207,6 @@
       "help_t": "cfgdocs.io.drivers.ina226.shunt_ohms.help",
       "unit": "Ohm"
     },
-    "io/drivers/pcf857x/active_low": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.pcf857x.active_low.label",
-      "help_t": "cfgdocs.io.drivers.pcf857x.active_low.help"
-    },
-    "io/drivers/pcf857x/address": {
-      "type": "UInt8",
-      "label_t": "cfgdocs.io.drivers.pcf857x.address.label",
-      "help_t": "cfgdocs.io.drivers.pcf857x.address.help",
-      "display_format": "hex"
-    },
-    "io/drivers/pcf857x/enabled": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.pcf857x.enabled.label",
-      "help_t": "cfgdocs.io.drivers.pcf857x.enabled.help"
-    },
-    "io/drivers/pcf857x/mask_default": {
-      "type": "UInt8",
-      "label_t": "cfgdocs.io.drivers.pcf857x.mask_default.label",
-      "help_t": "cfgdocs.io.drivers.pcf857x.mask_default.help"
-    },
     "io/drivers/sht40/address": {
       "type": "UInt8",
       "label_t": "cfgdocs.io.drivers.sht40.address.label",

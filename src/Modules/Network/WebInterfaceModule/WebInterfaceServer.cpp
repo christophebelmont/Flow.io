@@ -61,6 +61,10 @@
 #define FLOW_WEB_HEAP_FORENSICS 0
 #endif
 
+#ifndef TFT_FIRMW
+#define TFT_FIRMW "0.0.0"
+#endif
+
 static void sanitizeJsonString_(char* s)
 {
     if (!s) return;
@@ -5625,8 +5629,15 @@ void WebInterfaceModule::startServer_()
         if (!hmiSvc_ && services_) {
             hmiSvc_ = services_->get<HmiService>(ServiceId::Hmi);
         }
-        if (hmiSvc_ && hmiSvc_->getDisplayVersion &&
-            hmiSvc_->getDisplayVersion(hmiSvc_->ctx, nextionDisplayVersion, sizeof(nextionDisplayVersion))) {
+        const bool nextionVersionDetected =
+            hmiSvc_ && hmiSvc_->getDisplayVersion &&
+            hmiSvc_->getDisplayVersion(hmiSvc_->ctx, nextionDisplayVersion, sizeof(nextionDisplayVersion));
+        const bool nextionVersionCompatible =
+            nextionVersionDetected && strcmp(nextionDisplayVersion, TFT_FIRMW) == 0;
+        doc["nextion_display_version_detected"] = nextionVersionDetected;
+        doc["nextion_display_version_compatible"] = nextionVersionCompatible;
+        doc["nextion_display_expected_version"] = TFT_FIRMW;
+        if (nextionVersionDetected) {
             doc["nextion_display_version"] = nextionDisplayVersion;
         }
 #if defined(FLOW_PROFILE_MICRONOVA)

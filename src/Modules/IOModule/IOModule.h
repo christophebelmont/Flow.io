@@ -7,13 +7,13 @@
 #include "Board/BoardSpec.h"
 #include "Core/Module.h"
 #include "Core/NvsKeys.h"
+#include "Core/I2cBus.h"
 #include "Core/RuntimeUi.h"
 #include "Core/RuntimeSnapshotProvider.h"
 #include "Core/ServiceBinding.h"
 #include "Core/Services/Services.h"
 #include "Core/SystemLimits.h"
 #include "Modules/Network/MQTTModule/MqttConfigRouteProducer.h"
-#include "Modules/IOModule/IOBus/I2CBus.h"
 #include "Modules/IOModule/IODrivers/Ads1115Driver.h"
 #include "Modules/IOModule/IODrivers/Bme680Driver.h"
 #include "Modules/IOModule/IODrivers/Bmp280Driver.h"
@@ -31,7 +31,6 @@
 #include "Modules/IOModule/IOEndpoints/AnalogSensorEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/DigitalActuatorEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/DigitalSensorEndpoint.h"
-#include "Modules/IOModule/IOEndpoints/Pcf8574MaskEndpoint.h"
 #include "Modules/IOModule/IOEndpoints/RunningMedianAverageFloat.h"
 #include "Modules/IOModule/IOModuleDataModel.h"
 #include "Modules/IOModule/IOModuleTypes.h"
@@ -156,14 +155,6 @@ private:
     IoStatus ioSensorStatus_(IoId id, IoSensorStatus* outStatus) const;
     IoStatus ioListInvalidSensors_(IoId* outIds, uint8_t maxIds, uint8_t* outCount) const;
 
-    bool setLedMask_(uint8_t mask, uint32_t tsMs);
-    bool turnLedOn_(uint8_t bit, uint32_t tsMs);
-    bool turnLedOff_(uint8_t bit, uint32_t tsMs);
-    bool getLedMask_(uint8_t& mask) const;
-    bool getLedMaskSvc_(uint8_t* mask) const;
-    uint8_t pcfPhysicalFromLogical_(uint8_t logicalMask) const;
-    uint8_t pcfLogicalFromPhysical_(uint8_t physicalMask) const;
-
     bool configureRuntime_();
     const IOBindingPortSpec* bindingPortSpec_(PhysicalPortId portId) const;
     bool resolveAnalogBinding_(PhysicalPortId portId, uint8_t& sourceOut, uint8_t& channelOut, uint8_t& backendOut) const;
@@ -259,7 +250,6 @@ private:
     IMaskOutputDriver* allocPcfDriver_(const char* driverId, I2CBus* bus, uint8_t address);
     IMaskOutputDriver* allocTcaDriver_(const char* driverId, I2CBus* bus, uint8_t address);
     Mcp23017Driver* allocMcpDriver_(const char* driverId, I2CBus* bus, uint8_t address);
-    Pcf8574MaskEndpoint* allocMaskEndpoint_(const char* endpointId, MaskWriteFn writeFn, MaskReadFn readFn, void* fnCtx);
 
     static constexpr uint8_t MAX_ANALOG_ENDPOINTS = Limits::Io::MaxAnalogEndpoints;
     static constexpr uint8_t MAX_DIGITAL_INPUTS = Limits::Io::MaxDigitalInputs;
@@ -358,7 +348,7 @@ private:
 
     IORegistry registry_{};
     IOScheduler scheduler_{};
-    I2CBus i2cBus_{};
+    I2CBus* i2cBus_ = nullptr;
 
     OneWireBus* oneWireWater_ = nullptr;
     OneWireBus* oneWireAir_ = nullptr;
@@ -368,9 +358,6 @@ private:
     bool oneWireAirAddrValid_ = false;
 
     IOAnalogProvider analogProviders_[IO_SRC_COUNT]{};
-    IOMaskProvider ledMaskProvider_{};
-    Pcf8574MaskEndpoint* ledMaskEp_ = nullptr;
-    IOExpanderId ledMaskExpanderId_ = IO_EXPANDER_INVALID;
     RuntimeExpander runtimeExpanders_[IO_MAX_EXPANDERS]{};
     IOServiceV2 ioSvc_{
         ServiceBinding::bind<&IOModule::ioCount_>,
@@ -386,14 +373,6 @@ private:
         ServiceBinding::bind<&IOModule::ioListInvalidSensors_>,
         this
     };
-    StatusLedsService statusLedsSvc_{
-        ServiceBinding::bind<&IOModule::setLedMask_>,
-        ServiceBinding::bind<&IOModule::getLedMaskSvc_>,
-        this
-    };
-    bool pcfLastEnabled_ = false;
-    uint8_t pcfLogicalMask_ = 0;
-    bool pcfLogicalValid_ = false;
     IoCycleInfo* lastCycle_ = nullptr;
 
     AnalogSlot* analogSlots_ = nullptr;
@@ -412,7 +391,6 @@ private:
     alignas(Pcf8574Driver) uint8_t pcfDriverPool_[IO_MAX_EXPANDERS][sizeof(Pcf8574Driver)]{};
     alignas(Tca9554Driver) uint8_t tcaDriverPool_[IO_MAX_EXPANDERS][sizeof(Tca9554Driver)]{};
     alignas(Mcp23017Driver) uint8_t mcpDriverPool_[IO_MAX_EXPANDERS][sizeof(Mcp23017Driver)]{};
-    alignas(Pcf8574MaskEndpoint) uint8_t maskEndpointPool_[1][sizeof(Pcf8574MaskEndpoint)]{};
     uint8_t analogEndpointPoolUsed_ = 0;
     uint8_t digitalSensorEndpointPoolUsed_ = 0;
     uint8_t digitalActuatorEndpointPoolUsed_ = 0;
@@ -430,13 +408,11 @@ private:
     uint8_t pcfDriverPoolUsed_ = 0;
     uint8_t tcaDriverPoolUsed_ = 0;
     uint8_t mcpDriverPoolUsed_ = 0;
-    uint8_t maskEndpointPoolUsed_ = 0;
     bool runtimeReady_ = false;
     bool runtimeInitAttempted_ = false;
     int32_t boardDefaultI2cSda_ = FLOW_WIRDEF_IO_SDA;
     int32_t boardDefaultI2cScl_ = FLOW_WIRDEF_IO_SCL;
     const char* boardProfileName_ = "unknown";
-    bool pcfEnableNeedsReinitWarned_ = false;
     uint32_t counterTraceLastMs_ = 0;
     uint32_t analogCalcLogLastMs_[3]{0, 0, 0};
     int32_t* analogPrecisionLast_ = nullptr;
@@ -473,10 +449,6 @@ private:
     ConfigVariable<uint8_t,0> ina226AddressVar_ { NVS_KEY(NvsKeys::Io::IO_INAAD),"address","io/drivers/ina226",ConfigType::UInt8,&cfgData_.ina226Address,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> ina226PollVar_ { NVS_KEY(NvsKeys::Io::IO_INAPL),"poll_ms","io/drivers/ina226",ConfigType::Int32,&cfgData_.ina226PollMs,ConfigPersistence::Persistent,0 };
     ConfigVariable<float,0> ina226ShuntOhmsVar_ { NVS_KEY(NvsKeys::Io::IO_INASH),"shunt_ohms","io/drivers/ina226",ConfigType::Float,&cfgData_.ina226ShuntOhms,ConfigPersistence::Persistent,0 };
-    ConfigVariable<bool,0> pcfEnabledVar_ { NVS_KEY(NvsKeys::Io::IO_PCFEN),"enabled","io/drivers/pcf857x",ConfigType::Bool,&cfgData_.pcfEnabled,ConfigPersistence::Persistent,0 };
-    ConfigVariable<uint8_t,0> pcfAddressVar_ { NVS_KEY(NvsKeys::Io::IO_PCFAD),"address","io/drivers/pcf857x",ConfigType::UInt8,&cfgData_.pcfAddress,ConfigPersistence::Persistent,0 };
-    ConfigVariable<uint8_t,0> pcfMaskDefaultVar_ { NVS_KEY(NvsKeys::Io::IO_PCFMK),"mask_default","io/drivers/pcf857x",ConfigType::UInt8,&cfgData_.pcfMaskDefault,ConfigPersistence::Persistent,0 };
-    ConfigVariable<bool,0> pcfActiveLowVar_ { NVS_KEY(NvsKeys::Io::IO_PCFAL),"active_low","io/drivers/pcf857x",ConfigType::Bool,&cfgData_.pcfActiveLow,ConfigPersistence::Persistent,0 };
     ConfigVariable<bool,0> mcp23017EnabledVar_ { NVS_KEY(NvsKeys::Io::IO_MCPEN),"enabled","io/drivers/mcp23017",ConfigType::Bool,&cfgData_.mcp23017Enabled,ConfigPersistence::Persistent,0 };
     ConfigVariable<uint8_t,0> mcp23017AddressVar_ { NVS_KEY(NvsKeys::Io::IO_MCPAD),"address","io/drivers/mcp23017",ConfigType::UInt8,&cfgData_.mcp23017Address,ConfigPersistence::Persistent,0 };
 #define FLOW_IO_EXPANDER_CFG_DECL(INDEX, SLOT_STR, KEYEN, KEYAD, KEYMK, KEYAL) \

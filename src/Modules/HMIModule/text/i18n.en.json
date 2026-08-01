@@ -1,7 +1,7 @@
 {
   "locale": "en",
   "translations": {
-    "cfgdocs.hmi.leds.enabled.help": "Activate front LEDs on some flow.io/Poolmaster boards.",
+    "cfgdocs.hmi.leds.enabled.help": "Enable the front LED panel driven by the dedicated PCF8574A at I2C address 0x3C.",
     "cfgdocs.hmi.leds.enabled.label": "LEDs enabled",
     "cfgdocs.hmi.leds.waveshare_enabled.help": "Enable the Waveshare WS2812 LED.",
     "cfgdocs.hmi.leds.waveshare_enabled.label": "Waveshare LED enabled",

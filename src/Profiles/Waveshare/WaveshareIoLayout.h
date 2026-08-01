@@ -16,7 +16,7 @@ enum : IOExpanderId {
 };
 
 inline constexpr IOExpanderSpec kExpanders[] = {
-    {ExpanderTca9554, IO_EXPANDER_KIND_TCA9554, true, FLOW_WIRDEF_IO_PCFAD, 0x00, false},
+    {ExpanderTca9554, IO_EXPANDER_KIND_TCA9554, true, 0x20, 0x00, false},
     {ExpanderMcp23017, IO_EXPANDER_KIND_MCP23017, true, 0x21, 0x00, false},
     {ExpanderPcf8574Aux, IO_EXPANDER_KIND_PCF8574, false, 0x22, 0xFF, false},
     {ExpanderTca9554Aux, IO_EXPANDER_KIND_TCA9554, false, 0x23, 0x00, false},

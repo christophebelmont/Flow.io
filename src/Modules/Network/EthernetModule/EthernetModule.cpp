@@ -12,6 +12,7 @@
 #include <WiFi.h>
 #include <ctype.h>
 #include <esp_err.h>
+#include <esp_mac.h>
 #include <esp_netif_ip_addr.h>
 #include <string.h>
 
@@ -48,6 +49,51 @@ bool isBlank_(const char* text, size_t maxLen)
         if (!isspace((unsigned char)text[i])) return false;
     }
     return true;
+}
+
+void formatHostname_(const char* deviceName, char* out, size_t outLen)
+{
+    if (!out || outLen == 0U) return;
+
+    size_t w = 0U;
+    if (deviceName) {
+        for (size_t i = 0U; deviceName[i] != '\0' && w < (outLen - 1U); ++i) {
+            const char c = deviceName[i];
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+                out[w++] = (char)tolower((unsigned char)c);
+            } else if (c == ' ' || c == '_' || c == '.') {
+                out[w++] = '-';
+            }
+        }
+    }
+    out[w] = '\0';
+
+    while (w > 0U && out[0] == '-') {
+        memmove(out, out + 1, w);
+        --w;
+    }
+    while (w > 0U && out[w - 1U] == '-') {
+        out[--w] = '\0';
+    }
+
+    if (out[0] == '\0') {
+        snprintf(out, outLen, "flowio");
+    }
+}
+
+void formatDhcpHostname_(const char* deviceName, char* out, size_t outLen)
+{
+    formatHostname_(deviceName, out, outLen);
+    if (!out || outLen == 0U || strcmp(out, "flowio") != 0) return;
+
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) return;
+    snprintf(out,
+             outLen,
+             "FlowIO-%02X%02X%02X",
+             (unsigned)mac[3],
+             (unsigned)mac[4],
+             (unsigned)mac[5]);
 }
 }  // namespace
 
@@ -426,6 +472,7 @@ void EthernetModule::loadSystemDeviceName_()
     if (strncmp(deviceName_, next, sizeof(deviceName_)) == 0) return;
     snprintf(deviceName_, sizeof(deviceName_), "%s", next);
     LOGI("System device name loaded: %s", deviceName_);
+    hostnameDirty_ = true;
     if (mdnsStarted_) {
         stopMdns_();
         startMdns_();
@@ -438,7 +485,13 @@ void EthernetModule::handleDeferredDriverActions_()
 
     if (hostnameDirty_) {
         hostnameDirty_ = false;
-        (void)ETH.setHostname("flowio-eth0");
+        char hostname[sizeof(deviceName_)] = {0};
+        formatDhcpHostname_(deviceName_, hostname, sizeof(hostname));
+        if (!ETH.setHostname(hostname)) {
+            LOGW("Ethernet DHCP hostname update failed host=%s", hostname);
+        } else {
+            LOGI("Ethernet DHCP hostname=%s", hostname);
+        }
     }
 
     if (linkInfoDirty_) {
@@ -464,29 +517,7 @@ void EthernetModule::startMdns_()
     if (!gotIp_) return;
 
     char host[sizeof(deviceName_)] = {0};
-    size_t w = 0;
-    for (size_t i = 0; deviceName_[i] != '\0' && w < (sizeof(host) - 1); ++i) {
-        char c = deviceName_[i];
-        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-            host[w++] = (char)tolower((unsigned char)c);
-        } else if (c == ' ' || c == '_' || c == '.') {
-            host[w++] = '-';
-        }
-    }
-    host[w] = '\0';
-
-    while (w > 0 && host[0] == '-') {
-        memmove(host, host + 1, w);
-        --w;
-    }
-    while (w > 0 && host[w - 1] == '-') {
-        host[w - 1] = '\0';
-        --w;
-    }
-
-    if (host[0] == '\0') {
-        snprintf(host, sizeof(host), "flowio");
-    }
+    formatHostname_(deviceName_, host, sizeof(host));
 
     if (!MDNS.begin(host)) {
         LOGW("mDNS start failed host=%s on Ethernet", host);

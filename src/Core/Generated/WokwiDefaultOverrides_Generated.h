@@ -163,38 +163,6 @@
 #endif
 #endif
 
-#ifndef FLOW_WIRDEF_IO_PCFEN
-#if defined(FLOW_WOKWI_DEFAULT_OVERRIDES)
-#define FLOW_WIRDEF_IO_PCFEN true
-#else
-#define FLOW_WIRDEF_IO_PCFEN true
-#endif
-#endif
-
-#ifndef FLOW_WIRDEF_IO_PCFAD
-#if defined(FLOW_WOKWI_DEFAULT_OVERRIDES)
-#define FLOW_WIRDEF_IO_PCFAD 0x20u
-#else
-#define FLOW_WIRDEF_IO_PCFAD 0x20u
-#endif
-#endif
-
-#ifndef FLOW_WIRDEF_IO_PCFMK
-#if defined(FLOW_WOKWI_DEFAULT_OVERRIDES)
-#define FLOW_WIRDEF_IO_PCFMK 0u
-#else
-#define FLOW_WIRDEF_IO_PCFMK 0u
-#endif
-#endif
-
-#ifndef FLOW_WIRDEF_IO_PCFAL
-#if defined(FLOW_WOKWI_DEFAULT_OVERRIDES)
-#define FLOW_WIRDEF_IO_PCFAL true
-#else
-#define FLOW_WIRDEF_IO_PCFAL true
-#endif
-#endif
-
 #ifndef FLOW_WIRDEF_IO_A0S
 #if defined(FLOW_WOKWI_DEFAULT_OVERRIDES)
 #define FLOW_WIRDEF_IO_A0S IO_SRC_ADS_INTERNAL_SINGLE

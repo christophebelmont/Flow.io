@@ -32,6 +32,51 @@ bool isBlank_(const char* text, size_t maxLen)
     return true;
 }
 
+void formatHostname_(const char* deviceName, char* out, size_t outLen)
+{
+    if (!out || outLen == 0U) return;
+
+    size_t w = 0U;
+    if (deviceName) {
+        for (size_t i = 0U; deviceName[i] != '\0' && w < (outLen - 1U); ++i) {
+            const char c = deviceName[i];
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+                out[w++] = (char)tolower((unsigned char)c);
+            } else if (c == ' ' || c == '_' || c == '.') {
+                out[w++] = '-';
+            }
+        }
+    }
+    out[w] = '\0';
+
+    while (w > 0U && out[0] == '-') {
+        memmove(out, out + 1, w);
+        --w;
+    }
+    while (w > 0U && out[w - 1U] == '-') {
+        out[--w] = '\0';
+    }
+
+    if (out[0] == '\0') {
+        snprintf(out, outLen, "flowio");
+    }
+}
+
+void formatDhcpHostname_(const char* deviceName, char* out, size_t outLen)
+{
+    formatHostname_(deviceName, out, outLen);
+    if (!out || outLen == 0U || strcmp(out, "flowio") != 0) return;
+
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) return;
+    snprintf(out,
+             outLen,
+             "FlowIO-%02X%02X%02X",
+             (unsigned)mac[3],
+             (unsigned)mac[4],
+             (unsigned)mac[5]);
+}
+
 void formatStaMac_(char* out, size_t outLen)
 {
     if (!out || outLen == 0U) return;
@@ -424,6 +469,12 @@ void WifiModule::startConnect() {
     lastDisconnectReason_ = 0;
     lastConnectingLogMs_ = millis();
 
+    char hostname[sizeof(deviceName_)] = {0};
+    formatDhcpHostname_(deviceName_, hostname, sizeof(hostname));
+    if (!WiFi.setHostname(hostname)) {
+        LOGW("WiFi DHCP hostname default update failed host=%s", hostname);
+    }
+
     if (!WiFi.enableSTA(true)) {
         if (transientBoot) {
             LOGD("enableSTA not ready yet during boot");
@@ -441,6 +492,11 @@ void WifiModule::startConnect() {
     const bool modeOk = WiFi.mode(wantedMode);
     if (!modeOk) {
         LOGW("WiFi.mode failed requested=%d current=%d", (int)wantedMode, (int)WiFi.getMode());
+    }
+    if (!WiFi.STA.setHostname(hostname)) {
+        LOGW("WiFi DHCP hostname update failed host=%s", hostname);
+    } else {
+        LOGI("WiFi DHCP hostname=%s", hostname);
     }
     WiFi.setSleep(false);               ///< ✅ important (stability)
 
@@ -980,29 +1036,7 @@ void WifiModule::syncMdns_()
     }
 
     char host[sizeof(deviceName_)] = {0};
-    size_t w = 0;
-    for (size_t i = 0; deviceName_[i] != '\0' && w < (sizeof(host) - 1); ++i) {
-        char c = deviceName_[i];
-        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-            host[w++] = (char)tolower((unsigned char)c);
-        } else if (c == ' ' || c == '_' || c == '.') {
-            host[w++] = '-';
-        }
-    }
-    host[w] = '\0';
-
-    while (w > 0 && host[0] == '-') {
-        memmove(host, host + 1, w);
-        --w;
-    }
-    while (w > 0 && host[w - 1] == '-') {
-        host[w - 1] = '\0';
-        --w;
-    }
-
-    if (host[0] == '\0') {
-        snprintf(host, sizeof(host), "flowio");
-    }
+    formatHostname_(deviceName_, host, sizeof(host));
 
     if (mdnsStarted && strcmp(mdnsApplied, host) == 0) return;
 
