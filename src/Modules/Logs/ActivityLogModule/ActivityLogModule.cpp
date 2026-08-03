@@ -305,6 +305,7 @@ bool ActivityLogModule::formatLine_(const ActivityEvent& event, char* out, size_
     doc["ts"] = event.ts_ms;
     doc["epoch"] = event.epoch_s;
     doc["code"] = event.code;
+    doc["alarm_id"] = event.alarmId;
     doc["domain"] = event.domain;
     doc["source"] = event.source;
     doc["severity"] = event.severity;
@@ -330,6 +331,7 @@ bool ActivityLogModule::parseLine_(const char* line, ActivityEvent& out) const
     out.ts_ms = doc["ts"] | 0U;
     out.epoch_s = doc["epoch"] | 0U;
     out.code = doc["code"] | 0U;
+    out.alarmId = doc["alarm_id"] | 0U;
     out.domain = doc["domain"] | (uint8_t)ActivityDomain::System;
     out.source = doc["source"] | (uint8_t)ActivitySource::System;
     out.severity = doc["severity"] | (uint8_t)ActivitySeverity::Info;

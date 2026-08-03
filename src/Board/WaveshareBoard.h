@@ -55,7 +55,7 @@ inline constexpr uint32_t kWaveshareESP32S3InterlinkI2cHz = 400000U;
  *   Not stored in NVS. These are compile-time sizing limits, so the compiled
  *   values always apply.
  */
-inline constexpr IoCapacitySpec kWaveshareESP32S3IoCapacity{16, 12, 12, 32, 16, 16};
+inline constexpr IoCapacitySpec kWaveshareESP32S3IoCapacity{16, 13, 10, 32, 16, 16};
 
 /*
  * MQTT task and queue capacities.

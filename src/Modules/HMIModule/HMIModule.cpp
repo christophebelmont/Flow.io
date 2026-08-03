@@ -49,16 +49,16 @@ static constexpr const char* kPoolLogicChlorineModule = "poollogic/chlorine";
 static constexpr size_t kPoolLogicSensorsJsonBufSize = 480U;
 static constexpr size_t kPoolLogicDeviceJsonBufSize = 192U;
 static constexpr size_t kPoolLogicModeJsonBufSize = 256U;
-static constexpr uint8_t kLedBitMqttConnected = 0;
+static constexpr uint8_t kLedBitWifiConnected = 0;
 static constexpr uint8_t kLedBitPageSelect = 1;
 static constexpr uint8_t kLedBitModeA = 2;
 static constexpr uint8_t kLedBitModeB = 3;
-static constexpr uint8_t kLedBitAlarmA = 4;
-static constexpr uint8_t kLedBitAlarmB = 5;
-static constexpr uint8_t kLedBitAlarmC = 6;
-static constexpr uint8_t kLedBitAlarmD = 7;
+// Faceplate wiring: LED1..LED4=P0..P3, then LED5..LED8=P7..P4.
+static constexpr uint8_t kLedBitAlarmA = 7;
+static constexpr uint8_t kLedBitAlarmB = 6;
+static constexpr uint8_t kLedBitAlarmC = 5;
+static constexpr uint8_t kLedBitAlarmD = 4;
 static constexpr uint32_t kLedPageTogglePeriodMs = 2000U;
-static constexpr uint32_t kWifiBlinkPeriodMs = 125U;
 static constexpr uint8_t kInvalidRuntimeIndex = 0xFFU;
 static constexpr uint32_t kHomePublishWaterTemp = 1UL << 0;
 static constexpr uint32_t kHomePublishAirTemp = 1UL << 1;
@@ -104,12 +104,7 @@ static constexpr uint8_t kNextionConfigPageAlias = 2U;
 static constexpr uint8_t kNextionAlarmPagePrimary = 11U;
 static constexpr uint8_t kNextionAlarmPageAlias = 3U;
 static constexpr const char* kNextionDegreeC = "\xC2\xB0""C";
-static constexpr bool kFrontLedsSupported =
-#if FLOW_BUILD_IS_WAVESHARE
-    false;
-#else
-    true;
-#endif
+static constexpr bool kFrontLedsSupported = true;
 static constexpr bool kWs2812StatusLedDefaultEnabled =
 #if FLOW_BUILD_IS_WAVESHARE
     true;
@@ -477,9 +472,6 @@ void HMIModule::applyOutputConfig_()
         (cfgData_.veniceTxGpio >= 0 && cfgData_.veniceTxGpio <= 127) ? (int8_t)cfgData_.veniceTxGpio : (int8_t)-1;
     venice_.setConfig(veniceCfg);
 
-    if (!kFrontLedsSupported || !cfgData_.ledsEnabled) {
-        wifiBlinkOn_ = false;
-    }
     (void)ws2812StatusLed_.setEnabled(cfgData_.waveshareLedEnabled);
     ledMaskValid_ = false;
 }
@@ -732,7 +724,6 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     ws2812AutoWifiAlarmRedPhaseLast_ = false;
     lastLedApplyTryMs_ = 0;
     lastLedPageToggleMs_ = millis();
-    lastWifiBlinkToggleMs_ = millis();
     lastClockCheckMs_ = 0;
     lastHomePeriodicRefreshMs_ = 0;
     lastDisplayVersionProbeMs_ = 0;
@@ -796,7 +787,6 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
 void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
 {
-    refreshMqttConfig_();
     refreshNetworkExpectations_();
     refreshLocale_();
     applyOutputConfig_();
@@ -806,22 +796,6 @@ void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
     applyLedMask_(true);
     ws2812AutoWifiApplied_ = false;
     applyWs2812AutoWifiProfile_();
-}
-
-void HMIModule::refreshMqttConfig_()
-{
-    bool enabled =
-#if FLOW_BUILD_IS_WAVESHARE
-        false;
-#else
-        true;
-#endif
-    char mqttJson[160] = {0};
-    if (cfgSvc_ && cfgSvc_->toJsonModule &&
-        cfgSvc_->toJsonModule(cfgSvc_->ctx, "mqtt", mqttJson, sizeof(mqttJson), nullptr)) {
-        (void)findJsonBool_(mqttJson, "enabled", enabled);
-    }
-    mqttEnabled_ = enabled;
 }
 
 void HMIModule::refreshNetworkExpectations_()
@@ -1765,10 +1739,9 @@ void HMIModule::applyLedMask_(bool force)
     if (!frontLedPanel_.isEnabled() && !frontLedPanel_.setEnabled(true)) return;
 
     PoolLogicModeFlags modes{};
-    bool networkConnected = false;
-    bool mqttConnected = false;
-    networkConnected = isNetworkConnected_(dsSvc_);
-    if (dsSvc_ && dsSvc_->store) mqttConnected = mqttReady(*dsSvc_->store);
+    const bool wifiConnected = wifiSvc_ &&
+                               wifiSvc_->isConnected &&
+                               wifiSvc_->isConnected(wifiSvc_->ctx);
     (void)readPoolLogicModeFlags_(modes.autoMode, modes.winterMode, modes.phAutoMode, modes.orpAutoMode);
     const bool waterLevelLow = isWaterLevelLow_();
     const bool psiAlarm = isAlarmActive_(AlarmId::PoolPsiLow) || isAlarmActive_(AlarmId::PoolPsiHigh);
@@ -1778,8 +1751,8 @@ void HMIModule::applyLedMask_(bool force)
     const bool chlorinePumpRuntimeAlarm = isAlarmActive_(AlarmId::PoolChlorinePumpMaxUptime);
 
     uint8_t mask = 0U;
-    if (networkConnected && (!mqttEnabled_ || mqttConnected || wifiBlinkOn_)) {
-        mask |= (uint8_t)(1U << kLedBitMqttConnected);
+    if (wifiConnected) {
+        mask |= (uint8_t)(1U << kLedBitWifiConnected);
     }
 
     // Direct mapping: ledPage_=1 drives page 1, ledPage_=2 drives page 2.
@@ -1788,21 +1761,22 @@ void HMIModule::applyLedMask_(bool force)
 
     if (!page2) {
         // Page 1:
-        // p2=mode auto, p3=winter, p4/p5 unused, p6=niveau eau bas, p7=PSI error.
-        if (modes.autoMode) mask |= (uint8_t)(1U << kLedBitModeA);
-        if (modes.winterMode) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (waterLevelLow) mask |= (uint8_t)(1U << kLedBitAlarmC);
-        if (psiAlarm) mask |= (uint8_t)(1U << kLedBitAlarmD);
-    } else {
-        // Page 2:
-        // p2=mode pH auto, p3=mode ORP auto, p4=bidon pH bas, p5=bidon chlore bas,
-        // p6=pompe pH uptime max, p7=pompe chlore uptime max.
+        // LED3=pH auto, LED4=chlorine auto, LED5=chlorine pump uptime,
+        // LED6=pH pump uptime, LED7=chlorine level, LED8=pH level.
         if (modes.phAutoMode) mask |= (uint8_t)(1U << kLedBitModeA);
         if (modes.orpAutoMode) mask |= (uint8_t)(1U << kLedBitModeB);
-        if (phTankLowAlarm) mask |= (uint8_t)(1U << kLedBitAlarmA);
-        if (chlorineTankLowAlarm) mask |= (uint8_t)(1U << kLedBitAlarmB);
-        if (phPumpRuntimeAlarm) mask |= (uint8_t)(1U << kLedBitAlarmC);
-        if (chlorinePumpRuntimeAlarm) mask |= (uint8_t)(1U << kLedBitAlarmD);
+        if (chlorinePumpRuntimeAlarm) mask |= (uint8_t)(1U << kLedBitAlarmA);
+        if (phPumpRuntimeAlarm) mask |= (uint8_t)(1U << kLedBitAlarmB);
+        if (chlorineTankLowAlarm) mask |= (uint8_t)(1U << kLedBitAlarmC);
+        if (phTankLowAlarm) mask |= (uint8_t)(1U << kLedBitAlarmD);
+    } else {
+        // Page 2:
+        // LED3=automatic regulation, LED4=winter mode, LED5=PSI alarm,
+        // LED6=water level alarm, LED7/LED8 unused.
+        if (modes.autoMode) mask |= (uint8_t)(1U << kLedBitModeA);
+        if (modes.winterMode) mask |= (uint8_t)(1U << kLedBitModeB);
+        if (psiAlarm) mask |= (uint8_t)(1U << kLedBitAlarmA);
+        if (waterLevelLow) mask |= (uint8_t)(1U << kLedBitAlarmB);
     }
 
     if (!force && ledMaskValid_ && ledMaskLast_ == mask) return;
@@ -1892,8 +1866,6 @@ void HMIModule::onEvent_(const Event& e)
         }
         if ((p->module[0] && strcmp(p->module, "mqtt") == 0) ||
             strcmp(p->nvsKey, NvsKeys::Mqtt::Enabled) == 0) {
-            mqttConfigRefreshPending_ = true;
-            ledDirty = true;
             homePublishMask |= kHomePublishStateBits;
         }
         if ((p->module[0] && (strcmp(p->module, "wifi") == 0 || strcmp(p->module, "ethernet") == 0))) {
@@ -2948,10 +2920,6 @@ void HMIModule::loop()
         homeBindingsRefreshPending_ = false;
         refreshHomeBindings_();
     }
-    if (mqttConfigRefreshPending_) {
-        mqttConfigRefreshPending_ = false;
-        refreshMqttConfig_();
-    }
     const bool displaySleeping = isDisplaySleeping_();
     if (driverReady_ &&
         driver_ == static_cast<IHmiDriver*>(&nextion_) &&
@@ -3008,23 +2976,6 @@ void HMIModule::loop()
         }
     }
     if (kFrontLedsSupported && cfgData_.ledsEnabled) {
-        bool networkConnected = false;
-        bool mqttConnected = false;
-        networkConnected = isNetworkConnected_(dsSvc_);
-        if (dsSvc_ && dsSvc_->store) mqttConnected = mqttReady(*dsSvc_->store);
-
-        if (networkConnected && mqttEnabled_ && !mqttConnected) {
-            if ((uint32_t)(now - lastWifiBlinkToggleMs_) >= kWifiBlinkPeriodMs) {
-                lastWifiBlinkToggleMs_ = now;
-                wifiBlinkOn_ = !wifiBlinkOn_;
-                applyLedMask_(true);
-            }
-        } else if (wifiBlinkOn_) {
-            wifiBlinkOn_ = false;
-            lastWifiBlinkToggleMs_ = now;
-            applyLedMask_(true);
-        }
-
         if (frontLedPanel_.isReady() &&
             (uint32_t)(now - lastLedPageToggleMs_) >= kLedPageTogglePeriodMs) {
             lastLedPageToggleMs_ = now;

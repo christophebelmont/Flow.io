@@ -11,6 +11,7 @@ enum class ActivityDomain : uint8_t {
     System = 0,
     PoolLogic = 1,
     PoolDevice = 2,
+    Alarm = 3,
 };
 
 enum class ActivitySource : uint8_t {
@@ -80,6 +81,9 @@ enum class ActivityCode : uint16_t {
     PoolDeviceManualStop = 221,
     PoolDeviceTankRefill = 230,
     PoolDeviceUptimeReset = 240,
+    AlarmRaised = 300,
+    AlarmConditionOk = 301,
+    AlarmReset = 302,
 };
 
 constexpr uint8_t ACTIVITY_TARGET_NONE = 0xFF;
@@ -92,6 +96,7 @@ struct ActivityEvent {
     uint32_t ts_ms = 0;
     uint32_t epoch_s = 0;
     uint16_t code = 0;
+    uint16_t alarmId = 0;
     uint8_t domain = (uint8_t)ActivityDomain::System;
     uint8_t source = (uint8_t)ActivitySource::System;
     uint8_t severity = (uint8_t)ActivitySeverity::Info;

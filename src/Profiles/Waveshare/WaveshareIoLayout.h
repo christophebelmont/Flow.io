@@ -60,22 +60,13 @@ enum : PhysicalPortId {
     PortExio6 = 305, // TCA9554 sortie bit 5.
     PortExio7 = 306, // TCA9554 sortie bit 6.
     PortExio8 = 307, // TCA9554 sortie bit 7.
-    PortMcpInGpb0 = 400, // MCP23017 entree GPB0.
-    PortMcpInGpb1 = 401, // MCP23017 entree GPB1.
-    PortMcpInGpb2 = 402, // MCP23017 entree GPB2.
-    PortMcpInGpb3 = 403, // MCP23017 entree GPB3.
-    PortMcpInGpb4 = 404, // MCP23017 entree GPB4.
-    PortMcpInGpb5 = 405, // MCP23017 entree GPB5.
-    PortMcpInGpb6 = 406, // MCP23017 entree GPB6.
-    PortMcpInGpb7 = 407, // MCP23017 entree GPB7.
-    PortMcpOutGpa0 = 408, // MCP23017 sortie GPA0.
-    PortMcpOutGpa1 = 409, // MCP23017 sortie GPA1.
-    PortMcpOutGpa2 = 410, // MCP23017 sortie GPA2.
-    PortMcpOutGpa3 = 411, // MCP23017 sortie GPA3.
-    PortMcpOutGpa4 = 412, // MCP23017 sortie GPA4.
-    PortMcpOutGpa5 = 413, // MCP23017 sortie GPA5.
-    PortMcpOutGpa6 = 414, // MCP23017 sortie GPA6.
-    PortMcpOutGpa7 = 415, // MCP23017 sortie GPA7.
+    PortMcpOutGpb0 = 400, // MCP23017 sortie GPB0.
+    PortMcpOutGpb6 = 406, // MCP23017 sortie GPB6.
+    PortMcpInGpa0 = 408, // MCP23017 entree GPA0.
+    PortMcpInGpa3 = 411, // MCP23017 entree GPA3.
+    PortMcpInGpa4 = 412, // MCP23017 entree GPA4.
+    PortMcpInGpa5 = 413, // MCP23017 entree GPA5.
+    PortMcpInGpa6 = 414, // MCP23017 entree GPA6.
     PortPcfAux0 = 500, // PCF8574 auxiliaire sortie bit 0.
     PortPcfAux1 = 501, // PCF8574 auxiliaire sortie bit 1.
     PortPcfAux2 = 502, // PCF8574 auxiliaire sortie bit 2.
@@ -144,22 +135,13 @@ inline constexpr IOBindingPortSpec kBindingPorts[] = {
     {PortExio6, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554}, // TCA9554 bit 5.
     {PortExio7, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554}, // TCA9554 bit 6.
     {PortExio8, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554}, // TCA9554 bit 7.
-    {PortMcpInGpb0, IO_PORT_KIND_MCP23017_INPUT, 8, ExpanderMcp23017}, // MCP23017 GPB0.
-    {PortMcpInGpb1, IO_PORT_KIND_MCP23017_INPUT, 9, ExpanderMcp23017}, // MCP23017 GPB1.
-    {PortMcpInGpb2, IO_PORT_KIND_MCP23017_INPUT, 10, ExpanderMcp23017}, // MCP23017 GPB2.
-    {PortMcpInGpb3, IO_PORT_KIND_MCP23017_INPUT, 11, ExpanderMcp23017}, // MCP23017 GPB3.
-    {PortMcpInGpb4, IO_PORT_KIND_MCP23017_INPUT, 12, ExpanderMcp23017}, // MCP23017 GPB4.
-    {PortMcpInGpb5, IO_PORT_KIND_MCP23017_INPUT, 13, ExpanderMcp23017}, // MCP23017 GPB5.
-    {PortMcpInGpb6, IO_PORT_KIND_MCP23017_INPUT, 14, ExpanderMcp23017}, // MCP23017 GPB6.
-    {PortMcpInGpb7, IO_PORT_KIND_MCP23017_INPUT, 15, ExpanderMcp23017}, // MCP23017 GPB7.
-    {PortMcpOutGpa0, IO_PORT_KIND_MCP23017_OUTPUT, 0, ExpanderMcp23017}, // MCP23017 GPA0.
-    {PortMcpOutGpa1, IO_PORT_KIND_MCP23017_OUTPUT, 1, ExpanderMcp23017}, // MCP23017 GPA1.
-    {PortMcpOutGpa2, IO_PORT_KIND_MCP23017_OUTPUT, 2, ExpanderMcp23017}, // MCP23017 GPA2.
-    {PortMcpOutGpa3, IO_PORT_KIND_MCP23017_OUTPUT, 3, ExpanderMcp23017}, // MCP23017 GPA3.
-    {PortMcpOutGpa4, IO_PORT_KIND_MCP23017_OUTPUT, 4, ExpanderMcp23017}, // MCP23017 GPA4.
-    {PortMcpOutGpa5, IO_PORT_KIND_MCP23017_OUTPUT, 5, ExpanderMcp23017}, // MCP23017 GPA5.
-    {PortMcpOutGpa6, IO_PORT_KIND_MCP23017_OUTPUT, 6, ExpanderMcp23017}, // MCP23017 GPA6.
-    {PortMcpOutGpa7, IO_PORT_KIND_MCP23017_OUTPUT, 7, ExpanderMcp23017}, // MCP23017 GPA7.
+    {PortMcpOutGpb0, IO_PORT_KIND_MCP23017_OUTPUT, 8, ExpanderMcp23017}, // MCP23017 GPB0.
+    {PortMcpOutGpb6, IO_PORT_KIND_MCP23017_OUTPUT, 14, ExpanderMcp23017}, // MCP23017 GPB6.
+    {PortMcpInGpa0, IO_PORT_KIND_MCP23017_INPUT, 0, ExpanderMcp23017}, // MCP23017 GPA0.
+    {PortMcpInGpa3, IO_PORT_KIND_MCP23017_INPUT, 3, ExpanderMcp23017}, // MCP23017 GPA3.
+    {PortMcpInGpa4, IO_PORT_KIND_MCP23017_INPUT, 4, ExpanderMcp23017}, // MCP23017 GPA4.
+    {PortMcpInGpa5, IO_PORT_KIND_MCP23017_INPUT, 5, ExpanderMcp23017}, // MCP23017 GPA5.
+    {PortMcpInGpa6, IO_PORT_KIND_MCP23017_INPUT, 6, ExpanderMcp23017}, // MCP23017 GPA6.
     {PortPcfAux0, IO_PORT_KIND_PCF8574_OUTPUT, 0, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 0.
     {PortPcfAux1, IO_PORT_KIND_PCF8574_OUTPUT, 1, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 1.
     {PortPcfAux2, IO_PORT_KIND_PCF8574_OUTPUT, 2, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 2.

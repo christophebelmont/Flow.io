@@ -130,6 +130,47 @@ def _load_text_translations(src_root: Path, locale: str = "fr") -> Tuple[Dict[st
     return out, loaded_files
 
 
+def _expand_digital_input_slot_docs(docs: Dict[str, dict], last_slot: int) -> None:
+    """Clone the i07 descriptors for scalable digital-input slots."""
+    template_prefix = "io/input/i07/"
+    templates = [
+        (key, value)
+        for key, value in docs.items()
+        if key.startswith(template_prefix) and isinstance(value, dict)
+    ]
+    for slot in range(8, last_slot + 1):
+        old_lower = "i07"
+        new_lower = f"i{slot:02d}"
+        old_upper = "I07"
+        new_upper = f"I{slot:02d}"
+        for key, value in templates:
+            new_key = key.replace(old_lower, new_lower)
+            if new_key in docs:
+                continue
+            encoded = json.dumps(value, ensure_ascii=False)
+            encoded = encoded.replace(old_lower, new_lower).replace(old_upper, new_upper)
+            docs[new_key] = json.loads(encoded)
+
+
+def _expand_digital_input_slot_translations(translations: Dict[str, str], last_slot: int) -> None:
+    """Clone i07 translations used by generated scalable slot descriptors."""
+    templates = [
+        (key, value)
+        for key, value in translations.items()
+        if ".i07." in key and isinstance(value, str)
+    ]
+    for slot in range(8, last_slot + 1):
+        old_lower = "i07"
+        new_lower = f"i{slot:02d}"
+        old_upper = "I07"
+        new_upper = f"I{slot:02d}"
+        for key, value in templates:
+            new_key = key.replace(old_lower, new_lower)
+            if new_key in translations:
+                continue
+            translations[new_key] = value.replace(old_lower, new_lower).replace(old_upper, new_upper)
+
+
 def _resolve_doc_i18n_fields(raw_doc: dict, translations: Dict[str, str]) -> dict:
     doc = dict(raw_doc or {})
     label_token = doc.get("label_t")
@@ -296,14 +337,11 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
             205: "DIN5 - GPIO9 [205]",
             206: "DIN6 - GPIO10 [206]",
             207: "DIN7 - GPIO11 [207]",
-            400: "GPB0 - MCP23017 input [400]",
-            401: "GPB1 - MCP23017 input [401]",
-            402: "GPB2 - MCP23017 input [402]",
-            403: "GPB3 - MCP23017 input [403]",
-            404: "GPB4 - MCP23017 input [404]",
-            405: "GPB5 - MCP23017 input [405]",
-            406: "GPB6 - MCP23017 input [406]",
-            407: "GPB7 - MCP23017 input [407]",
+            408: "GPA0 - MCP23017 input [408]",
+            411: "GPA3 - MCP23017 input [411]",
+            412: "GPA4 - MCP23017 input [412]",
+            413: "GPA5 - MCP23017 input [413]",
+            414: "GPA6 - MCP23017 input [414]",
         }
 
         selected_labels = None
@@ -356,14 +394,8 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
                 305: "EXIO6 - TCA9554 bit 5 [305]",
                 306: "EXIO7 - TCA9554 bit 6 [306]",
                 307: "EXIO8 - TCA9554 bit 7 [307]",
-                408: "GPA0 - MCP23017 output [408]",
-                409: "GPA1 - MCP23017 output [409]",
-                410: "GPA2 - MCP23017 output [410]",
-                411: "GPA3 - MCP23017 output [411]",
-                412: "GPA4 - MCP23017 output [412]",
-                413: "GPA5 - MCP23017 output [413]",
-                414: "GPA6 - MCP23017 output [414]",
-                415: "GPA7 - MCP23017 output [415]",
+                400: "GPB0 - MCP23017 output [400]",
+                406: "GPB6 - MCP23017 output [406]",
                 500: "PCF2/P0 - PCF8574 auxiliary bit 0 [500]",
                 501: "PCF2/P1 - PCF8574 auxiliary bit 1 [501]",
                 502: "PCF2/P2 - PCF8574 auxiliary bit 2 [502]",
@@ -456,6 +488,12 @@ def main() -> None:
 
     pio_env = _detect_pio_env()
     profile = _profile_override_from_project_options() or _profile_from_pio_env(pio_env)
+
+    if profile == "waveshare":
+        # The Waveshare runtime exposes DIN0..DIN7 plus five MCP23017 inputs.
+        _expand_digital_input_slot_docs(cfgdocs_docs, 12)
+        _expand_digital_input_slot_docs(cfgmods_docs, 12)
+        _expand_digital_input_slot_translations(i18n, 12)
 
     combined_meta = _resolve_meta_i18n(_merge_meta_dict(cfgdocs_meta, cfgmods_meta), i18n)
     combined_meta = _apply_profile_specific_io_enum_sets(combined_meta, profile)

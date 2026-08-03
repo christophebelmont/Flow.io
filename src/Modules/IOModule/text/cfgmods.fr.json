@@ -308,6 +308,26 @@
       {
         "display": "io/input/digital/i07",
         "store": "io/input/i07"
+      },
+      {
+        "display": "io/input/digital/i08",
+        "store": "io/input/i08"
+      },
+      {
+        "display": "io/input/digital/i09",
+        "store": "io/input/i09"
+      },
+      {
+        "display": "io/input/digital/i10",
+        "store": "io/input/i10"
+      },
+      {
+        "display": "io/input/digital/i11",
+        "store": "io/input/i11"
+      },
+      {
+        "display": "io/input/digital/i12",
+        "store": "io/input/i12"
       }
     ],
     "cfg_tree_virtual_branches": [
@@ -365,7 +385,12 @@
           "i04",
           "i05",
           "i06",
-          "i07"
+          "i07",
+          "i08",
+          "i09",
+          "i10",
+          "i11",
+          "i12"
         ]
       }
     ],
@@ -826,6 +851,26 @@
         {
           "value": 71,
           "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.7.label"
+        },
+        {
+          "value": 72,
+          "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.8.label"
+        },
+        {
+          "value": 73,
+          "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.9.label"
+        },
+        {
+          "value": 74,
+          "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.10.label"
+        },
+        {
+          "value": 75,
+          "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.11.label"
+        },
+        {
+          "value": 76,
+          "label_t": "cfgmods_meta.iomodule.enum_sets.flowio_logical_input_digital.12.label"
         }
       ],
       "io_output_boot_behavior": [

@@ -2574,7 +2574,7 @@
       if (activityFilter === 'all') return true;
       if (activityFilter === 'poollogic') return ev.domain_name === 'poollogic' || ev.domain_name === 'pooldevice';
       if (activityFilter === 'manual') return ev.source_name === 'manual';
-      if (activityFilter === 'safety') return ev.source_name === 'safety' || ev.severity_name === 'warning' || ev.severity_name === 'alarm';
+      if (activityFilter === 'safety') return ev.domain_name === 'alarm' || ev.source_name === 'safety' || ev.severity_name === 'warning' || ev.severity_name === 'alarm';
       if (activityFilter === 'system') return ev.domain_name === 'system';
       return true;
     }
@@ -3776,11 +3776,9 @@
       button.appendChild(icon);
       button.appendChild(label);
       const entry = row && row.entry;
-      button.disabled = !!(row && row.unavailable) || !(entry && entry.endpoint && entry.url);
+      button.disabled = !(entry && entry.endpoint && entry.url);
       button.title = button.disabled
-        ? (row && row.unavailable
-          ? row.unavailableMessage
-          : tr('updates.checkRequired', 'Vérifiez les mises à jour avant de lancer cette action.'))
+        ? tr('updates.checkRequired', 'Vérifiez les mises à jour avant de lancer cette action.')
         : tr('updates.updateButton', 'Mettre à jour');
       bindClickAction(button, () => {
         if (!entry) return;
@@ -3856,7 +3854,6 @@
         const trEl = document.createElement('tr');
         if (row.unavailable) {
           trEl.className = 'is-disabled';
-          trEl.setAttribute('aria-disabled', 'true');
         }
 
         const componentCell = document.createElement('td');
@@ -11084,6 +11081,7 @@
       }
       pendingSystemActionCountdowns.delete(button);
       button.disabled = false;
+      button.classList.remove('is-counting-down');
       if (button.dataset.defaultHtml) {
         button.innerHTML = button.dataset.defaultHtml;
       } else {
@@ -11107,15 +11105,19 @@
 
       let remaining = rebootActionDelaySeconds;
       button.disabled = true;
+      button.classList.add('is-counting-down');
+      const countdownNode = document.createElement('span');
+      countdownNode.className = 'system-action-countdown';
+      button.replaceChildren(countdownNode);
 
       const tick = () => {
-        button.textContent = remaining + ' s';
+        countdownNode.textContent = remaining + ' s';
         if (systemStatusText) systemStatusText.textContent = countdownLabel + ' dans ' + remaining + ' s';
 
         if (remaining <= 1) {
           pendingSystemActionCountdowns.delete(button);
           runAsyncTaskSafely(async () => {
-            button.textContent = '...';
+            countdownNode.textContent = '…';
             try {
               await actionRunner();
             } catch (err) {

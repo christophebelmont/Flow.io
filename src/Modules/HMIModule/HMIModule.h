@@ -144,7 +144,6 @@ private:
     uint8_t ledPage_ = 1;
     uint8_t ledMaskLast_ = 0;
     bool ledMaskValid_ = false;
-    bool wifiBlinkOn_ = false;
     bool ws2812AutoWifiMode_ = true;
     bool ws2812AutoWifiApplied_ = false;
     bool ws2812AutoWifiConnectedLast_ = false;
@@ -153,12 +152,6 @@ private:
     bool ws2812AutoWifiNormalLast_ = false;
     bool ws2812AutoWifiAlarmActiveLast_ = false;
     bool ws2812AutoWifiAlarmRedPhaseLast_ = false;
-    bool mqttEnabled_ =
-#if FLOW_BUILD_IS_WAVESHARE
-        false;
-#else
-        true;
-#endif
     int8_t frontLedI2cSda_ = -1;
     int8_t frontLedI2cScl_ = -1;
     uint32_t frontLedI2cFrequencyHz_ = 100000U;
@@ -199,7 +192,6 @@ private:
     bool ethernetNetworkExpected_ = false;
     uint32_t lastLedApplyTryMs_ = 0;
     uint32_t lastLedPageToggleMs_ = 0;
-    uint32_t lastWifiBlinkToggleMs_ = 0;
     uint32_t lastClockCheckMs_ = 0;
     uint32_t lastHomePeriodicRefreshMs_ = 0;
     uint32_t lastNextionPageProbeMs_ = 0;
@@ -214,7 +206,6 @@ private:
     bool nextionVersionDetected_ = false;
     char nextionVersion_[HMI_DISPLAY_VERSION_TEXT_MAX]{};
     bool homeBindingsRefreshPending_ = false;
-    bool mqttConfigRefreshPending_ = false;
     char homeErrorMessage_[96]{};
     uint32_t activeConfigContextToken_ = 0U;
     uint32_t nextConfigContextToken_ = 1U;
@@ -296,7 +287,6 @@ private:
     bool prevAlarmPage_();
     bool isAlarmPageId_(uint8_t pageId) const;
     bool isDisplaySleeping_() const;
-    void refreshMqttConfig_();
     void refreshNetworkExpectations_();
     void applyWs2812AutoWifiProfile_();
     void updateHmiLedConditions_();

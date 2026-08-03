@@ -177,6 +177,9 @@ body.web-icons-disabled .measure-domain-chip.active .measure-domain-chip-check{w
 .system-action-tile{min-height:106px;padding:18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 8px 22px rgba(7,26,53,0.04);display:grid;grid-template-columns:58px minmax(0,1fr);align-items:center;gap:16px;text-align:left;}
 .system-action-tile:hover{background:#fbfdff;color:var(--text);border-color:#b9d8f8;box-shadow:0 12px 28px rgba(7,26,53,0.08);}
 .system-action-tile:disabled{opacity:0.55;cursor:not-allowed;}
+.system-action-tile.is-counting-down{grid-template-columns:minmax(0,1fr);place-items:center;text-align:center;opacity:1;cursor:wait;}
+.system-action-countdown{display:block;width:100%;color:var(--primary);font-size:clamp(32px,4vw,44px);font-weight:900;line-height:1;letter-spacing:0.04em;font-variant-numeric:tabular-nums;}
+.system-action-tile-danger .system-action-countdown{color:var(--danger);}
 .system-action-tile-danger .action-tile-icon{background:#ff6f8d;}
 .action-tile-copy{display:grid;gap:7px;min-width:0;}
 .action-tile-title{font-size:15px;font-weight:800;line-height:1.2;color:var(--text);}
@@ -348,7 +351,8 @@ body.web-icons-disabled .status-flag-check.is-true{font-size:13px;}
 .updates-table th:first-child,.updates-table td:first-child{border-left:0;}
 .updates-table thead th{border-top:0;color:var(--text);font-size:14px;font-weight:800;background:#FBFDFF;white-space:nowrap;}
 .updates-table tbody td{font-size:14px;color:var(--text-muted);line-height:1.45;}
-.updates-table tbody tr.is-disabled{filter:grayscale(1);opacity:0.52;}
+.updates-table tbody tr.is-disabled td:not(:last-child){filter:grayscale(1);opacity:0.52;}
+.updates-table tbody tr.is-disabled td:last-child{opacity:1;}
 .update-component-cell{display:flex;align-items:center;gap:16px;min-width:0;}
 .update-component-cell .update-component-badge{width:34px;height:34px;flex-basis:34px;}
 .update-component-cell .update-component-badge .ui-msr{font-size:19px;}
@@ -907,7 +911,7 @@ body.web-icons-disabled .control-field-apply{font-size:15px;font-weight:800;lett
 :root[data-theme="dark"] .menu-item{background:transparent;color:var(--menu-inactive-fg);border-color:transparent;}
 :root[data-theme="dark"] .menu-item:hover{background:var(--menu-hover-bg);color:var(--menu-hover-fg);}
 :root[data-theme="dark"] .menu-item.active{background:var(--menu-active-bg);color:var(--menu-active-fg);border-left-color:var(--menu-active-edge);}
-:root[data-theme="dark"] .header-status-item,:root[data-theme="dark"] .card,:root[data-theme="dark"] .status-card,:root[data-theme="dark"] .control-shell,:root[data-theme="dark"] .config-section,:root[data-theme="dark"] .info-card,:root[data-theme="dark"] .system-action-tile,:root[data-theme="dark"] .updates-info-panel,:root[data-theme="dark"] .updates-panel{background:var(--surface);border-color:var(--border);box-shadow:var(--shadow);color:var(--text);}
+:root[data-theme="dark"] .header-status-item,:root[data-theme="dark"] .card,:root[data-theme="dark"] .status-card,:root[data-theme="dark"] .config-section,:root[data-theme="dark"] .info-card,:root[data-theme="dark"] .system-action-tile,:root[data-theme="dark"] .updates-info-panel,:root[data-theme="dark"] .updates-panel{background:var(--surface);border-color:var(--border);box-shadow:var(--shadow);color:var(--text);}
 :root[data-theme="dark"] .header-status-label,:root[data-theme="dark"] .header-status-value,:root[data-theme="dark"] .header-status-icon,:root[data-theme="dark"] .action-tile-title,:root[data-theme="dark"] .status-card h3,:root[data-theme="dark"] .info-table-title{color:var(--text);}
 :root[data-theme="dark"] .app-header-title p,:root[data-theme="dark"] .action-tile-desc,:root[data-theme="dark"] .status-chip,:root[data-theme="dark"] .info-card-header,:root[data-theme="dark"] .pool-card-title-wrap p{color:var(--text-muted);}
 :root[data-theme="dark"] .status-chip,:root[data-theme="dark"] .autoscroll-chip,:root[data-theme="dark"] .log-source-select,:root[data-theme="dark"] .measure-status,:root[data-theme="dark"] .control-panel,:root[data-theme="dark"] .control-section,:root[data-theme="dark"] .control-field,:root[data-theme="dark"] .field,:root[data-theme="dark"] .info-system-table,:root[data-theme="dark"] .info-system-table .info-row,:root[data-theme="dark"] .io-table-shell{background:var(--surface-soft);border-color:var(--border);}

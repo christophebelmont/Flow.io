@@ -232,6 +232,7 @@ static const char* activityDomainName_(uint8_t domain)
         case ActivityDomain::System: return "system";
         case ActivityDomain::PoolLogic: return "poollogic";
         case ActivityDomain::PoolDevice: return "pooldevice";
+        case ActivityDomain::Alarm: return "alarm";
         default: return "unknown";
     }
 }
@@ -529,13 +530,14 @@ private:
         ActivityJsonBufferWriter out(pending, sizeof(pending));
         if (prependComma) out.appendChar(',');
         out.appendFormat(
-            "{\"seq\":%lu,\"ts_ms\":%lu,\"epoch_s\":%lu,\"code\":%u,"
+            "{\"seq\":%lu,\"ts_ms\":%lu,\"epoch_s\":%lu,\"code\":%u,\"alarm_id\":%u,"
             "\"domain\":%u,\"source\":%u,\"severity\":%u,\"role\":%u,"
             "\"state\":%u,\"reason\":%u,\"slot\":%u",
             (unsigned long)event.seq,
             (unsigned long)event.ts_ms,
             (unsigned long)event.epoch_s,
             (unsigned)event.code,
+            (unsigned)event.alarmId,
             (unsigned)event.domain,
             (unsigned)event.source,
             (unsigned)event.severity,
