@@ -28,16 +28,31 @@ struct IOModuleConfig {
     uint8_t adsExternalAddr = FLOW_WIRDEF_IO_AEAD;
     int32_t adsGain = FLOW_MODDEF_IO_AGAI;
     int32_t adsRate = FLOW_MODDEF_IO_ARAT;
-    bool sht40Enabled = false;
+    bool sht40Enabled =
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        true;
+#else
+        false;
+#endif
     uint8_t sht40Address = 0x44;
     int32_t sht40PollMs = 2000;
-    bool bmp280Enabled = false;
+    bool bmp280Enabled =
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        true;
+#else
+        false;
+#endif
     uint8_t bmp280Address = 0x76;
     int32_t bmp280PollMs = 1000;
     bool bme680Enabled = true;
     uint8_t bme680Address = 0x77;
     int32_t bme680PollMs = 2000;
-    bool ina226Enabled = false;
+    bool ina226Enabled =
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        true;
+#else
+        false;
+#endif
     uint8_t ina226Address = 0x40;
     int32_t ina226PollMs = 500;
     float ina226ShuntOhms = 0.1f;
@@ -108,6 +123,8 @@ struct IOBindingPortSpec {
     uint8_t kind = IO_PORT_KIND_NONE;
     uint8_t channel = 0;
     IOExpanderId expanderId = IO_EXPANDER_INVALID;
+    // Physical marking exposed by the board/profile (for example GPIO04, GPA0 or EXIO1).
+    const char* boardLabel = nullptr;
 };
 
 typedef void (*IOAnalogValueCallback)(void* ctx, float value);

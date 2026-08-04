@@ -1341,7 +1341,11 @@ bool TFTModuleS3::readRuntimeValue_(RuntimeUiId runtimeId, RuntimeValue& out) co
                 case 2: return readIoValue_(ioIdFromSlot(analogInputSlot(5)), out);
                 case 3: return readIoValue_(ioIdFromSlot(analogInputSlot(1)), out);
                 case 4: return readIoValue_(ioIdFromSlot(analogInputSlot(0)), out);
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                case 5: return readIoValue_(ioIdFromSlot(digitalInputSlot(12)), out);
+#else
                 case 5: return readIoValue_(ioIdFromSlot(digitalInputSlot(3)), out);
+#endif
                 case 6: return readIoValue_(ioIdFromSlot(analogInputSlot(2)), out);
                 case 7: return readIoBackendValue_(IO_BACKEND_BMP280, 0U, out);
                 case 8: return readIoBackendValue_(IO_BACKEND_BME680, 0U, out);

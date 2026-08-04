@@ -171,6 +171,101 @@ def _expand_digital_input_slot_translations(translations: Dict[str, str], last_s
             translations[new_key] = value.replace(old_lower, new_lower).replace(old_upper, new_upper)
 
 
+def _prune_io_slot_docs(docs: Dict[str, dict], analog_last: int, digital_last: int, output_last: int) -> None:
+    """Remove descriptors for IO slots not compiled by the selected profile."""
+    limits = (
+        ("io/input/a", analog_last),
+        ("io/input/i", digital_last),
+        ("io/output/d", output_last),
+    )
+    for key in list(docs):
+        for prefix, last_slot in limits:
+            if not key.startswith(prefix):
+                continue
+            suffix = key[len(prefix):]
+            digits = suffix.split("/", 1)[0]
+            if digits.isdigit() and int(digits) > last_slot:
+                del docs[key]
+            break
+
+
+def _prune_pool_device_docs(docs: Dict[str, dict], last_slot: int) -> None:
+    """Remove pool-device descriptors above the selected profile capacity."""
+    prefix = "pdm/pd"
+    for key in list(docs):
+        if not key.startswith(prefix):
+            continue
+        suffix = key[len(prefix):]
+        digits = suffix.split("/", 1)[0]
+        if digits.isdigit() and int(digits) > last_slot:
+            del docs[key]
+
+
+def _prune_io_slot_meta(meta: dict, analog_last: int, digital_last: int, output_last: int) -> dict:
+    """Align config-tree aliases and logical-slot enums with profile capacities."""
+    if not isinstance(meta, dict):
+        return meta
+
+    out = dict(meta)
+    aliases = out.get("cfg_tree_aliases")
+    if isinstance(aliases, list):
+        filtered_aliases = []
+        for entry in aliases:
+            display = str(entry.get("display", "")) if isinstance(entry, dict) else ""
+            keep = True
+            for prefix, last_slot in (
+                ("io/input/analog/a", analog_last),
+                ("io/input/digital/i", digital_last),
+                ("io/output/d", output_last),
+            ):
+                if not display.startswith(prefix):
+                    continue
+                suffix = display[len(prefix):].split("/", 1)[0]
+                keep = not suffix.isdigit() or int(suffix) <= last_slot
+                break
+            if keep:
+                filtered_aliases.append(entry)
+        out["cfg_tree_aliases"] = filtered_aliases
+
+    branches = out.get("cfg_tree_virtual_branches")
+    if isinstance(branches, list):
+        filtered_branches = []
+        for entry in branches:
+            if not isinstance(entry, dict):
+                filtered_branches.append(entry)
+                continue
+            branch = dict(entry)
+            display = str(branch.get("display", ""))
+            children = branch.get("children")
+            if isinstance(children, list):
+                if display == "io/input/analog":
+                    branch["children"] = [v for v in children if str(v)[1:].isdigit() and int(str(v)[1:]) <= analog_last]
+                elif display == "io/input/digital":
+                    branch["children"] = [v for v in children if str(v)[1:].isdigit() and int(str(v)[1:]) <= digital_last]
+                elif display == "io/output":
+                    branch["children"] = [v for v in children if str(v)[1:].isdigit() and int(str(v)[1:]) <= output_last]
+            filtered_branches.append(branch)
+        out["cfg_tree_virtual_branches"] = filtered_branches
+
+    enum_sets = out.get("enum_sets")
+    if isinstance(enum_sets, dict):
+        enum_sets = dict(enum_sets)
+        analog_entries = enum_sets.get("flowio_logical_input_analog")
+        if isinstance(analog_entries, list):
+            enum_sets["flowio_logical_input_analog"] = [
+                entry for entry in analog_entries
+                if (_to_int(entry.get("value")) is not None and _to_int(entry.get("value")) <= 192 + analog_last)
+            ]
+        digital_entries = enum_sets.get("flowio_logical_input_digital")
+        if isinstance(digital_entries, list):
+            enum_sets["flowio_logical_input_digital"] = [
+                entry for entry in digital_entries
+                if (_to_int(entry.get("value")) is not None and _to_int(entry.get("value")) <= 64 + digital_last)
+            ]
+        out["enum_sets"] = enum_sets
+    return out
+
+
 def _resolve_doc_i18n_fields(raw_doc: dict, translations: Dict[str, str]) -> dict:
     doc = dict(raw_doc or {})
     label_token = doc.get("label_t")
@@ -293,16 +388,16 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
                 103: "ADSInt3 - ADS1115 interne canal 3 [103]",
                 110: "ADSExt0 - ADS1115 externe paire diff 0 [110]",
                 111: "ADSExt1 - ADS1115 externe paire diff 1 [111]",
-                120: "OneWire1 - DS18B20 bus 1 [120]",
-                121: "OneWire2 - DS18B20 bus 2 [121]",
+                120: "OneWireWater - DS18B20 GPIO20 [120]",
+                121: "OneWireAir - DS18B20 GPIO19 [121]",
                 130: "SHT40Temp - SHT40 canal 0 [130]",
                 131: "SHT40Humidity - SHT40 canal 1 [131]",
                 132: "BMP280Temp - BMP280 canal 0 [132]",
                 133: "BMP280Pressure - BMP280 canal 1 [133]",
-                134: "BME680Temp - BME680 canal 0 [134]",
-                135: "BME680Humidity - BME680 canal 1 [135]",
-                136: "BME680Pressure - BME680 canal 2 [136]",
-                137: "BME680Gas - BME680 canal 3 [137]",
+                134: "BME688Temp - BME688 canal 0 [134]",
+                135: "BME688Humidity - BME688 canal 1 [135]",
+                136: "BME688Pressure - BME688 canal 2 [136]",
+                137: "BME688Gas - BME688 canal 3 [137]",
                 138: "INA226ShuntMv - INA226 canal 0 [138]",
                 139: "INA226BusV - INA226 canal 1 [139]",
                 140: "INA226CurrentMa - INA226 canal 2 [140]",
@@ -329,19 +424,27 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
             203: "DIN3 - GPIO35 [203]",
         }
         din_labels_waveshare = {
-            200: "DIN0 - GPIO4 [200]",
-            201: "DIN1 - GPIO5 [201]",
-            202: "DIN2 - GPIO6 [202]",
-            203: "DIN3 - GPIO7 [203]",
-            204: "DIN4 - GPIO8 [204]",
-            205: "DIN5 - GPIO9 [205]",
-            206: "DIN6 - GPIO10 [206]",
-            207: "DIN7 - GPIO11 [207]",
-            408: "GPA0 - MCP23017 input [408]",
-            411: "GPA3 - MCP23017 input [411]",
-            412: "GPA4 - MCP23017 input [412]",
-            413: "GPA5 - MCP23017 input [413]",
-            414: "GPA6 - MCP23017 input [414]",
+            200: "GPIO04 - ESP32-S3 input [200]",
+            201: "GPIO05 - ESP32-S3 input [201]",
+            202: "GPIO06 - ESP32-S3 input [202]",
+            203: "GPIO07 - ESP32-S3 input [203]",
+            204: "GPIO08 - ESP32-S3 input [204]",
+            205: "GPIO09 - ESP32-S3 input [205]",
+            206: "GPIO10 - ESP32-S3 input [206]",
+            207: "GPIO11 - ESP32-S3 input [207]",
+            220: "GPA0 - MCP23017 input [220]",
+            221: "GPA1 - MCP23017 input, unassigned [221]",
+            222: "GPA2 - MCP23017 input, unassigned [222]",
+            223: "GPA3 - MCP23017 input [223]",
+            224: "GPA4 - MCP23017 input [224]",
+            225: "GPA5 - MCP23017 input [225]",
+            226: "GPA6 - MCP23017 input [226]",
+            240: "GPIO1 - ESP32-S3 input [240]",
+            241: "GPIO2 - ESP32-S3 input [241]",
+            242: "GPIO21 - ESP32-S3 input [242]",
+            243: "GPIO45 - ESP32-S3 input [243]",
+            244: "GPIO47 - ESP32-S3 input [244]",
+            245: "GPIO48 - ESP32-S3 input [245]",
         }
 
         selected_labels = None
@@ -394,24 +497,20 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
                 305: "EXIO6 - TCA9554 bit 5 [305]",
                 306: "EXIO7 - TCA9554 bit 6 [306]",
                 307: "EXIO8 - TCA9554 bit 7 [307]",
-                400: "GPB0 - MCP23017 output [400]",
-                406: "GPB6 - MCP23017 output [406]",
-                500: "PCF2/P0 - PCF8574 auxiliary bit 0 [500]",
-                501: "PCF2/P1 - PCF8574 auxiliary bit 1 [501]",
-                502: "PCF2/P2 - PCF8574 auxiliary bit 2 [502]",
-                503: "PCF2/P3 - PCF8574 auxiliary bit 3 [503]",
-                504: "PCF2/P4 - PCF8574 auxiliary bit 4 [504]",
-                505: "PCF2/P5 - PCF8574 auxiliary bit 5 [505]",
-                506: "PCF2/P6 - PCF8574 auxiliary bit 6 [506]",
-                507: "PCF2/P7 - PCF8574 auxiliary bit 7 [507]",
-                510: "TCA3/P0 - TCA9554 auxiliary bit 0 [510]",
-                511: "TCA3/P1 - TCA9554 auxiliary bit 1 [511]",
-                512: "TCA3/P2 - TCA9554 auxiliary bit 2 [512]",
-                513: "TCA3/P3 - TCA9554 auxiliary bit 3 [513]",
-                514: "TCA3/P4 - TCA9554 auxiliary bit 4 [514]",
-                515: "TCA3/P5 - TCA9554 auxiliary bit 5 [515]",
-                516: "TCA3/P6 - TCA9554 auxiliary bit 6 [516]",
-                517: "TCA3/P7 - TCA9554 auxiliary bit 7 [517]",
+                320: "GPB0 - MCP23017 output [320]",
+                321: "GPB1 - MCP23017 output [321]",
+                322: "GPB2 - MCP23017 output [322]",
+                323: "GPB3 - MCP23017 output [323]",
+                324: "GPB4 - MCP23017 output [324]",
+                325: "GPB5 - MCP23017 output [325]",
+                326: "GPB6 - MCP23017 output [326]",
+                327: "GPB7 - MCP23017 output [327]",
+                340: "GPIO1 - ESP32-S3 output [340]",
+                341: "GPIO2 - ESP32-S3 output [341]",
+                342: "GPIO21 - ESP32-S3 output [342]",
+                343: "GPIO45 - ESP32-S3 output [343]",
+                344: "GPIO47 - ESP32-S3 output [344]",
+                345: "GPIO48 - ESP32-S3 output [345]",
             }
             relabeled: List[dict] = []
             present_values = set()
@@ -446,14 +545,14 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
     slot_entries = enum_sets.get(slot_key)
     if profile == "waveshare" and isinstance(slot_entries, list):
         current = [item for item in slot_entries if isinstance(item, dict)]
-        slot_labels_waveshare = {slot: f"pd{slot} -> d{slot:02d} [{slot}]" for slot in range(16)}
+        slot_labels_waveshare = {slot: f"pd{slot} -> d{slot:02d} [{slot}]" for slot in range(8)}
         current_by_value: Dict[int, dict] = {}
         for entry in current:
             value = _to_int(entry.get("value"))
             if value is not None:
                 current_by_value[value] = entry
         relabeled: List[dict] = []
-        for value in range(16):
+        for value in range(8):
             entry = current_by_value.get(value, {"value": value})
             relabeled.append(sanitize_enum_entry(entry, slot_labels_waveshare[value]))
         enum_sets[slot_key] = relabeled
@@ -490,12 +589,18 @@ def main() -> None:
     profile = _profile_override_from_project_options() or _profile_from_pio_env(pio_env)
 
     if profile == "waveshare":
-        # The Waveshare runtime exposes DIN0..DIN7 plus five MCP23017 inputs.
+        # The Waveshare runtime exposes GPIO04..GPIO11 plus five MCP23017 inputs.
         _expand_digital_input_slot_docs(cfgdocs_docs, 12)
         _expand_digital_input_slot_docs(cfgmods_docs, 12)
         _expand_digital_input_slot_translations(i18n, 12)
+        _prune_io_slot_docs(cfgdocs_docs, analog_last=15, digital_last=12, output_last=15)
+        _prune_io_slot_docs(cfgmods_docs, analog_last=15, digital_last=12, output_last=15)
+        _prune_pool_device_docs(cfgdocs_docs, last_slot=7)
+        _prune_pool_device_docs(cfgmods_docs, last_slot=7)
 
     combined_meta = _resolve_meta_i18n(_merge_meta_dict(cfgdocs_meta, cfgmods_meta), i18n)
+    if profile == "waveshare":
+        combined_meta = _prune_io_slot_meta(combined_meta, analog_last=15, digital_last=12, output_last=15)
     combined_meta = _apply_profile_specific_io_enum_sets(combined_meta, profile)
 
     merged_docs = _resolved_docs(dict(cfgdocs_docs), i18n)

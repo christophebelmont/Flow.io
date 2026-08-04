@@ -917,7 +917,11 @@ bool IOModule::writeRuntimeUiValue(uint8_t valueId, IRuntimeUiWriter& writer) co
         case RuntimeUiWaterCounter: {
             IoValue value{};
             const IoStatus st = ioReadValue_(
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                ioIdFromSlot(digitalInputSlot(12)),
+#else
                 ioIdFromSlot(digitalInputSlot(3)),
+#endif
                 &value
             );
             if (st != IO_OK || !value.valid) {
@@ -1756,6 +1760,42 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
             : ((s.inDef.mode == IO_DIGITAL_INPUT_COUNTER) ? IO_VAL_FLOAT : IO_VAL_BOOL);
         outMeta->backend = s.backend;
         outMeta->channel = s.channel;
+        outMeta->bindingPort = (s.kind == DIGITAL_SLOT_OUTPUT) ? s.outDef.bindingPort : s.inDef.bindingPort;
+        if (s.kind == DIGITAL_SLOT_OUTPUT && s.logicalIdx < DIGITAL_CFG_SLOTS) {
+            outMeta->bindingPort = digitalCfg_[s.logicalIdx].bindingPort;
+        } else if (s.kind == DIGITAL_SLOT_INPUT && s.logicalIdx < DIGITAL_INPUT_CFG_SLOTS) {
+            outMeta->bindingPort = digitalInCfg_[s.logicalIdx].bindingPort;
+        }
+
+        if (s.kind == DIGITAL_SLOT_INPUT) {
+            uint8_t pin = 0U;
+            uint8_t backend = IO_BACKEND_GPIO;
+            uint8_t channel = 0U;
+            IOExpanderId expanderId = IO_EXPANDER_INVALID;
+            if (resolveDigitalInputBinding_(outMeta->bindingPort, pin, backend, channel, expanderId)) {
+                outMeta->backend = backend;
+                outMeta->channel = channel;
+            }
+        } else {
+            uint8_t pin = 0U;
+            uint8_t backend = IO_BACKEND_GPIO;
+            uint8_t channel = 0U;
+            IOExpanderId expanderId = IO_EXPANDER_INVALID;
+            bool usesPcfOut = false;
+            bool usesTcaOut = false;
+            bool usesMcpOut = false;
+            if (resolveDigitalOutputBinding_(outMeta->bindingPort,
+                                             pin,
+                                             backend,
+                                             channel,
+                                             expanderId,
+                                             usesPcfOut,
+                                             usesTcaOut,
+                                             usesMcpOut)) {
+                outMeta->backend = backend;
+                outMeta->channel = channel;
+            }
+        }
         outMeta->capabilities = s.endpoint ? IO_CAP_R : 0;
         if (s.kind == DIGITAL_SLOT_OUTPUT && s.provider.isBound()) {
             outMeta->capabilities |= IO_CAP_W;
@@ -1791,6 +1831,16 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
         outMeta->capabilities = s.endpoint ? IO_CAP_R : 0;
         outMeta->channel = s.channel;
         outMeta->backend = s.backend;
+        outMeta->bindingPort = (analogIdx < ANALOG_CFG_SLOTS)
+            ? analogCfg_[analogIdx].bindingPort
+            : s.def.bindingPort;
+        uint8_t source = IO_ANALOG_SOURCE_INVALID;
+        uint8_t channel = 0U;
+        uint8_t backend = IO_BACKEND_GPIO;
+        if (resolveAnalogBinding_(outMeta->bindingPort, source, channel, backend)) {
+            outMeta->channel = channel;
+            outMeta->backend = backend;
+        }
         outMeta->precision = s.def.precision;
         outMeta->minValid = 0.0f;
         outMeta->maxValid = 0.0f;

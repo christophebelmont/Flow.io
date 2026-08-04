@@ -219,9 +219,17 @@ constexpr uint8_t MaxDigitalOutputs = BoardCapacityProfile::kIoCapacity.digitalO
 constexpr uint8_t AnalogConfigSlots = BoardCapacityProfile::kIoCapacity.analogConfigSlots;
 constexpr uint8_t DigitalInputConfigSlots = BoardCapacityProfile::kIoCapacity.digitalInputConfigSlots;
 constexpr uint8_t DigitalOutputConfigSlots = BoardCapacityProfile::kIoCapacity.digitalOutputConfigSlots;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+constexpr uint8_t MaxDomainSlots = 20;
+constexpr uint8_t MaxDomainIoSlotBindings = 20;
+// pd07 remains the water-heater device; eight indices are therefore required
+// even though the Waveshare domain has seven typed pool-device presets.
+constexpr uint8_t MaxPoolDevices = 8;
+#else
 constexpr uint8_t MaxDomainSlots = 24;
 constexpr uint8_t MaxDomainIoSlotBindings = 24;
 constexpr uint8_t MaxPoolDevices = 16;
+#endif
 
 static_assert(MaxAnalogEndpoints > 0, "IO analogEndpoints must be at least 1");
 static_assert(MaxDigitalInputs > 0, "IO digitalInputs must be at least 1");

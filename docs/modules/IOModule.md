@@ -16,6 +16,10 @@ Le module regroupe actuellement:
 
 Le service public exposé au reste du firmware est `IOServiceV2`.
 
+La cartographie complète du profil Waveshare est documentée dans
+[`docs/core/waveshare-io-map.md`](../core/waveshare-io-map.md), avec les tables
+`binding_port`, `io_slot` et `domain_slot`.
+
 Type: module actif.
 
 ## Dépendances

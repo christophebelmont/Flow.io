@@ -11,15 +11,11 @@ namespace IoLayout {
 enum : IOExpanderId {
     ExpanderTca9554 = 0,
     ExpanderMcp23017 = 1,
-    ExpanderPcf8574Aux = 2,
-    ExpanderTca9554Aux = 3,
 };
 
 inline constexpr IOExpanderSpec kExpanders[] = {
     {ExpanderTca9554, IO_EXPANDER_KIND_TCA9554, true, 0x20, 0x00, false},
     {ExpanderMcp23017, IO_EXPANDER_KIND_MCP23017, true, 0x21, 0x00, false},
-    {ExpanderPcf8574Aux, IO_EXPANDER_KIND_PCF8574, false, 0x22, 0xFF, false},
-    {ExpanderTca9554Aux, IO_EXPANDER_KIND_TCA9554, false, 0x23, 0x00, false},
 };
 
 enum : PhysicalPortId {
@@ -29,16 +25,16 @@ enum : PhysicalPortId {
     PortAdsInternal3 = 103, // ADS1115 interne, entree single-ended A3.
     PortAdsExternal0 = 110, // ADS1115 externe, paire differentielle 0.
     PortAdsExternal1 = 111, // ADS1115 externe, paire differentielle 1.
-    PortOneWire1 = 120, // DS18B20 bus 1.
-    PortOneWire2 = 121, // DS18B20 bus 2.
+    PortOneWireWater = 120, // DS18B20 eau sur GPIO20.
+    PortOneWireAir = 121, // DS18B20 air sur GPIO19.
     PortSht40Temp = 130, // SHT40: temperature.
     PortSht40Humidity = 131, // SHT40: humidite.
     PortBmp280Temp = 132, // BMP280: temperature.
     PortBmp280Pressure = 133, // BMP280: pression.
-    PortBme680Temp = 134, // BME680: temperature.
-    PortBme680Humidity = 135, // BME680: humidite.
-    PortBme680Pressure = 136, // BME680: pression.
-    PortBme680Gas = 137, // BME680: resistance gaz.
+    PortBme688Temp = 134, // BME688: temperature.
+    PortBme688Humidity = 135, // BME688: humidite.
+    PortBme688Pressure = 136, // BME688: pression.
+    PortBme688Gas = 137, // BME688: resistance gaz.
     PortIna226ShuntMv = 138, // INA226: tension shunt (mV).
     PortIna226BusV = 139, // INA226: tension bus (V).
     PortIna226CurrentMa = 140, // INA226: courant (mA).
@@ -60,144 +56,135 @@ enum : PhysicalPortId {
     PortExio6 = 305, // TCA9554 sortie bit 5.
     PortExio7 = 306, // TCA9554 sortie bit 6.
     PortExio8 = 307, // TCA9554 sortie bit 7.
-    PortMcpOutGpb0 = 400, // MCP23017 sortie GPB0.
-    PortMcpOutGpb6 = 406, // MCP23017 sortie GPB6.
-    PortMcpInGpa0 = 408, // MCP23017 entree GPA0.
-    PortMcpInGpa3 = 411, // MCP23017 entree GPA3.
-    PortMcpInGpa4 = 412, // MCP23017 entree GPA4.
-    PortMcpInGpa5 = 413, // MCP23017 entree GPA5.
-    PortMcpInGpa6 = 414, // MCP23017 entree GPA6.
-    PortPcfAux0 = 500, // PCF8574 auxiliaire sortie bit 0.
-    PortPcfAux1 = 501, // PCF8574 auxiliaire sortie bit 1.
-    PortPcfAux2 = 502, // PCF8574 auxiliaire sortie bit 2.
-    PortPcfAux3 = 503, // PCF8574 auxiliaire sortie bit 3.
-    PortPcfAux4 = 504, // PCF8574 auxiliaire sortie bit 4.
-    PortPcfAux5 = 505, // PCF8574 auxiliaire sortie bit 5.
-    PortPcfAux6 = 506, // PCF8574 auxiliaire sortie bit 6.
-    PortPcfAux7 = 507, // PCF8574 auxiliaire sortie bit 7.
-    PortTcaAux0 = 510, // TCA9554 auxiliaire sortie bit 0.
-    PortTcaAux1 = 511, // TCA9554 auxiliaire sortie bit 1.
-    PortTcaAux2 = 512, // TCA9554 auxiliaire sortie bit 2.
-    PortTcaAux3 = 513, // TCA9554 auxiliaire sortie bit 3.
-    PortTcaAux4 = 514, // TCA9554 auxiliaire sortie bit 4.
-    PortTcaAux5 = 515, // TCA9554 auxiliaire sortie bit 5.
-    PortTcaAux6 = 516, // TCA9554 auxiliaire sortie bit 6.
-    PortTcaAux7 = 517 // TCA9554 auxiliaire sortie bit 7.
+    PortMcpInGpa0 = 220, // MCP23017 entree GPA0.
+    PortMcpInGpa1 = 221, // MCP23017 entree GPA1, libre.
+    PortMcpInGpa2 = 222, // MCP23017 entree GPA2, libre.
+    PortMcpInGpa3 = 223, // MCP23017 entree GPA3.
+    PortMcpInGpa4 = 224, // MCP23017 entree GPA4.
+    PortMcpInGpa5 = 225, // MCP23017 entree GPA5.
+    PortMcpInGpa6 = 226, // MCP23017 entree GPA6.
+    PortGpio1Input = 240,
+    PortGpio2Input = 241,
+    PortGpio21Input = 242,
+    PortGpio45Input = 243,
+    PortGpio47Input = 244,
+    PortGpio48Input = 245,
+    PortMcpOutGpb0 = 320, // MCP23017 sortie GPB0.
+    PortMcpOutGpb1 = 321, // MCP23017 sortie GPB1.
+    PortMcpOutGpb2 = 322, // MCP23017 sortie GPB2.
+    PortMcpOutGpb3 = 323, // MCP23017 sortie GPB3.
+    PortMcpOutGpb4 = 324, // MCP23017 sortie GPB4.
+    PortMcpOutGpb5 = 325, // MCP23017 sortie GPB5.
+    PortMcpOutGpb6 = 326, // MCP23017 sortie GPB6.
+    PortMcpOutGpb7 = 327, // MCP23017 sortie GPB7.
+    PortGpio1Output = 340,
+    PortGpio2Output = 341,
+    PortGpio21Output = 342,
+    PortGpio45Output = 343,
+    PortGpio47Output = 344,
+    PortGpio48Output = 345,
 };
 
 inline constexpr IOBindingPortSpec kBindingPorts[] = {
-    // {portId, kind, channel, expanderId}
-    {PortAdsInternal0, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 0, 0}, // ADS1115 interne canal 0.
-    {PortAdsInternal1, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 1, 0}, // ADS1115 interne canal 1.
-    {PortAdsInternal2, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 2, 0}, // ADS1115 interne canal 2.
-    {PortAdsInternal3, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 3, 0}, // ADS1115 interne canal 3.
-    {PortAdsExternal0, IO_PORT_KIND_ADS_EXTERNAL_DIFF, 0, 0}, // ADS1115 externe paire 0.
-    {PortAdsExternal1, IO_PORT_KIND_ADS_EXTERNAL_DIFF, 1, 0}, // ADS1115 externe paire 1.
-    {PortOneWire1, IO_PORT_KIND_DS18_WATER, 20, 0}, // DS18B20 bus 1 GPIO20.
-    {PortOneWire2, IO_PORT_KIND_DS18_AIR, 19, 0}, // DS18B20 bus 2 GPIO19.
-    {PortSht40Temp, IO_PORT_KIND_SHT40, 0, 0}, // SHT40 temperature.
-    {PortSht40Humidity, IO_PORT_KIND_SHT40, 1, 0}, // SHT40 humidite.
-    {PortBmp280Temp, IO_PORT_KIND_BMP280, 0, 0}, // BMP280 temperature.
-    {PortBmp280Pressure, IO_PORT_KIND_BMP280, 1, 0}, // BMP280 pression.
-    {PortBme680Temp, IO_PORT_KIND_BME680, 0, 0}, // BME680 temperature.
-    {PortBme680Humidity, IO_PORT_KIND_BME680, 1, 0}, // BME680 humidite.
-    {PortBme680Pressure, IO_PORT_KIND_BME680, 2, 0}, // BME680 pression.
-    {PortBme680Gas, IO_PORT_KIND_BME680, 3, 0}, // BME680 gaz.
-    {PortIna226ShuntMv, IO_PORT_KIND_INA226, 0, 0}, // INA226 shunt.
-    {PortIna226BusV, IO_PORT_KIND_INA226, 1, 0}, // INA226 bus.
-    {PortIna226CurrentMa, IO_PORT_KIND_INA226, 2, 0}, // INA226 courant.
-    {PortIna226PowerMw, IO_PORT_KIND_INA226, 3, 0}, // INA226 puissance.
-    {PortIna226LoadV, IO_PORT_KIND_INA226, 4, 0}, // INA226 tension charge.
+    // {portId, kind, channel, expanderId, boardLabel}
+    {PortAdsInternal0, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 0, 0, "ADS INT A0"},
+    {PortAdsInternal1, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 1, 0, "ADS INT A1"},
+    {PortAdsInternal2, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 2, 0, "ADS INT A2"},
+    {PortAdsInternal3, IO_PORT_KIND_ADS_INTERNAL_SINGLE, 3, 0, "ADS INT A3"},
+    {PortAdsExternal0, IO_PORT_KIND_ADS_EXTERNAL_DIFF, 0, 0, "ADS EXT A0-A1"},
+    {PortAdsExternal1, IO_PORT_KIND_ADS_EXTERNAL_DIFF, 1, 0, "ADS EXT A2-A3"},
+    {PortOneWireWater, IO_PORT_KIND_DS18_WATER, 20, 0, "GPIO20 (OneWire)"},
+    {PortOneWireAir, IO_PORT_KIND_DS18_AIR, 19, 0, "GPIO19 (OneWire)"},
+    {PortSht40Temp, IO_PORT_KIND_SHT40, 0, 0, "SHT40 Temperature"},
+    {PortSht40Humidity, IO_PORT_KIND_SHT40, 1, 0, "SHT40 Humidity"},
+    {PortBmp280Temp, IO_PORT_KIND_BMP280, 0, 0, "BMP280 Temperature"},
+    {PortBmp280Pressure, IO_PORT_KIND_BMP280, 1, 0, "BMP280 Pressure"},
+    {PortBme688Temp, IO_PORT_KIND_BME680, 0, 0, "BME688 Temperature"},
+    {PortBme688Humidity, IO_PORT_KIND_BME680, 1, 0, "BME688 Humidity"},
+    {PortBme688Pressure, IO_PORT_KIND_BME680, 2, 0, "BME688 Pressure"},
+    {PortBme688Gas, IO_PORT_KIND_BME680, 3, 0, "BME688 Gas"},
+    {PortIna226ShuntMv, IO_PORT_KIND_INA226, 0, 0, "INA226 Shunt"},
+    {PortIna226BusV, IO_PORT_KIND_INA226, 1, 0, "INA226 Bus Voltage"},
+    {PortIna226CurrentMa, IO_PORT_KIND_INA226, 2, 0, "INA226 Current"},
+    {PortIna226PowerMw, IO_PORT_KIND_INA226, 3, 0, "INA226 Power"},
+    {PortIna226LoadV, IO_PORT_KIND_INA226, 4, 0, "INA226 Load Voltage"},
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    {PortDin0, IO_PORT_KIND_GPIO_INPUT, 4, 0}, // DIN0 GPIO4.
-    {PortDin1, IO_PORT_KIND_GPIO_INPUT, 5, 0}, // DIN1 GPIO5.
-    {PortDin2, IO_PORT_KIND_GPIO_INPUT, 6, 0}, // DIN2 GPIO6.
-    {PortDin3, IO_PORT_KIND_GPIO_INPUT, 7, 0}, // DIN3 GPIO7.
-    {PortDin4, IO_PORT_KIND_GPIO_INPUT, 8, 0}, // DIN4 GPIO8.
-    {PortDin5, IO_PORT_KIND_GPIO_INPUT, 9, 0}, // DIN5 GPIO9.
-    {PortDin6, IO_PORT_KIND_GPIO_INPUT, 10, 0}, // DIN6 GPIO10.
-    {PortDin7, IO_PORT_KIND_GPIO_INPUT, 11, 0}, // DIN7 GPIO11.
+    {PortDin0, IO_PORT_KIND_GPIO_INPUT, 4, 0, "GPIO04"},
+    {PortDin1, IO_PORT_KIND_GPIO_INPUT, 5, 0, "GPIO05"},
+    {PortDin2, IO_PORT_KIND_GPIO_INPUT, 6, 0, "GPIO06"},
+    {PortDin3, IO_PORT_KIND_GPIO_INPUT, 7, 0, "GPIO07"},
+    {PortDin4, IO_PORT_KIND_GPIO_INPUT, 8, 0, "GPIO08"},
+    {PortDin5, IO_PORT_KIND_GPIO_INPUT, 9, 0, "GPIO09"},
+    {PortDin6, IO_PORT_KIND_GPIO_INPUT, 10, 0, "GPIO10"},
+    {PortDin7, IO_PORT_KIND_GPIO_INPUT, 11, 0, "GPIO11"},
 #else
-    {PortDin0, IO_PORT_KIND_GPIO_INPUT, 4, 0}, // Entree digitale 1 (GPIO4).
-    {PortDin1, IO_PORT_KIND_GPIO_INPUT, 5, 0}, // Entree digitale 2 (GPIO5).
-    {PortDin2, IO_PORT_KIND_GPIO_INPUT, 6, 0}, // Entree digitale 3 (GPIO6).
-    {PortDin3, IO_PORT_KIND_GPIO_INPUT, 7, 0}, // Entree digitale 4 (GPIO7).
-    {PortDin4, IO_PORT_KIND_GPIO_INPUT, 8, 0}, // Entree digitale 5 (GPIO8).
-    {PortDin5, IO_PORT_KIND_GPIO_INPUT, 9, 0}, // Entree digitale 6 (GPIO9).
-    {PortDin6, IO_PORT_KIND_GPIO_INPUT, 10, 0}, // Entree digitale 7 (GPIO10).
-    {PortDin7, IO_PORT_KIND_GPIO_INPUT, 11, 0}, // Entree digitale 8 (GPIO11).
+    {PortDin0, IO_PORT_KIND_GPIO_INPUT, 4, 0, "GPIO04"},
+    {PortDin1, IO_PORT_KIND_GPIO_INPUT, 5, 0, "GPIO05"},
+    {PortDin2, IO_PORT_KIND_GPIO_INPUT, 6, 0, "GPIO06"},
+    {PortDin3, IO_PORT_KIND_GPIO_INPUT, 7, 0, "GPIO07"},
+    {PortDin4, IO_PORT_KIND_GPIO_INPUT, 8, 0, "GPIO08"},
+    {PortDin5, IO_PORT_KIND_GPIO_INPUT, 9, 0, "GPIO09"},
+    {PortDin6, IO_PORT_KIND_GPIO_INPUT, 10, 0, "GPIO10"},
+    {PortDin7, IO_PORT_KIND_GPIO_INPUT, 11, 0, "GPIO11"},
 #endif
-    {PortExio1, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554}, // TCA9554 bit 0.
-    {PortExio2, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554}, // TCA9554 bit 1.
-    {PortExio3, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554}, // TCA9554 bit 2.
-    {PortExio4, IO_PORT_KIND_TCA9554_OUTPUT, 3, ExpanderTca9554}, // TCA9554 bit 3.
-    {PortExio5, IO_PORT_KIND_TCA9554_OUTPUT, 4, ExpanderTca9554}, // TCA9554 bit 4.
-    {PortExio6, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554}, // TCA9554 bit 5.
-    {PortExio7, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554}, // TCA9554 bit 6.
-    {PortExio8, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554}, // TCA9554 bit 7.
-    {PortMcpOutGpb0, IO_PORT_KIND_MCP23017_OUTPUT, 8, ExpanderMcp23017}, // MCP23017 GPB0.
-    {PortMcpOutGpb6, IO_PORT_KIND_MCP23017_OUTPUT, 14, ExpanderMcp23017}, // MCP23017 GPB6.
-    {PortMcpInGpa0, IO_PORT_KIND_MCP23017_INPUT, 0, ExpanderMcp23017}, // MCP23017 GPA0.
-    {PortMcpInGpa3, IO_PORT_KIND_MCP23017_INPUT, 3, ExpanderMcp23017}, // MCP23017 GPA3.
-    {PortMcpInGpa4, IO_PORT_KIND_MCP23017_INPUT, 4, ExpanderMcp23017}, // MCP23017 GPA4.
-    {PortMcpInGpa5, IO_PORT_KIND_MCP23017_INPUT, 5, ExpanderMcp23017}, // MCP23017 GPA5.
-    {PortMcpInGpa6, IO_PORT_KIND_MCP23017_INPUT, 6, ExpanderMcp23017}, // MCP23017 GPA6.
-    {PortPcfAux0, IO_PORT_KIND_PCF8574_OUTPUT, 0, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 0.
-    {PortPcfAux1, IO_PORT_KIND_PCF8574_OUTPUT, 1, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 1.
-    {PortPcfAux2, IO_PORT_KIND_PCF8574_OUTPUT, 2, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 2.
-    {PortPcfAux3, IO_PORT_KIND_PCF8574_OUTPUT, 3, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 3.
-    {PortPcfAux4, IO_PORT_KIND_PCF8574_OUTPUT, 4, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 4.
-    {PortPcfAux5, IO_PORT_KIND_PCF8574_OUTPUT, 5, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 5.
-    {PortPcfAux6, IO_PORT_KIND_PCF8574_OUTPUT, 6, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 6.
-    {PortPcfAux7, IO_PORT_KIND_PCF8574_OUTPUT, 7, ExpanderPcf8574Aux}, // PCF8574 auxiliaire bit 7.
-    {PortTcaAux0, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 0.
-    {PortTcaAux1, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 1.
-    {PortTcaAux2, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 2.
-    {PortTcaAux3, IO_PORT_KIND_TCA9554_OUTPUT, 3, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 3.
-    {PortTcaAux4, IO_PORT_KIND_TCA9554_OUTPUT, 4, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 4.
-    {PortTcaAux5, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 5.
-    {PortTcaAux6, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 6.
-    {PortTcaAux7, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554Aux}, // TCA9554 auxiliaire bit 7.
+    {PortMcpInGpa0, IO_PORT_KIND_MCP23017_INPUT, 0, ExpanderMcp23017, "GPA0"},
+    {PortMcpInGpa1, IO_PORT_KIND_MCP23017_INPUT, 1, ExpanderMcp23017, "GPA1"},
+    {PortMcpInGpa2, IO_PORT_KIND_MCP23017_INPUT, 2, ExpanderMcp23017, "GPA2"},
+    {PortMcpInGpa3, IO_PORT_KIND_MCP23017_INPUT, 3, ExpanderMcp23017, "GPA3"},
+    {PortMcpInGpa4, IO_PORT_KIND_MCP23017_INPUT, 4, ExpanderMcp23017, "GPA4"},
+    {PortMcpInGpa5, IO_PORT_KIND_MCP23017_INPUT, 5, ExpanderMcp23017, "GPA5"},
+    {PortMcpInGpa6, IO_PORT_KIND_MCP23017_INPUT, 6, ExpanderMcp23017, "GPA6"},
+    {PortGpio1Input, IO_PORT_KIND_GPIO_INPUT, 1, 0, "GPIO01"},
+    {PortGpio2Input, IO_PORT_KIND_GPIO_INPUT, 2, 0, "GPIO02"},
+    {PortGpio21Input, IO_PORT_KIND_GPIO_INPUT, 21, 0, "GPIO21"},
+    {PortGpio45Input, IO_PORT_KIND_GPIO_INPUT, 45, 0, "GPIO45"},
+    {PortGpio47Input, IO_PORT_KIND_GPIO_INPUT, 47, 0, "GPIO47"},
+    {PortGpio48Input, IO_PORT_KIND_GPIO_INPUT, 48, 0, "GPIO48"},
+    {PortExio1, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554, "EXIO1"},
+    {PortExio2, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554, "EXIO2"},
+    {PortExio3, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554, "EXIO3"},
+    {PortExio4, IO_PORT_KIND_TCA9554_OUTPUT, 3, ExpanderTca9554, "EXIO4"},
+    {PortExio5, IO_PORT_KIND_TCA9554_OUTPUT, 4, ExpanderTca9554, "EXIO5"},
+    {PortExio6, IO_PORT_KIND_TCA9554_OUTPUT, 5, ExpanderTca9554, "EXIO6"},
+    {PortExio7, IO_PORT_KIND_TCA9554_OUTPUT, 6, ExpanderTca9554, "EXIO7"},
+    {PortExio8, IO_PORT_KIND_TCA9554_OUTPUT, 7, ExpanderTca9554, "EXIO8"},
+    {PortMcpOutGpb0, IO_PORT_KIND_MCP23017_OUTPUT, 8, ExpanderMcp23017, "GPB0"},
+    {PortMcpOutGpb1, IO_PORT_KIND_MCP23017_OUTPUT, 9, ExpanderMcp23017, "GPB1"},
+    {PortMcpOutGpb2, IO_PORT_KIND_MCP23017_OUTPUT, 10, ExpanderMcp23017, "GPB2"},
+    {PortMcpOutGpb3, IO_PORT_KIND_MCP23017_OUTPUT, 11, ExpanderMcp23017, "GPB3"},
+    {PortMcpOutGpb4, IO_PORT_KIND_MCP23017_OUTPUT, 12, ExpanderMcp23017, "GPB4"},
+    {PortMcpOutGpb5, IO_PORT_KIND_MCP23017_OUTPUT, 13, ExpanderMcp23017, "GPB5"},
+    {PortMcpOutGpb6, IO_PORT_KIND_MCP23017_OUTPUT, 14, ExpanderMcp23017, "GPB6"},
+    {PortMcpOutGpb7, IO_PORT_KIND_MCP23017_OUTPUT, 15, ExpanderMcp23017, "GPB7"},
+    {PortGpio1Output, IO_PORT_KIND_GPIO_OUTPUT, 1, 0, "GPIO01"},
+    {PortGpio2Output, IO_PORT_KIND_GPIO_OUTPUT, 2, 0, "GPIO02"},
+    {PortGpio21Output, IO_PORT_KIND_GPIO_OUTPUT, 21, 0, "GPIO21"},
+    {PortGpio45Output, IO_PORT_KIND_GPIO_OUTPUT, 45, 0, "GPIO45"},
+    {PortGpio47Output, IO_PORT_KIND_GPIO_OUTPUT, 47, 0, "GPIO47"},
+    {PortGpio48Output, IO_PORT_KIND_GPIO_OUTPUT, 48, 0, "GPIO48"},
 };
 
 static_assert((sizeof(kExpanders) / sizeof(kExpanders[0])) <= IO_MAX_EXPANDERS,
               "Waveshare expander topology exceeds IOModule capacity");
 
-constexpr PhysicalPortId analogPortFromLegacy(uint8_t source, uint8_t channel)
-{
-    switch (source) {
-        case IO_SRC_ADS_INTERNAL_SINGLE:
-            return (channel == 0U) ? PortAdsInternal0 :
-                   (channel == 1U) ? PortAdsInternal1 :
-                   (channel == 2U) ? PortAdsInternal2 :
-                                     PortAdsInternal3;
-        case IO_SRC_ADS_EXTERNAL_DIFF:
-            return (channel == 0U) ? PortAdsExternal0 : PortAdsExternal1;
-        case IO_SRC_DS18_WATER:
-            return PortOneWire1;
-        case IO_SRC_DS18_AIR:
-            return PortOneWire2;
-        default:
-            return IO_PORT_INVALID;
-    }
-}
-
 struct AnalogRoleDefault {
     DomainSlotId domainSlot; // Besoin fonctionnel de la sonde.
     PhysicalPortId bindingPort; // Port physique associe.
-    float c0; // Coefficient de calibration offset/intercept.
-    float c1; // Coefficient de calibration gain/slope.
+    float c0; // Coefficient multiplicateur de calibration.
+    float c1; // Offset de calibration.
     int32_t precision; // Precision d'affichage (nb de decimales).
 };
 
 inline constexpr AnalogRoleDefault kAnalogRoleDefaults[] = {
     // {domainSlot, bindingPort, c0, c1, precision}
-    {PoolIds::SensorOrp, analogPortFromLegacy(FLOW_WIRDEF_IO_A0S, FLOW_WIRDEF_IO_A0C), FLOW_WIRDEF_IO_A00, FLOW_WIRDEF_IO_A01, FLOW_WIRDEF_IO_A0P}, // ORP.
-    {PoolIds::SensorPh, analogPortFromLegacy(FLOW_WIRDEF_IO_A1S, FLOW_WIRDEF_IO_A1C), FLOW_WIRDEF_IO_A10, FLOW_WIRDEF_IO_A11, FLOW_WIRDEF_IO_A1P}, // pH.
-    {PoolIds::SensorPsi, analogPortFromLegacy(FLOW_WIRDEF_IO_A2S, FLOW_WIRDEF_IO_A2C), FLOW_WIRDEF_IO_A20, FLOW_WIRDEF_IO_A21, FLOW_WIRDEF_IO_A2P}, // Pression.
-    {PoolIds::SensorSpareAnalog, analogPortFromLegacy(FLOW_WIRDEF_IO_A3S, FLOW_WIRDEF_IO_A3C), FLOW_WIRDEF_IO_A30, FLOW_WIRDEF_IO_A31, FLOW_WIRDEF_IO_A3P}, // Entree analogique reservee.
-    {PoolIds::SensorWaterTemp, analogPortFromLegacy(FLOW_WIRDEF_IO_A4S, FLOW_WIRDEF_IO_A4C), FLOW_WIRDEF_IO_A40, FLOW_WIRDEF_IO_A41, FLOW_WIRDEF_IO_A4P}, // Temperature eau.
-    {PoolIds::SensorAirTemp, analogPortFromLegacy(FLOW_WIRDEF_IO_A5S, FLOW_WIRDEF_IO_A5C), FLOW_WIRDEF_IO_A50, FLOW_WIRDEF_IO_A51, FLOW_WIRDEF_IO_A5P}, // Temperature air.
+    {PoolIds::SensorOrp, PortAdsInternal0, FLOW_WIRDEF_IO_A00, FLOW_WIRDEF_IO_A01, FLOW_WIRDEF_IO_A0P},
+    {PoolIds::SensorPh, PortAdsInternal1, FLOW_WIRDEF_IO_A10, FLOW_WIRDEF_IO_A11, FLOW_WIRDEF_IO_A1P},
+    {PoolIds::SensorPsi, PortAdsInternal2, FLOW_WIRDEF_IO_A20, FLOW_WIRDEF_IO_A21, FLOW_WIRDEF_IO_A2P},
+    {PoolIds::SensorSpareAnalog, PortAdsInternal3, FLOW_WIRDEF_IO_A30, FLOW_WIRDEF_IO_A31, FLOW_WIRDEF_IO_A3P},
+    {PoolIds::SensorWaterTemp, PortOneWireWater, FLOW_WIRDEF_IO_A40, FLOW_WIRDEF_IO_A41, FLOW_WIRDEF_IO_A4P},
+    {PoolIds::SensorAirTemp, PortOneWireAir, FLOW_WIRDEF_IO_A50, FLOW_WIRDEF_IO_A51, FLOW_WIRDEF_IO_A5P},
+    {PoolIds::SensorCurrent, PortIna226CurrentMa, 1.0f, 0.0f, 2},
+    {PoolIds::SensorVoltage, PortIna226BusV, 1.0f, 0.0f, 2},
 };
 
 struct DigitalInputRoleDefault {
@@ -210,17 +197,11 @@ struct DigitalInputRoleDefault {
 
 inline constexpr DigitalInputRoleDefault kDigitalInputRoleDefaults[] = {
     // {role, bindingPort, mode, edgeMode, debounceUs}
-#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    {PoolIds::SensorPoolLevel, PortDin2, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau piscine (GPIO6).
-    {PoolIds::SensorPhLevel, PortDin0, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau pH (GPIO4).
-    {PoolIds::SensorChlorineLevel, PortDin1, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau desinfectant (GPIO5).
-    {PoolIds::SensorWaterCounter, PortDin3, IO_DIGITAL_INPUT_COUNTER, IO_EDGE_RISING, 100000U}, // Compteur impulsions eau (GPIO7, 100 ms debounce).
-#else
-    {PoolIds::SensorPoolLevel, PortDin0, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau piscine.
-    {PoolIds::SensorPhLevel, PortDin1, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau pH.
-    {PoolIds::SensorChlorineLevel, PortDin2, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U}, // Capteur niveau chlore.
-    {PoolIds::SensorWaterCounter, PortDin3, IO_DIGITAL_INPUT_COUNTER, IO_EDGE_RISING, 100000U}, // Compteur impulsions eau (100 ms debounce).
-#endif
+    {PoolIds::SensorPir, PortMcpInGpa0, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
+    {PoolIds::SensorPhLevel, PortMcpInGpa3, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
+    {PoolIds::SensorChlorineLevel, PortMcpInGpa4, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
+    {PoolIds::SensorPoolLevel, PortMcpInGpa5, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
+    {PoolIds::SensorWaterMeter, PortMcpInGpa6, IO_DIGITAL_INPUT_COUNTER, IO_EDGE_RISING, 100000U},
 };
 
 struct DigitalOutputRoleDefault {
@@ -240,7 +221,6 @@ inline constexpr DigitalOutputRoleDefault kDigitalOutputRoleDefaults[] = {
     {PoolIds::ActuatorRobot, PortExio4, true, false, false, 0U}, // Robot.
     {PoolIds::ActuatorFillPump, PortExio5, true, false, false, 0U}, // Pompe de remplissage.
     {PoolIds::ActuatorChlorineGenerator, PortExio6, true, false, false, 0U}, // Electrolyseur.
-    {PoolIds::ActuatorLights, PortExio7, true, false, false, 0U}, // Eclairage.
     {PoolIds::ActuatorWaterHeater, PortExio8, true, false, false, 0U}, // Chauffage.
 };
 

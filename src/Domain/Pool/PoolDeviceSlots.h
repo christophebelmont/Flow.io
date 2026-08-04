@@ -4,9 +4,7 @@
 
 namespace PoolDeviceSlots {
 
-static_assert(POOL_DEVICE_MAX == 16, "PoolDevice fixed slot descriptors must match POOL_DEVICE_MAX");
-
-inline constexpr PoolDeviceSlotDescriptor kSlots[POOL_DEVICE_MAX] = {
+inline constexpr PoolDeviceSlotDescriptor kSlots[] = {
     {"pd0", "pdm/pd0", "pd0en", "pd0dp", "pd0flh", "pd0tc", "pd0ti", "pd0mu", "pd0rt"},
     {"pd1", "pdm/pd1", "pd1en", "pd1dp", "pd1flh", "pd1tc", "pd1ti", "pd1mu", "pd1rt"},
     {"pd2", "pdm/pd2", "pd2en", "pd2dp", "pd2flh", "pd2tc", "pd2ti", "pd2mu", "pd2rt"},
@@ -24,5 +22,8 @@ inline constexpr PoolDeviceSlotDescriptor kSlots[POOL_DEVICE_MAX] = {
     {"pd14", "pdm/pd14", "pd14en", "pd14dp", "pd14flh", "pd14tc", "pd14ti", "pd14mu", "pd14rt"},
     {"pd15", "pdm/pd15", "pd15en", "pd15dp", "pd15flh", "pd15tc", "pd15ti", "pd15mu", "pd15rt"},
 };
+
+static_assert((sizeof(kSlots) / sizeof(kSlots[0])) >= POOL_DEVICE_MAX,
+              "PoolDevice fixed slot descriptors must cover POOL_DEVICE_MAX");
 
 }  // namespace PoolDeviceSlots

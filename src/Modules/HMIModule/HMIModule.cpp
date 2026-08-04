@@ -753,16 +753,20 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     psiIoId_ = ioIdFromSlot(analogInputSlot(2));
     airTempIoId_ = ioIdFromSlot(analogInputSlot(5));
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(2));
-    phLevelIoId_ = ioIdFromSlot(digitalInputSlot(0));
-    chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(1));
+    poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(11));
+    phLevelIoId_ = ioIdFromSlot(digitalInputSlot(9));
+    chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(10));
 #else
     poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(0));
     phLevelIoId_ = ioIdFromSlot(digitalInputSlot(1));
     chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(2));
 #endif
     waterTempIoId_ = ioIdFromSlot(analogInputSlot(4));
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+    waterCounterIoId_ = ioIdFromSlot(digitalInputSlot(12));
+#else
     waterCounterIoId_ = ioIdFromSlot(digitalInputSlot(3));
+#endif
     phRuntimeIndex_ = kInvalidRuntimeIndex;
     orpRuntimeIndex_ = kInvalidRuntimeIndex;
     psiRuntimeIndex_ = kInvalidRuntimeIndex;
@@ -1126,9 +1130,11 @@ uint32_t HMIModule::buildHomeStateBits_() const
         if (poolDeviceRuntimeState(*dsSvc_->store, robotDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_ROBOT_ON);
         }
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
         if (poolDeviceRuntimeState(*dsSvc_->store, lightsDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_LIGHTS_ON);
         }
+#endif
         if (poolDeviceRuntimeState(*dsSvc_->store, heaterDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_HEATER_ON);
         }
@@ -1902,7 +1908,9 @@ void HMIModule::onEvent_(const Event& e)
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + phPumpDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + orpPumpDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + robotDeviceSlot_) ||
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + lightsDeviceSlot_) ||
+#endif
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + heaterDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + fillingDeviceSlot_)) {
             homePublishMask |= kHomePublishStateBits;
@@ -2360,11 +2368,16 @@ bool HMIModule::executeHmiCommand_(HmiCommandId command, uint8_t value)
             return executePoolLogicModePatch_("winter_mode", !modes.winterMode);
 
         case HmiCommandId::HomeLightsToggle:
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+            setHomeErrorMessage_("Unavailable", true);
+            return false;
+#else
             if (!readPoolDeviceActualOn_(lightsDeviceSlot_, current)) {
                 setHomeErrorMessage_("ReadStateFailed", true);
                 return false;
             }
             return executePoolDeviceWrite_(lightsDeviceSlot_, !current);
+#endif
 
         case HmiCommandId::HomeRobotToggle:
             if (!readPoolDeviceActualOn_(robotDeviceSlot_, current)) {

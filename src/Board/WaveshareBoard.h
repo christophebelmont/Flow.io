@@ -55,7 +55,7 @@ inline constexpr uint32_t kWaveshareESP32S3InterlinkI2cHz = 400000U;
  *   Not stored in NVS. These are compile-time sizing limits, so the compiled
  *   values always apply.
  */
-inline constexpr IoCapacitySpec kWaveshareESP32S3IoCapacity{16, 13, 10, 32, 16, 16};
+inline constexpr IoCapacitySpec kWaveshareESP32S3IoCapacity{16, 13, 16, 16, 13, 16};
 
 /*
  * MQTT task and queue capacities.
@@ -290,9 +290,20 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
     {"digital_in6_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn6, 9, false, 0},
     {"digital_in7_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn7, 10, false, 0},
     {"digital_in8_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn8, 11, false, 0},
-    {"water_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe1, 47, false, 0},
-    {"air_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe2, 48, false, 0},
-    {"venice_tx433", IoCapability::DigitalOut, BoardSignal::Tx433, 45, false, 0},
+    {"water_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe1, 20, false, 0},
+    {"air_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe2, 19, false, 0},
+    {"gpio1_input", IoCapability::DigitalIn, BoardSignal::None, 1, false, 0},
+    {"gpio1_output", IoCapability::DigitalOut, BoardSignal::None, 1, false, 0},
+    {"gpio2_input", IoCapability::DigitalIn, BoardSignal::None, 2, false, 0},
+    {"gpio2_output", IoCapability::DigitalOut, BoardSignal::None, 2, false, 0},
+    {"gpio21_input", IoCapability::DigitalIn, BoardSignal::None, 21, false, 0},
+    {"gpio21_output", IoCapability::DigitalOut, BoardSignal::None, 21, false, 0},
+    {"gpio45_input", IoCapability::DigitalIn, BoardSignal::None, 45, false, 0},
+    {"gpio45_output", IoCapability::DigitalOut, BoardSignal::None, 45, false, 0},
+    {"gpio47_input", IoCapability::DigitalIn, BoardSignal::None, 47, false, 0},
+    {"gpio47_output", IoCapability::DigitalOut, BoardSignal::None, 47, false, 0},
+    {"gpio48_input", IoCapability::DigitalIn, BoardSignal::None, 48, false, 0},
+    {"gpio48_output", IoCapability::DigitalOut, BoardSignal::None, 48, false, 0},
 };
 
 /*

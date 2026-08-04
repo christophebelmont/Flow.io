@@ -93,6 +93,8 @@ struct IoEndpointMeta {
     uint8_t valueType = IO_VAL_BOOL;
     uint8_t backend = IO_BACKEND_GPIO;
     uint8_t channel = 0;
+    /** Profile physical binding identifier; 0 means that the endpoint is unbound. */
+    uint16_t bindingPort = 0;
     uint8_t capabilities = 0;
     char name[IO_NAME_MAX_LEN] = {0};
     int32_t precision = 0;

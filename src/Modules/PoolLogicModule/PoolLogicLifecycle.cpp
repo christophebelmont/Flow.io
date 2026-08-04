@@ -973,8 +973,10 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "poollogic.orp_pump.toggle",
             "poollogic.dis_pump.write",
             "poollogic.dis_pump.toggle",
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
             "poollogic.lights.write",
             "poollogic.lights.toggle",
+#endif
             "poollogic.robot.write",
             "poollogic.robot.toggle",
             "poollogic.heater.write",

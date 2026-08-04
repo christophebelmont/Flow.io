@@ -12,7 +12,6 @@
 #include "App/AppContext.h"
 #include "Board/BoardSpec.h"
 #include "Board/BoardSerialMap.h"
-#include "Core/ConfigMigrations.h"
 #include "Core/DataStore/DataStore.h"
 #include "Core/Log.h"
 #include "Core/LogModuleIds.h"
@@ -262,8 +261,6 @@ void setupProfile(AppContext& ctx)
 
     ctx.preferences.begin(NvsKeys::StorageNamespace, false);
     ctx.registry.setPreferences(ctx.preferences);
-    ctx.registry.runMigrations(CURRENT_CFG_VERSION, steps, MIGRATION_COUNT);
-
     registerModules(ctx, modules);
     modules.hmiModule.setRemoteUdpServer(&modules.hmiUdpServerModule);
     configureIoModule(ctx, modules);

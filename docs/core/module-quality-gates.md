@@ -79,8 +79,8 @@ Notes Waveshare importantes:
 - HMI locale principale: UART2 Nextion et endpoint UDP remote HMI, pilotés par
   `HMIModule` + `HmiUdpServerModule`.
 - Buzzer Waveshare dédié: `HMIBuzzerModule`, GPIO46, actif haut.
-- IO Waveshare: 11 endpoints analogiques runtime, 8 entrées digitales,
-  8 sorties digitales TCA9554, DS18B20 sur GPIO47/48.
+- IO Waveshare: 16 endpoints analogiques runtime, 13 entrées digitales,
+  16 sorties digitales, DS18B20 sur GPIO20/19.
 
 ## Grille Quality Gate
 
@@ -650,13 +650,13 @@ Rôle: couche IO Waveshare, drivers, endpoints, registry, snapshots runtime.
 
 Points forts:
 
-- board Waveshare très détaillée: bus I2C GPIO42/41, OneWire GPIO47/48,
+- board Waveshare très détaillée: bus I2C GPIO42/41, OneWire GPIO20/19,
   TCA9554 sorties EXIO, entrées digitales, capteurs ADS/BME/BMP/SHT/INA/DS18B20
 - service `IOServiceV2`
 - Runtime UI et runtime snapshot MQTT
 - drivers et endpoints séparés
-- capacités board explicites: `11` analogiques, `8` entrées digitales,
-  `8` sorties digitales, slots config alignés
+- capacités board explicites: `16` analogiques, `13` entrées digitales,
+  `16` sorties digitales, slots config alignés
 
 Risques:
 

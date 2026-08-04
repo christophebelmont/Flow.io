@@ -149,9 +149,9 @@ private:
     static constexpr IoId IO_ID_WATER_TEMP_DEFAULT = ioIdFromSlot(analogInputSlot(4));
     static constexpr IoId IO_ID_AIR_TEMP_DEFAULT = ioIdFromSlot(analogInputSlot(5));
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    static constexpr IoId IO_ID_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(2));
-    static constexpr IoId IO_ID_PH_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(0));
-    static constexpr IoId IO_ID_CHLORINE_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(1));
+    static constexpr IoId IO_ID_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(11));
+    static constexpr IoId IO_ID_PH_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(9));
+    static constexpr IoId IO_ID_CHLORINE_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(10));
 #else
     static constexpr IoId IO_ID_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(0));
     static constexpr IoId IO_ID_PH_LEVEL_DEFAULT = ioIdFromSlot(digitalInputSlot(1));

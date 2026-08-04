@@ -33,7 +33,7 @@ namespace {
 
 using Profiles::Waveshare::ModuleInstances;
 namespace FlowIoLayout = Profiles::Waveshare::IoLayout;
-static constexpr uint8_t kFlowIoAnalogHaSlots = 17;
+static constexpr uint8_t kFlowIoAnalogHaSlots = 16;
 
 struct FlowIoAnalogHaSpec {
     const char* objectSuffix = nullptr;
@@ -57,9 +57,8 @@ constexpr FlowIoAnalogHaSpec kAnalogHaSpecs[kFlowIoAnalogHaSlots] = {
     {"io_spare", "Spare", "mdi:sine-wave", nullptr},
     {"io_wat_tmp", "Water Temperature", "mdi:water-thermometer", "\xC2\xB0""C"},
     {"io_air_tmp", "Air Temperature", "mdi:thermometer", "\xC2\xB0""C"},
-    {nullptr, nullptr, "mdi:sine-wave", nullptr},
-    {nullptr, nullptr, "mdi:sine-wave", nullptr},
-    {nullptr, nullptr, "mdi:sine-wave", nullptr},
+    {"io_current", "Current", "mdi:current-dc", "mA"},
+    {"io_voltage", "Voltage", "mdi:flash", "V"},
     {nullptr, nullptr, "mdi:sine-wave", nullptr},
     {nullptr, nullptr, "mdi:sine-wave", nullptr},
     {nullptr, nullptr, "mdi:sine-wave", nullptr},
@@ -72,19 +71,19 @@ constexpr FlowIoAnalogHaSpec kAnalogHaSpecs[kFlowIoAnalogHaSlots] = {
 
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
 constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
-    {0, "io_ph_lvl", "pH Level", "mdi:flask-outline", nullptr},
-    {1, "io_dis_lvl", "Disinfectant Level", "mdi:test-tube", nullptr},
-    {2, "io_pool_lvl", "Pool Level", "mdi:waves-arrow-up", nullptr},
-    {3, "io_wat_cnt", "Water Counter", "mdi:water-sync", "L"},
-    {4, "io_di5", "Digital Input 5", "mdi:electric-switch", nullptr},
-    {5, "io_di6", "Digital Input 6", "mdi:electric-switch", nullptr},
-    {6, "io_di7", "Digital Input 7", "mdi:electric-switch", nullptr},
-    {7, "io_di8", "Digital Input 8", "mdi:electric-switch", nullptr},
-    {8, "io_gpa0", "GPA0", "mdi:electric-switch", nullptr},
-    {9, "io_gpa3", "GPA3", "mdi:electric-switch", nullptr},
-    {10, "io_gpa4", "GPA4", "mdi:electric-switch", nullptr},
-    {11, "io_gpa5", "GPA5", "mdi:electric-switch", nullptr},
-    {12, "io_gpa6", "GPA6", "mdi:electric-switch", nullptr},
+    {0, "io_gpio04", "GPIO04", "mdi:electric-switch", nullptr},
+    {1, "io_gpio05", "GPIO05", "mdi:electric-switch", nullptr},
+    {2, "io_gpio06", "GPIO06", "mdi:electric-switch", nullptr},
+    {3, "io_gpio07", "GPIO07", "mdi:electric-switch", nullptr},
+    {4, "io_gpio08", "GPIO08", "mdi:electric-switch", nullptr},
+    {5, "io_gpio09", "GPIO09", "mdi:electric-switch", nullptr},
+    {6, "io_gpio10", "GPIO10", "mdi:electric-switch", nullptr},
+    {7, "io_gpio11", "GPIO11", "mdi:electric-switch", nullptr},
+    {8, "io_pir", "PIR", "mdi:motion-sensor", nullptr},
+    {9, "io_ph_lvl", "pH Level", "mdi:flask-outline", nullptr},
+    {10, "io_chl_lvl", "Chlorine Level", "mdi:test-tube", nullptr},
+    {11, "io_pool_lvl", "Pool Level", "mdi:waves-arrow-up", nullptr},
+    {12, "io_wat_meter", "Water Meter", "mdi:water-sync", "L"},
 };
 #else
 constexpr FlowIoDigitalHaSpec kDigitalHaSpecs[] = {
@@ -206,27 +205,18 @@ PhysicalPortId digitalInputPortFromOrdinal(uint8_t ordinal)
     }
 }
 
-uint8_t exioOrdinalFromPort(PhysicalPortId port)
-{
-    switch (port) {
-        case FlowIoLayout::PortExio1: return 1;
-        case FlowIoLayout::PortExio2: return 2;
-        case FlowIoLayout::PortExio3: return 3;
-        case FlowIoLayout::PortExio4: return 4;
-        case FlowIoLayout::PortExio5: return 5;
-        case FlowIoLayout::PortExio6: return 6;
-        case FlowIoLayout::PortExio7: return 7;
-        case FlowIoLayout::PortExio8: return 8;
-        default: return 0;
-    }
-}
-
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
 PhysicalPortId waveshareCompOutputPort(uint8_t idx)
 {
     switch (idx) {
         case 0: return FlowIoLayout::PortMcpOutGpb0;
-        case 1: return FlowIoLayout::PortMcpOutGpb6;
+        case 1: return FlowIoLayout::PortMcpOutGpb1;
+        case 2: return FlowIoLayout::PortMcpOutGpb2;
+        case 3: return FlowIoLayout::PortMcpOutGpb3;
+        case 4: return FlowIoLayout::PortMcpOutGpb4;
+        case 5: return FlowIoLayout::PortMcpOutGpb5;
+        case 6: return FlowIoLayout::PortMcpOutGpb6;
+        case 7: return FlowIoLayout::PortMcpOutGpb7;
         default: return IO_PORT_INVALID;
     }
 }
@@ -278,10 +268,11 @@ void applyDigitalDefaultsForDomainSlot(DomainSlotId domainSlot, IODigitalInputDe
 const char* waveshareDigitalInputNameForDomainSlot(DomainSlotId domainSlot)
 {
     switch (domainSlot) {
-        case PoolIds::SensorPoolLevel: return "DIN2";
-        case PoolIds::SensorPhLevel: return "DIN0";
-        case PoolIds::SensorChlorineLevel: return "DIN1";
-        case PoolIds::SensorWaterCounter: return "DIN3";
+        case PoolIds::SensorPir: return "PIR";
+        case PoolIds::SensorPhLevel: return "pH Level";
+        case PoolIds::SensorChlorineLevel: return "Chlorine Level";
+        case PoolIds::SensorPoolLevel: return "Pool Level";
+        case PoolIds::SensorWaterMeter: return "Water Meter";
         default: return nullptr;
     }
 }
@@ -289,19 +280,19 @@ const char* waveshareDigitalInputNameForDomainSlot(DomainSlotId domainSlot)
 const char* waveshareDigitalInputNameForLogical(uint8_t logicalIdx)
 {
     switch (logicalIdx) {
-        case 0: return "DIN0";
-        case 1: return "DIN1";
-        case 2: return "DIN2";
-        case 3: return "DIN3";
-        case 4: return "DIN4";
-        case 5: return "DIN5";
-        case 6: return "DIN6";
-        case 7: return "DIN7";
-        case 8: return "GPA0";
-        case 9: return "GPA3";
-        case 10: return "GPA4";
-        case 11: return "GPA5";
-        case 12: return "GPA6";
+        case 0: return "GPIO04";
+        case 1: return "GPIO05";
+        case 2: return "GPIO06";
+        case 3: return "GPIO07";
+        case 4: return "GPIO08";
+        case 5: return "GPIO09";
+        case 6: return "GPIO10";
+        case 7: return "GPIO11";
+        case 8: return "PIR";
+        case 9: return "pH Level";
+        case 10: return "Chlorine Level";
+        case 11: return "Pool Level";
+        case 12: return "Water Meter";
         default: return "DIN";
     }
 }
@@ -548,8 +539,8 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
             IODigitalInputDefinition def{};
             snprintf(def.id, sizeof(def.id), "%s", preset.endpointId ? preset.endpointId : "input");
             def.ioId = ioId;
-            def.activeHigh = false;
-            def.pullMode = IO_PULL_UP;
+            def.activeHigh = preset.id == PoolIds::SensorPir;
+            def.pullMode = IO_PULL_NONE;
             applyDigitalDefaultsForDomainSlot(preset.id, def);
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
             if (const char* defaultName = waveshareDigitalInputNameForDomainSlot(preset.id)) {
@@ -628,12 +619,7 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         requireSetup(spec != nullptr, "missing output layout binding");
 
         IODigitalOutputDefinition def{};
-        const uint8_t exioOrdinal = exioOrdinalFromPort(spec->bindingPort);
-        if (exioOrdinal != 0U) {
-            snprintf(def.id, sizeof(def.id), "EXIO%u", (unsigned)exioOrdinal);
-        } else {
-            snprintf(def.id, sizeof(def.id), "%s", preset.endpointId ? preset.endpointId : "output");
-        }
+        snprintf(def.id, sizeof(def.id), "%s", preset.displayName ? preset.displayName : "output");
         def.ioId = ioIdFromSlot(ioSlot);
         def.bindingPort = spec->bindingPort;
         def.activeHigh = spec->activeHigh;
@@ -648,13 +634,27 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
     }
 
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    static constexpr uint8_t kMcpOutputCount = 2U;
+    if (!modules.ioModule.digitalOutputSlotUsed(6U)) {
+        IODigitalOutputDefinition def{};
+        snprintf(def.id, sizeof(def.id), "Spare");
+        def.ioId = (IoId)(IO_ID_DO_BASE + 6U);
+        def.bindingPort = FlowIoLayout::PortExio7;
+        def.activeHigh = true;
+        def.initialOn = false;
+        def.startupPolicy = IOOutputStartupPolicy::ApplyInitial;
+        def.retainOnWarmReboot = false;
+        def.momentary = false;
+        def.pulseMs = 0;
+        requireSetup(modules.ioModule.defineDigitalOutput(def), "define spare EXIO output");
+    }
+
+    static constexpr uint8_t kMcpOutputCount = 8U;
     for (uint8_t logicalIdx = 8U;
          logicalIdx < Limits::Io::MaxDigitalOutputs && logicalIdx < (uint8_t)(8U + kMcpOutputCount);
          ++logicalIdx) {
         const uint8_t i = (uint8_t)(logicalIdx - 8U);
         IODigitalOutputDefinition def{};
-        snprintf(def.id, sizeof(def.id), "%s", (i == 0U) ? "GPB0" : "GPB6");
+        snprintf(def.id, sizeof(def.id), "MCP B%u", (unsigned)i);
         def.ioId = (IoId)(IO_ID_DO_BASE + logicalIdx);
         def.bindingPort = waveshareCompOutputPort(i);
         def.activeHigh = true;

@@ -10,9 +10,6 @@ namespace NvsKeys {
 constexpr char StorageNamespace[] = "flowio"; // Preferences namespace name used at boot to open the firmware NVS partition.
 /** @brief Preferences namespace for the Flow Connect Display firmware. */
 constexpr char FlowConnectDisplayStorageNamespace[] = "flowconnectdisp";
-/** @brief Config schema version key read/written by `ConfigStore::runMigrations`. */
-constexpr char ConfigVersion[] = "cfg_ver"; // Persistent schema-version marker used to select and run config migrations.
-
 namespace Wifi {
 constexpr char Enabled[] = "wifi_en"; // WiFi module persisted key for field `wifi_en`.
 constexpr char Ssid[] = "wifi_ssid"; // WiFi module persisted key for field `wifi_ssid`.

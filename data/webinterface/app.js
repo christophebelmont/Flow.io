@@ -2546,7 +2546,14 @@
 
     function formatActivityDay(date) {
       if (!date) return 'Date inconnue';
-      return date.toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+      const dayText = date.toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const dayOffset = Math.round((startOfToday - startOfDay) / 86400000);
+      if (dayOffset === 0) return 'Aujourd’hui · ' + dayText;
+      if (dayOffset === 1) return 'Hier · ' + dayText;
+      return dayText;
     }
 
     function formatActivityRelative(date) {
@@ -2631,22 +2638,36 @@
         return;
       }
       let currentDay = '';
+      let currentDayEvents = null;
       filtered.forEach((ev) => {
         const date = activityEventDate(ev);
         const day = formatActivityDay(date);
         if (day !== currentDay) {
           currentDay = day;
+          const daySection = document.createElement('section');
+          daySection.className = 'activity-day';
           const dayNode = document.createElement('div');
           dayNode.className = 'activity-day-title';
           dayNode.textContent = day;
-          activityLogList.appendChild(dayNode);
+          currentDayEvents = document.createElement('div');
+          currentDayEvents.className = 'activity-day-events';
+          daySection.appendChild(dayNode);
+          daySection.appendChild(currentDayEvents);
+          activityLogList.appendChild(daySection);
         }
-        const row = document.createElement('div');
+        const row = document.createElement('article');
         row.className = 'activity-row activity-severity-' + String(ev.severity_name || 'info');
+        const time = document.createElement('time');
+        time.className = 'activity-row-time';
+        time.textContent = formatActivityTime(date);
+        if (date) time.dateTime = date.toISOString();
+        const rail = document.createElement('div');
+        rail.className = 'activity-row-rail';
         const icon = document.createElement('span');
         icon.className = 'ui-msr activity-row-icon';
         icon.setAttribute('aria-hidden', 'true');
         icon.textContent = String(ev.icon || 'history');
+        rail.appendChild(icon);
         const main = document.createElement('div');
         main.className = 'activity-row-main';
         const title = document.createElement('div');
@@ -2656,7 +2677,7 @@
         title.appendChild(strong);
         const meta = document.createElement('div');
         meta.className = 'activity-row-meta';
-        meta.textContent = formatActivityTime(date) + ' - ' + formatActivityRelative(date);
+        meta.textContent = formatActivityRelative(date);
         main.appendChild(title);
         if (ev.detail) {
           const detail = document.createElement('div');
@@ -2665,9 +2686,16 @@
           main.appendChild(detail);
         }
         main.appendChild(meta);
-        row.appendChild(icon);
+        row.appendChild(time);
+        row.appendChild(rail);
         row.appendChild(main);
-        activityLogList.appendChild(row);
+        currentDayEvents.appendChild(row);
+      });
+      activityLogList.querySelectorAll('.activity-day-events').forEach((dayEvents) => {
+        const rows = dayEvents.querySelectorAll('.activity-row');
+        if (!rows.length) return;
+        rows[0].classList.add('is-first');
+        rows[rows.length - 1].classList.add('is-last');
       });
       if (activityLogStatus && stats) {
         activityLogStatus.textContent =
@@ -5113,11 +5141,40 @@
     }
 
     function ioSummaryIoIdLabel(row) {
-      const explicit = ioSummaryText(row && row.io_id_label, '');
+      const explicit = String(row && row.io_id_label !== null && row.io_id_label !== undefined ? row.io_id_label : '').trim();
       if (explicit) return explicit;
       const id = Number(row && row.io_id);
       if (!Number.isFinite(id) || id === 65535) return tr('io.unassigned', 'Non affecté');
       return String(id);
+    }
+
+    function createIoDirectionBadge(direction) {
+      const key = String(direction || '').trim().toLowerCase();
+      const badge = document.createElement('span');
+      badge.className = 'io-direction-badge ' + (key === 'input' ? 'is-input' : key === 'output' ? 'is-output' : 'is-unknown');
+
+      const label = key === 'input'
+        ? tr('io.direction.input', 'Entrée')
+        : key === 'output'
+          ? tr('io.direction.output', 'Sortie')
+          : tr('io.direction.unknown', 'Inconnu');
+      badge.title = label;
+      badge.setAttribute('aria-label', label);
+      badge.tabIndex = 0;
+
+      const icon = document.createElement('span');
+      icon.className = 'io-direction-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = key === 'input' ? '⇥' : key === 'output' ? '↦' : '?';
+
+      badge.appendChild(icon);
+      return badge;
+    }
+
+    function createIoOptionalCell(value) {
+      const content = document.createElement('span');
+      if (value !== null && value !== undefined) content.textContent = String(value).trim();
+      return content;
     }
 
     function appendIoSummaryCard(title, value, summary, state) {
@@ -5285,8 +5342,10 @@
           tr('io.table.bindingPorts', 'BindingPorts'),
           [
             tr('io.col.port', 'Port'),
+            tr('io.col.boardPort', 'Port carte'),
+            tr('io.col.direction', 'Sens'),
             tr('io.col.driver', 'Driver'),
-            tr('io.col.channel', 'Canal'),
+            tr('io.col.channel', 'Canal interne'),
             tr('io.col.state', 'Etat'),
             tr('io.col.lastValue', 'Dernière valeur'),
             tr('io.col.ioId', 'IoId')
@@ -5371,8 +5430,10 @@
           tr('io.table.bindingPorts', 'BindingPorts'),
           [
             { key: 'port_id', label: tr('io.col.port', 'Port') },
+            { key: 'board_port', label: tr('io.col.boardPort', 'Port carte'), render: (row) => ioSummaryText(row.board_port, '-') },
+            { key: 'direction', label: tr('io.col.direction', 'Sens'), render: (row) => createIoDirectionBadge(row.direction) },
             { key: 'driver', label: tr('io.col.driver', 'Driver') },
-            { key: 'channel', label: tr('io.col.channel', 'Canal') },
+            { key: 'channel', label: tr('io.col.channel', 'Canal interne') },
             { key: 'state', label: tr('io.col.state', 'Etat'), render: (row) => createIoStateBadge(row.state) },
             { key: 'last_value', label: tr('io.col.lastValue', 'Dernière valeur') },
             { key: 'io_id', label: tr('io.col.ioId', 'IoId'), render: (row) => ioSummaryIoIdLabel(row) }
@@ -5385,7 +5446,8 @@
             { key: 'io_slot', label: tr('io.col.slot', 'Slot'), render: (row) => ioSummarySlotLabel(row) },
             { key: 'config_name', label: tr('io.col.configName', 'Nom config'), render: (row) => ioSummaryText(row.config_name, '-') },
             { key: 'kind', label: tr('io.col.kind', 'Type') },
-            { key: 'driver', label: tr('io.col.driver', 'Driver') },
+            { key: 'driver', label: tr('io.col.driver', 'Driver'), render: (row) => createIoOptionalCell(row.driver) },
+            { key: 'channel', label: tr('io.col.channel', 'Canal interne'), render: (row) => createIoOptionalCell(row.channel) },
             { key: 'state', label: tr('io.col.state', 'Etat'), render: (row) => createIoStateBadge(row.state) },
             { key: 'last_value', label: tr('io.col.lastValue', 'Dernière valeur') },
             { key: 'error', label: tr('io.col.error', 'Erreur') }

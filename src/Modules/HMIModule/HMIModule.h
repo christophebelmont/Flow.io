@@ -162,16 +162,20 @@ private:
     IoId psiIoId_ = ioIdFromSlot(analogInputSlot(2));
     IoId airTempIoId_ = ioIdFromSlot(analogInputSlot(5));
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-    IoId poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(2));
-    IoId phLevelIoId_ = ioIdFromSlot(digitalInputSlot(0));
-    IoId chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(1));
+    IoId poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(11));
+    IoId phLevelIoId_ = ioIdFromSlot(digitalInputSlot(9));
+    IoId chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(10));
 #else
     IoId poolLevelIoId_ = ioIdFromSlot(digitalInputSlot(0));
     IoId phLevelIoId_ = ioIdFromSlot(digitalInputSlot(1));
     IoId chlorineLevelIoId_ = ioIdFromSlot(digitalInputSlot(2));
 #endif
     IoId waterTempIoId_ = ioIdFromSlot(analogInputSlot(4));
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+    IoId waterCounterIoId_ = ioIdFromSlot(digitalInputSlot(12));
+#else
     IoId waterCounterIoId_ = ioIdFromSlot(digitalInputSlot(3));
+#endif
     uint8_t filtrationDeviceSlot_ = PoolIds::DeviceFiltrationPump;
     uint8_t phPumpDeviceSlot_ = PoolIds::DevicePhPump;
     uint8_t orpPumpDeviceSlot_ = PoolIds::DeviceChlorinePump;

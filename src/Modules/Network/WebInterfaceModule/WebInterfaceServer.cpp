@@ -2169,7 +2169,7 @@ bool appendWaveshareLocalRuntimeValue_(Print& out,
             return true;
         }
         case 2205: {
-            const uint8_t runtimeIndex = 9;
+            const uint8_t runtimeIndex = 20;
             float value = 0.0f;
             if (ioEndpointFloat(*dataStore, runtimeIndex, value)) {
                 printRuntimeF32_(out, firstValue, id, "pool.water_counter", value, "L");
@@ -2781,7 +2781,7 @@ bool waveshareReadDashboardPoolSensorDataStore_(DataStore* dataStore,
     } else if (valueId == 4U) {
         runtimeIndex = 0;
     } else if (valueId == 5U) {
-        runtimeIndex = 9;
+        runtimeIndex = 20;
     } else if (valueId == 6U) {
         runtimeIndex = 2;
     } else if (valueId != 1U) {
@@ -2888,7 +2888,7 @@ bool waveshareReadDashboardRuntimeValue_(DataStore* dataStore,
                 if (valueId == 2U) ioId = ioIdFromSlot(analogInputSlot(5));
                 else if (valueId == 3U) ioId = ioIdFromSlot(analogInputSlot(1));
                 else if (valueId == 4U) ioId = ioIdFromSlot(analogInputSlot(0));
-                else if (valueId == 5U) ioId = ioIdFromSlot(digitalInputSlot(3));
+                else if (valueId == 5U) ioId = ioIdFromSlot(digitalInputSlot(12));
                 else if (valueId == 6U) ioId = ioIdFromSlot(analogInputSlot(2));
                 return waveshareReadDashboardIoValue_(ioSvc, ioId, out) ||
                        waveshareReadDashboardPoolSensorDataStore_(dataStore, valueId, out);
@@ -3078,6 +3078,30 @@ const char* waveshareIoPortKindLabel_(uint8_t kind)
     }
 }
 
+const char* waveshareIoPortDirectionLabel_(uint8_t kind)
+{
+    switch (kind) {
+        case IO_PORT_KIND_GPIO_INPUT:
+        case IO_PORT_KIND_ADS_INTERNAL_SINGLE:
+        case IO_PORT_KIND_ADS_EXTERNAL_DIFF:
+        case IO_PORT_KIND_DS18_WATER:
+        case IO_PORT_KIND_DS18_AIR:
+        case IO_PORT_KIND_INA226:
+        case IO_PORT_KIND_SHT40:
+        case IO_PORT_KIND_BMP280:
+        case IO_PORT_KIND_BME680:
+        case IO_PORT_KIND_MCP23017_INPUT:
+            return "input";
+        case IO_PORT_KIND_GPIO_OUTPUT:
+        case IO_PORT_KIND_PCF8574_OUTPUT:
+        case IO_PORT_KIND_TCA9554_OUTPUT:
+        case IO_PORT_KIND_MCP23017_OUTPUT:
+            return "output";
+        default:
+            return "unknown";
+    }
+}
+
 const char* wavesharePoolDeviceBlockReasonLabel_(uint8_t reason)
 {
     switch (reason) {
@@ -3148,10 +3172,7 @@ bool waveshareIoPortBackendChannel_(const IOBindingPortSpec& spec, uint8_t& back
 
 bool waveshareIoPortMatchesMeta_(const IOBindingPortSpec& spec, const IoEndpointMeta& meta)
 {
-    uint8_t backend = IO_BACKEND_GPIO;
-    uint8_t channel = 0U;
-    if (!waveshareIoPortBackendChannel_(spec, backend, channel)) return false;
-    return meta.backend == backend && meta.channel == channel;
+    return meta.bindingPort != IO_PORT_INVALID && spec.portId == meta.bindingPort;
 }
 
 const IOBindingPortSpec* waveshareFindPortForMeta_(const IoEndpointMeta& meta)
@@ -3365,12 +3386,16 @@ void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
     printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "Non affecte" : "");
     response.print(",\"kind\":");
     printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "unknown" : waveshareIoSlotKindLabel_(ioSlotKind(ioSlot)));
-    response.print(",\"driver\":");
-    printJsonEscaped_(response, state.hasMeta ? waveshareIoBackendLabel_(state.meta.backend) : "-");
-    response.print(",\"channel\":");
-    response.print(state.hasMeta ? (unsigned)state.meta.channel : 0U);
-    response.print(",\"binding_port\":");
     const IOBindingPortSpec* port = state.hasMeta ? waveshareFindPortForMeta_(state.meta) : nullptr;
+    uint8_t portBackend = IO_BACKEND_GPIO;
+    uint8_t portChannel = 0U;
+    const bool hasPort = port && waveshareIoPortBackendChannel_(*port, portBackend, portChannel);
+    response.print(",\"driver\":");
+    printJsonEscaped_(response, hasPort ? waveshareIoBackendLabel_(portBackend) : "");
+    response.print(",\"channel\":");
+    if (hasPort) response.print((unsigned)portChannel);
+    else response.print("null");
+    response.print(",\"binding_port\":");
     response.print(port ? (unsigned)port->portId : 0U);
     response.print(",\"state\":");
     printJsonEscaped_(response, state.state);
@@ -3485,8 +3510,12 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
         if (!first) response.print(',');
         response.print("{\"port_id\":");
         response.print((unsigned)spec.portId);
+        response.print(",\"board_port\":");
+        printJsonEscaped_(response, spec.boardLabel ? spec.boardLabel : "");
         response.print(",\"kind\":");
         printJsonEscaped_(response, waveshareIoPortKindLabel_(spec.kind));
+        response.print(",\"direction\":");
+        printJsonEscaped_(response, waveshareIoPortDirectionLabel_(spec.kind));
         response.print(",\"driver\":");
         printJsonEscaped_(response, waveshareIoBackendLabel_(backend));
         response.print(",\"channel\":");

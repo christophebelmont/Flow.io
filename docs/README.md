@@ -27,6 +27,7 @@ Le projet compile aujourd'hui deux firmwares ESP32:
 ### Référence technique
 
 - [Architecture générale](core/architecture.md)
+- [Cartographie IO du profil Waveshare](core/waveshare-io-map.md)
 - [Structure des profils, cartes, domaines et bootstrap](core/profiles-board-domain-app.md)
 - [Services Core](core/services.md)
 - [Modèle `ConfigStore` / `DataStore` / `EventBus` / MQTT](core/data-event-model.md)
