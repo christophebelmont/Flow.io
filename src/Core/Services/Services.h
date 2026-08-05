@@ -6,6 +6,7 @@
 #include "ICommand.h"
 #include "IConfig.h"
 #include "IDataStore.h"
+#include "IDomainStatus.h"
 #include "IHmi.h"
 #include "IAlarm.h"
 #include "IActivityLog.h"

@@ -171,6 +171,10 @@ void PoolDeviceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     if (!services.add(ServiceId::PoolDevice, &poolSvc_)) {
         LOGE("service registration failed: %s", toString(ServiceId::PoolDevice));
     }
+    domainStatusProvider_.bindServices(ioSvc_, &poolSvc_);
+    if (!services.add(ServiceId::DomainStatus, &domainStatusProvider_.service())) {
+        LOGE("service registration failed: %s", toString(ServiceId::DomainStatus));
+    }
     cmdSvc_ = services.get<CommandService>(ServiceId::Command);
     haSvc_ = services.get<HAService>(ServiceId::Ha);
     activityLogSvc_ = services.get<ActivityLogService>(ServiceId::ActivityLog);

@@ -1,5 +1,6 @@
 #include "Profiles/Waveshare/WaveshareProfile.h"
 #include "Profiles/Waveshare/WaveshareIoAssembly.h"
+#include "Profiles/Waveshare/WaveshareIoLayout.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -263,6 +264,7 @@ void setupProfile(AppContext& ctx)
     ctx.registry.setPreferences(ctx.preferences);
     registerModules(ctx, modules);
     modules.hmiModule.setRemoteUdpServer(&modules.hmiUdpServerModule);
+    modules.poolDeviceModule.configureDomainStatus(*ctx.domain, &Profiles::Waveshare::IoLayout::bindingPortExists);
     configureIoModule(ctx, modules);
     configurePoolDevices(ctx, modules);
 

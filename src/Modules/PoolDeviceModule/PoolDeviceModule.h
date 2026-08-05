@@ -16,6 +16,7 @@
 #include "Core/CommandRegistry.h"
 #include "Core/ConfigTypes.h"
 #include "Core/Services/ITime.h"
+#include "Domain/DomainStatusServiceProvider.h"
 #include "Domain/DomainTypes.h"
 #include "Modules/PoolDeviceModule/PoolDeviceModuleDataModel.h"
 #include <freertos/semphr.h>
@@ -75,6 +76,10 @@ public:
     }
 
     bool defineDevice(const PoolDeviceDefinition& def);
+    void configureDomainStatus(const DomainSpec& domain,
+                               bool (*bindingPortExists)(uint16_t bindingPort)) {
+        domainStatusProvider_.configure(domain, bindingPortExists);
+    }
     const char* deviceLabel(uint8_t idx) const;
     uint8_t runtimeSnapshotCount() const override;
     const char* runtimeSnapshotSuffix(uint8_t idx) const override;
@@ -238,6 +243,7 @@ private:
         ServiceBinding::bind<&PoolDeviceModule::svcRefillTankImpl_>,
         this
     };
+    DomainStatusServiceProvider domainStatusProvider_{};
     EventBus* eventBus_ = nullptr;
     DataStore* dataStore_ = nullptr;
     ConfigStore* cfgStore_ = nullptr;

@@ -646,6 +646,7 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     dsSvc_ = services.get<DataStoreService>(ServiceId::DataStore);
     alarmSvc_ = services.get<AlarmService>(ServiceId::Alarm);
     ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
+    domainStatusSvc_ = services.get<DomainStatusService>(ServiceId::DomainStatus);
     cmdSvc_ = services.get<CommandService>(ServiceId::Command);
     timeSvc_ = services.get<TimeService>(ServiceId::Time);
     wifiSvc_ = services.get<WifiService>(ServiceId::Wifi);
@@ -789,8 +790,9 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
          ws2812Ready ? "on" : "off");
 }
 
-void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry&)
+void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
+    domainStatusSvc_ = services.get<DomainStatusService>(ServiceId::DomainStatus);
     refreshNetworkExpectations_();
     refreshLocale_();
     applyOutputConfig_();
@@ -1614,63 +1616,34 @@ void HMIModule::updateHmiLedConditions_()
 
     const bool networkExpected = wifiNetworkExpected_ || ethernetNetworkExpected_;
     const bool networkLost = networkExpected && !isNetworkConnected_(dsSvc_);
-    const bool sensorFault = hasSensorFault_();
+    const bool domainSlotError = hasDomainSlotError_();
 
     ws2812StatusLed_.setCondition(HmiLedCondition::AlarmActive, alarmActive);
-    ws2812StatusLed_.setCondition(HmiLedCondition::SensorFault, sensorFault);
+    ws2812StatusLed_.setCondition(HmiLedCondition::DomainSlotError, domainSlotError);
     ws2812StatusLed_.setCondition(HmiLedCondition::NetworkLost, networkLost);
     ws2812AutoWifiApplied_ = true;
 }
 
-bool HMIModule::hasSensorFault_() const
+bool HMIModule::hasDomainSlotError_() const
 {
-    return configuredSensorUnknown_(phIoId_, phRuntimeIndex_) ||
-           configuredSensorUnknown_(orpIoId_, orpRuntimeIndex_) ||
-           configuredSensorUnknown_(psiIoId_, psiRuntimeIndex_) ||
-           configuredSensorUnknown_(waterTempIoId_, waterTempRuntimeIndex_) ||
-           configuredSensorUnknown_(airTempIoId_, airTempRuntimeIndex_) ||
-           configuredSensorUnknown_(poolLevelIoId_, poolLevelRuntimeIndex_) ||
-           configuredSensorUnknown_(phLevelIoId_, phLevelRuntimeIndex_) ||
-           configuredSensorUnknown_(chlorineLevelIoId_, chlorineLevelRuntimeIndex_) ||
-           configuredSensorUnknown_(waterCounterIoId_, waterCounterRuntimeIndex_);
+    return domainStatusSvc_ &&
+           domainStatusSvc_->hasDomainSlotError &&
+           domainStatusSvc_->hasDomainSlotError(domainStatusSvc_->ctx);
 }
 
-bool HMIModule::configuredSensorUnknown_(IoId ioId, uint8_t runtimeIndex) const
+bool HMIModule::firstDomainSlotError_(DomainSlotStatus& outStatus) const
 {
-    (void)runtimeIndex;
-    if (ioId == IO_ID_INVALID) return false;
-    if (!ioSvc_ || !ioSvc_->sensorStatus) return false;
-
-    IoSensorStatus status{};
-    if (ioSvc_->sensorStatus(ioSvc_->ctx, ioId, &status) != IO_OK) return false;
-    return status.enabled != 0U && status.valid == 0U;
-}
-
-bool HMIModule::firstSensorFaultRef_(char* out, size_t outLen) const
-{
-    if (!out || outLen == 0U) return false;
-    snprintf(out, outLen, "none");
-
-    IoId faultIoId = IO_ID_INVALID;
-    if (configuredSensorUnknown_(phIoId_, phRuntimeIndex_)) faultIoId = phIoId_;
-    else if (configuredSensorUnknown_(orpIoId_, orpRuntimeIndex_)) faultIoId = orpIoId_;
-    else if (configuredSensorUnknown_(psiIoId_, psiRuntimeIndex_)) faultIoId = psiIoId_;
-    else if (configuredSensorUnknown_(waterTempIoId_, waterTempRuntimeIndex_)) faultIoId = waterTempIoId_;
-    else if (configuredSensorUnknown_(airTempIoId_, airTempRuntimeIndex_)) faultIoId = airTempIoId_;
-    else if (configuredSensorUnknown_(poolLevelIoId_, poolLevelRuntimeIndex_)) faultIoId = poolLevelIoId_;
-    else if (configuredSensorUnknown_(phLevelIoId_, phLevelRuntimeIndex_)) faultIoId = phLevelIoId_;
-    else if (configuredSensorUnknown_(chlorineLevelIoId_, chlorineLevelRuntimeIndex_)) faultIoId = chlorineLevelIoId_;
-    else if (configuredSensorUnknown_(waterCounterIoId_, waterCounterRuntimeIndex_)) faultIoId = waterCounterIoId_;
-    else return false;
-
-    return formatSensorIoRef_(faultIoId, out, outLen);
+    outStatus = DomainSlotStatus{};
+    return domainStatusSvc_ &&
+           domainStatusSvc_->firstError &&
+           domainStatusSvc_->firstError(domainStatusSvc_->ctx, &outStatus);
 }
 
 const char* HMIModule::hmiLedDisplayStateName_(HmiLedDisplayState state)
 {
     switch (state) {
         case HmiLedDisplayState::AlarmActive: return "AlarmActive";
-        case HmiLedDisplayState::SensorFault: return "SensorFault";
+        case HmiLedDisplayState::DomainSlotError: return "DomainSlotError";
         case HmiLedDisplayState::CaptivePortalActive: return "CaptivePortalActive";
         case HmiLedDisplayState::OtaInProgress: return "OtaInProgress";
         case HmiLedDisplayState::NetworkLost: return "NetworkLost";
@@ -1687,15 +1660,24 @@ void HMIModule::logHmiLedDebug_(uint32_t nowMs)
 
     const HmiLedDisplayState current = ws2812StatusLed_.currentDisplayState();
     const HmiLedDisplayState target = ws2812StatusLed_.targetDisplayState();
-    char sensorFaultRef[12]{};
-    (void)firstSensorFaultRef_(sensorFaultRef, sizeof(sensorFaultRef));
-    LOGD("Waveshare HMI LED enabled=%u ready=%u state=%s target=%s transition=%u sensor=%s",
+    DomainSlotStatus domainError{};
+    const bool hasDomainError = firstDomainSlotError_(domainError);
+    char ioRef[12]{};
+    if (hasDomainError && domainError.ioId != IO_ID_INVALID) {
+        (void)formatSensorIoRef_(domainError.ioId, ioRef, sizeof(ioRef));
+    } else {
+        snprintf(ioRef, sizeof(ioRef), "none");
+    }
+    LOGD("Waveshare HMI LED enabled=%u ready=%u state=%s target=%s transition=%u domain_slot=%u io=%s error=%s block=%u",
          ws2812StatusLed_.isEnabled() ? 1U : 0U,
          ws2812StatusLed_.isReady() ? 1U : 0U,
          hmiLedDisplayStateName_(current),
          hmiLedDisplayStateName_(target),
          ws2812StatusLed_.isTransitionActive() ? 1U : 0U,
-         sensorFaultRef);
+         hasDomainError ? (unsigned)domainError.domainSlot : (unsigned)DOMAIN_SLOT_INVALID,
+         ioRef,
+         hasDomainError ? domainSlotErrorReasonName(domainError.errorReason) : "",
+         hasDomainError && domainError.hasPoolDevice ? (unsigned)domainError.poolMeta.blockReason : 0U);
 }
 
 bool HMIModule::ensureFrontLedPanelReady_()

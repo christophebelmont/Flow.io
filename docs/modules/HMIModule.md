@@ -140,7 +140,7 @@ Priorité d'affichage:
 | Priorité | État | Signification | Couleur / animation |
 | --- | --- | --- | --- |
 | 1 | `AlarmActive` | Au moins une alarme active | Rouge, clignotement rapide |
-| 2 | `SensorFault` | Au moins un capteur configuré est invalide ou inconnu | Orange, breathe lent |
+| 2 | `DomainSlotError` | Au moins un domain slot affecté est en erreur | Orange, breathe lent |
 | 3 | `CaptivePortalActive` | Portail captif actif, action utilisateur attendue | Cyan/turquoise, breathe lent |
 | 4 | `OtaInProgress` | Mise à jour OTA en cours | Violet, breathe |
 | 5 | `NetworkLost` | Aucun réseau attendu n'est opérationnel | Bleu, pulse rapide |

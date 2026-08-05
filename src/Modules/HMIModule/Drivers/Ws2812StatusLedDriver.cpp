@@ -241,7 +241,7 @@ bool HMIWS2812B::isConditionActive_(HmiLedCondition condition) const
 HmiLedDisplayState HMIWS2812B::computeDisplayState() const
 {
     if (isConditionActive_(HmiLedCondition::AlarmActive)) return HmiLedDisplayState::AlarmActive;
-    if (isConditionActive_(HmiLedCondition::SensorFault)) return HmiLedDisplayState::SensorFault;
+    if (isConditionActive_(HmiLedCondition::DomainSlotError)) return HmiLedDisplayState::DomainSlotError;
     if (isConditionActive_(HmiLedCondition::CaptivePortalActive)) return HmiLedDisplayState::CaptivePortalActive;
     if (isConditionActive_(HmiLedCondition::OtaInProgress)) return HmiLedDisplayState::OtaInProgress;
     if (isConditionActive_(HmiLedCondition::NetworkLost)) return HmiLedDisplayState::NetworkLost;

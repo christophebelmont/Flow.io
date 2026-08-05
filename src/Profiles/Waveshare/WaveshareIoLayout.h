@@ -248,6 +248,15 @@ inline constexpr const DigitalOutputRoleDefault* digitalOutputDefaultForDomainSl
     return nullptr;
 }
 
+inline constexpr bool bindingPortExists(PhysicalPortId bindingPort)
+{
+    if (bindingPort == IO_PORT_INVALID) return false;
+    for (const IOBindingPortSpec& spec : kBindingPorts) {
+        if (spec.portId == bindingPort) return true;
+    }
+    return false;
+}
+
 }  // namespace IoLayout
 }  // namespace Waveshare
 }  // namespace Profiles

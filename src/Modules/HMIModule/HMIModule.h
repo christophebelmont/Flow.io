@@ -111,6 +111,7 @@ private:
     const DataStoreService* dsSvc_ = nullptr;
     const AlarmService* alarmSvc_ = nullptr;
     const IOServiceV2* ioSvc_ = nullptr;
+    const DomainStatusService* domainStatusSvc_ = nullptr;
     const CommandService* cmdSvc_ = nullptr;
     const TimeService* timeSvc_ = nullptr;
     const WifiService* wifiSvc_ = nullptr;
@@ -294,9 +295,8 @@ private:
     void refreshNetworkExpectations_();
     void applyWs2812AutoWifiProfile_();
     void updateHmiLedConditions_();
-    bool hasSensorFault_() const;
-    bool configuredSensorUnknown_(IoId ioId, uint8_t runtimeIndex) const;
-    bool firstSensorFaultRef_(char* out, size_t outLen) const;
+    bool hasDomainSlotError_() const;
+    bool firstDomainSlotError_(DomainSlotStatus& outStatus) const;
     void logHmiLedDebug_(uint32_t nowMs);
     static const char* hmiLedDisplayStateName_(HmiLedDisplayState state);
     void applyOutputConfig_();

@@ -3184,26 +3184,6 @@ const IOBindingPortSpec* waveshareFindPortForMeta_(const IoEndpointMeta& meta)
     return nullptr;
 }
 
-bool waveshareFindIoEndpointByPort_(const IOServiceV2* ioSvc,
-                                    const IOBindingPortSpec& spec,
-                                    IoId& ioIdOut,
-                                    IoEndpointMeta& metaOut)
-{
-    if (!ioSvc || !ioSvc->count || !ioSvc->idAt || !ioSvc->meta) return false;
-    const uint8_t count = ioSvc->count(ioSvc->ctx);
-    for (uint8_t i = 0U; i < count; ++i) {
-        IoId ioId = IO_ID_INVALID;
-        if (ioSvc->idAt(ioSvc->ctx, i, &ioId) != IO_OK) continue;
-        IoEndpointMeta meta{};
-        if (ioSvc->meta(ioSvc->ctx, ioId, &meta) != IO_OK) continue;
-        if (!waveshareIoPortMatchesMeta_(spec, meta)) continue;
-        ioIdOut = ioId;
-        metaOut = meta;
-        return true;
-    }
-    return false;
-}
-
 const DomainIoSlotBinding* waveshareFindDomainBinding_(DomainSlotId domainSlot)
 {
     for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
@@ -3216,14 +3196,6 @@ const DomainSlotPreset* waveshareFindDomainSlotPreset_(DomainSlotId domainSlot)
 {
     for (const DomainSlotPreset& preset : PoolDomain::kDomainSlots) {
         if (preset.id == domainSlot) return &preset;
-    }
-    return nullptr;
-}
-
-const PoolDevicePreset* waveshareFindPoolDeviceForCommandSlot_(DomainSlotId domainSlot)
-{
-    for (const PoolDevicePreset& preset : PoolDomain::kPoolDevices) {
-        if (preset.commandSlot == domainSlot) return &preset;
     }
     return nullptr;
 }
@@ -3252,6 +3224,7 @@ void waveshareFormatIoValue_(const IoEndpointMeta& meta, const IoValue& value, c
 }
 
 struct WaveshareIoSummaryState {
+    DomainSlotId domainSlot = DOMAIN_SLOT_INVALID;
     const char* state = "sleeping";
     const char* error = "";
     bool active = false;
@@ -3267,83 +3240,85 @@ struct WaveshareIoSummaryState {
     uint32_t poolActualTsMs = 0U;
 };
 
-WaveshareIoSummaryState waveshareIoSummaryStateForSlot_(const IOServiceV2* ioSvc,
-                                                        const PoolDeviceService* poolSvc,
-                                                        IoSlotId ioSlot,
+WaveshareIoSummaryState waveshareIoSummaryStateForSlot_(const DomainStatusService* domainStatusSvc,
                                                         DomainSlotId domainSlot)
 {
     WaveshareIoSummaryState out{};
-    if (ioSlot == IO_SLOT_INVALID) {
-        out.error = "unbound";
-        return out;
-    }
-    const IoId ioId = ioIdFromSlot(ioSlot);
-    if (!ioSvc || !ioSvc->meta || ioSvc->meta(ioSvc->ctx, ioId, &out.meta) != IO_OK) {
+    out.domainSlot = domainSlot;
+    DomainSlotStatus shared{};
+    if (!domainStatusSvc || !domainStatusSvc->slotStatus ||
+        !domainStatusSvc->slotStatus(domainStatusSvc->ctx, domainSlot, &shared)) {
         out.error = "not_configured";
         return out;
     }
-    out.hasMeta = true;
-    out.hasBindingPort = waveshareFindPortForMeta_(out.meta) != nullptr;
 
-    const PoolDevicePreset* devicePreset = waveshareFindPoolDeviceForCommandSlot_(domainSlot);
-    if (devicePreset && poolSvc && poolSvc->meta) {
-        PoolDeviceSvcMeta meta{};
-        if (poolSvc->meta(poolSvc->ctx, devicePreset->id, &meta) == POOLDEV_SVC_OK && meta.used) {
-            out.hasPoolDevice = true;
-            out.poolMeta = meta;
-            if (poolSvc->readActualOn) {
-                (void)poolSvc->readActualOn(poolSvc->ctx, devicePreset->id, &out.poolActualOn, &out.poolActualTsMs);
-            }
-        }
-    }
-
-    if (!out.hasBindingPort) {
-        out.state = "sleeping";
-        out.error = "no_binding";
-        return out;
-    }
-
-    if (out.meta.kind != IO_KIND_DIGITAL_OUT && ioSvc->sensorStatus) {
-        IoSensorStatus sensor{};
-        const IoStatus sensorStatus = ioSvc->sensorStatus(ioSvc->ctx, ioId, &sensor);
-        if (sensorStatus == IO_OK && sensor.enabled == 0U) {
-            out.state = "sleeping";
-            out.error = "disabled";
-            return out;
-        }
-        if (sensorStatus == IO_OK && sensor.enabled != 0U && sensor.valid == 0U) {
-            out.state = "error";
-            out.errorState = true;
-            out.error = "no_valid_value";
-            return out;
-        }
-    }
-
-    if (out.hasPoolDevice) {
-        if (!out.poolMeta.enabled || out.poolMeta.blockReason == POOL_DEVICE_BLOCK_DISABLED) {
-            out.state = "sleeping";
-            out.error = wavesharePoolDeviceBlockReasonLabel_(out.poolMeta.blockReason);
-            return out;
-        }
-        if (out.poolMeta.blockReason != POOL_DEVICE_BLOCK_NONE) {
-            out.state = "error";
-            out.errorState = true;
-            out.error = wavesharePoolDeviceBlockReasonLabel_(out.poolMeta.blockReason);
-            return out;
-        }
-    }
-
-    if (ioSvc->readValue && ioSvc->readValue(ioSvc->ctx, ioId, &out.value) == IO_OK && out.value.valid) {
-        out.hasValue = true;
-        out.state = "active";
-        out.active = true;
-        return out;
-    }
-
-    out.state = "error";
-    out.errorState = true;
-    out.error = "read_failed";
+    out.state = domainSlotRuntimeStateName(shared.state);
+    out.active = shared.active != 0U;
+    out.errorState = shared.error != 0U;
+    out.meta = shared.meta;
+    out.value = shared.value;
+    out.hasMeta = shared.hasMeta != 0U;
+    out.hasValue = shared.hasValue != 0U;
+    out.hasBindingPort = shared.hasBindingPort != 0U;
+    out.hasPoolDevice = shared.hasPoolDevice != 0U;
+    out.poolMeta = shared.poolMeta;
+    out.poolActualOn = shared.poolActualOn;
+    out.poolActualTsMs = shared.poolActualTsMs;
+    out.error = (shared.errorReason == DomainSlotErrorReason::PoolDeviceBlocked)
+        ? wavesharePoolDeviceBlockReasonLabel_(shared.poolMeta.blockReason)
+        : domainSlotErrorReasonName(shared.errorReason);
     return out;
+}
+
+const WaveshareIoSummaryState* waveshareFindIoSummaryState_(const WaveshareIoSummaryState* states,
+                                                           size_t stateCount,
+                                                           DomainSlotId domainSlot)
+{
+    if (!states) return nullptr;
+    for (size_t i = 0U; i < stateCount; ++i) {
+        if (states[i].domainSlot == domainSlot) return &states[i];
+    }
+    return nullptr;
+}
+
+struct WaveshareBindingPortState {
+    IoId ioId = IO_ID_INVALID;
+    uint32_t tsMs = 0U;
+    char valueText[32] = {0};
+    bool bound = false;
+    bool valueOk = false;
+};
+
+void waveshareCollectBindingPortStates_(const IOServiceV2* ioSvc,
+                                        WaveshareBindingPortState* states,
+                                        size_t stateCount)
+{
+    using namespace Profiles::Waveshare::IoLayout;
+    if (!states || stateCount == 0U || !ioSvc || !ioSvc->count || !ioSvc->idAt || !ioSvc->meta) return;
+
+    const uint8_t endpointCount = ioSvc->count(ioSvc->ctx);
+    for (uint8_t i = 0U; i < endpointCount; ++i) {
+        IoId ioId = IO_ID_INVALID;
+        if (ioSvc->idAt(ioSvc->ctx, i, &ioId) != IO_OK) continue;
+
+        IoEndpointMeta meta{};
+        if (ioSvc->meta(ioSvc->ctx, ioId, &meta) != IO_OK) continue;
+        const IOBindingPortSpec* port = waveshareFindPortForMeta_(meta);
+        if (!port) continue;
+
+        const size_t portIndex = (size_t)(port - kBindingPorts);
+        if (portIndex >= stateCount || states[portIndex].bound) continue;
+
+        WaveshareBindingPortState& state = states[portIndex];
+        state.bound = true;
+        state.ioId = ioId;
+
+        IoValue value{};
+        if (!ioSvc->readValue || ioSvc->readValue(ioSvc->ctx, ioId, &value) != IO_OK || !value.valid) continue;
+        state.valueOk = true;
+        state.tsMs = value.tsMs;
+        waveshareFormatIoValue_(meta, value, state.valueText, sizeof(state.valueText));
+    }
 }
 
 void wavesharePrintPoolDeviceJson_(AsyncResponseStream& response, const WaveshareIoSummaryState& state)
@@ -3366,13 +3341,10 @@ void wavesharePrintPoolDeviceJson_(AsyncResponseStream& response, const Waveshar
 }
 
 void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
-                               const IOServiceV2* ioSvc,
-                               const PoolDeviceService* poolSvc,
+                               const WaveshareIoSummaryState& state,
                                IoSlotId ioSlot,
-                               DomainSlotId domainSlot,
                                const DomainSlotPreset* domainPreset)
 {
-    const WaveshareIoSummaryState state = waveshareIoSummaryStateForSlot_(ioSvc, poolSvc, ioSlot, domainSlot);
     char valueText[32] = {0};
     if (state.hasValue) waveshareFormatIoValue_(state.meta, state.value, valueText, sizeof(valueText));
 
@@ -3416,42 +3388,49 @@ void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
 
 void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
                                      const IOServiceV2* ioSvc,
-                                     const PoolDeviceService* poolSvc)
+                                     const DomainStatusService* domainStatusSvc)
 {
     using namespace Profiles::Waveshare::IoLayout;
+    constexpr size_t kBindingPortCount = sizeof(kBindingPorts) / sizeof(kBindingPorts[0]);
+    constexpr size_t kDomainSlotCount = sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0]);
+    WaveshareBindingPortState bindingStates[kBindingPortCount]{};
+    WaveshareIoSummaryState domainStates[kDomainSlotCount]{};
     uint16_t bindingActive = 0U;
     uint16_t bindingError = 0U;
     uint16_t ioActive = 0U;
     uint16_t ioError = 0U;
-    uint16_t domainActive = 0U;
-    uint16_t domainError = 0U;
+    DomainStatusSummary domainSummary{};
     uint8_t driverActive[11] = {0};
     uint8_t driverError[11] = {0};
 
-    for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
-        const WaveshareIoSummaryState state = waveshareIoSummaryStateForSlot_(ioSvc, poolSvc, binding.ioSlot, binding.domainSlot);
-        if (state.active) {
-            ++ioActive;
-            ++domainActive;
-            if (state.hasMeta && state.meta.backend < 11U) ++driverActive[state.meta.backend];
-        }
-        if (state.errorState) {
-            ++ioError;
-            ++domainError;
-            if (state.hasMeta && state.meta.backend < 11U) ++driverError[state.meta.backend];
-        }
+    waveshareCollectBindingPortStates_(ioSvc, bindingStates, kBindingPortCount);
+    for (const WaveshareBindingPortState& state : bindingStates) {
+        if (!state.bound) continue;
+        if (state.valueOk) ++bindingActive;
+        else ++bindingError;
     }
 
-    for (const IOBindingPortSpec& spec : kBindingPorts) {
-        IoId ioId = IO_ID_INVALID;
-        IoEndpointMeta meta{};
-        IoValue value{};
-        const bool bound = waveshareFindIoEndpointByPort_(ioSvc, spec, ioId, meta);
-        if (!bound) continue;
-        if (ioSvc && ioSvc->readValue && ioSvc->readValue(ioSvc->ctx, ioId, &value) == IO_OK && value.valid) {
-            ++bindingActive;
-        } else {
-            ++bindingError;
+    domainSummary.total = (uint16_t)kDomainSlotCount;
+    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
+        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
+        WaveshareIoSummaryState& state = domainStates[i];
+        state = waveshareIoSummaryStateForSlot_(domainStatusSvc, preset.id);
+        if (state.active) ++domainSummary.active;
+        else if (state.errorState) ++domainSummary.error;
+        else ++domainSummary.sleeping;
+    }
+
+    for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
+        const WaveshareIoSummaryState* state =
+            waveshareFindIoSummaryState_(domainStates, kDomainSlotCount, binding.domainSlot);
+        if (!state) continue;
+        if (state->active) {
+            ++ioActive;
+            if (state->hasMeta && state->meta.backend < 11U) ++driverActive[state->meta.backend];
+        }
+        if (state->errorState) {
+            ++ioError;
+            if (state->hasMeta && state->meta.backend < 11U) ++driverError[state->meta.backend];
         }
     }
 
@@ -3471,11 +3450,11 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
     response.print(",\"domain_slots_total\":");
     response.print((unsigned)(sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0])));
     response.print(",\"domain_slots_active\":");
-    response.print((unsigned)domainActive);
+    response.print((unsigned)domainSummary.active);
     response.print(",\"domain_slots_error\":");
-    response.print((unsigned)domainError);
+    response.print((unsigned)domainSummary.error);
     response.print(",\"error_slots\":");
-    response.print((unsigned)domainError);
+    response.print((unsigned)domainSummary.error);
     response.print("},\"drivers\":[");
     bool first = true;
     for (uint8_t backend = 0U; backend < 11U; ++backend) {
@@ -3493,20 +3472,12 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
 
     response.print("],\"binding_ports\":[");
     first = true;
-    for (const IOBindingPortSpec& spec : kBindingPorts) {
+    for (size_t portIndex = 0U; portIndex < kBindingPortCount; ++portIndex) {
+        const IOBindingPortSpec& spec = kBindingPorts[portIndex];
+        const WaveshareBindingPortState& state = bindingStates[portIndex];
         uint8_t backend = IO_BACKEND_GPIO;
         uint8_t channel = 0U;
         (void)waveshareIoPortBackendChannel_(spec, backend, channel);
-        IoId ioId = IO_ID_INVALID;
-        IoEndpointMeta meta{};
-        IoValue value{};
-        const bool bound = waveshareFindIoEndpointByPort_(ioSvc, spec, ioId, meta);
-        bool valueOk = false;
-        char valueText[32] = {0};
-        if (bound && ioSvc && ioSvc->readValue && ioSvc->readValue(ioSvc->ctx, ioId, &value) == IO_OK && value.valid) {
-            valueOk = true;
-            waveshareFormatIoValue_(meta, value, valueText, sizeof(valueText));
-        }
         if (!first) response.print(',');
         response.print("{\"port_id\":");
         response.print((unsigned)spec.portId);
@@ -3521,15 +3492,15 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
         response.print(",\"channel\":");
         response.print((unsigned)channel);
         response.print(",\"io_id\":");
-        response.print(bound ? (unsigned)ioId : (unsigned)IO_ID_INVALID);
+        response.print(state.bound ? (unsigned)state.ioId : (unsigned)IO_ID_INVALID);
         response.print(",\"io_id_label\":");
-        printJsonEscaped_(response, bound ? "" : "Non affecte");
+        printJsonEscaped_(response, state.bound ? "" : "Non affecte");
         response.print(",\"state\":");
-        printJsonEscaped_(response, bound ? (valueOk ? "active" : "error") : "sleeping");
+        printJsonEscaped_(response, state.bound ? (state.valueOk ? "active" : "error") : "sleeping");
         response.print(",\"last_value\":");
-        printJsonEscaped_(response, valueOk ? valueText : "-");
+        printJsonEscaped_(response, state.valueOk ? state.valueText : "-");
         response.print(",\"ts_ms\":");
-        response.print(valueOk ? (unsigned long)value.tsMs : 0UL);
+        response.print(state.valueOk ? (unsigned long)state.tsMs : 0UL);
         response.print("}");
         first = false;
     }
@@ -3537,23 +3508,25 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
     response.print("],\"io_slots\":[");
     first = true;
     for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
+        const WaveshareIoSummaryState* state =
+            waveshareFindIoSummaryState_(domainStates, kDomainSlotCount, binding.domainSlot);
+        if (!state) continue;
         if (!first) response.print(',');
         wavesharePrintIoSlotJson_(response,
-                                  ioSvc,
-                                  poolSvc,
+                                  *state,
                                   binding.ioSlot,
-                                  binding.domainSlot,
                                   waveshareFindDomainSlotPreset_(binding.domainSlot));
         first = false;
     }
 
     response.print("],\"domain_slots\":[");
     first = true;
-    for (const DomainSlotPreset& preset : PoolDomain::kDomainSlots) {
+    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
+        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
         const DomainIoSlotBinding* binding = waveshareFindDomainBinding_(preset.id);
         if (!first) response.print(',');
         const IoSlotId ioSlot = binding ? binding->ioSlot : IO_SLOT_INVALID;
-        const WaveshareIoSummaryState state = waveshareIoSummaryStateForSlot_(ioSvc, poolSvc, ioSlot, preset.id);
+        const WaveshareIoSummaryState& state = domainStates[i];
         char valueText[32] = {0};
         if (state.hasValue) waveshareFormatIoValue_(state.meta, state.value, valueText, sizeof(valueText));
         response.print("{\"domain_slot_id\":");
@@ -3582,10 +3555,11 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
 
     response.print("],\"error_slots\":[");
     first = true;
-    for (const DomainSlotPreset& preset : PoolDomain::kDomainSlots) {
+    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
+        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
         const DomainIoSlotBinding* binding = waveshareFindDomainBinding_(preset.id);
         const IoSlotId ioSlot = binding ? binding->ioSlot : IO_SLOT_INVALID;
-        const WaveshareIoSummaryState state = waveshareIoSummaryStateForSlot_(ioSvc, poolSvc, ioSlot, preset.id);
+        const WaveshareIoSummaryState& state = domainStates[i];
         if (!state.errorState) continue;
         if (!first) response.print(',');
         response.print("{\"domain_slot_id\":");
@@ -6683,10 +6657,12 @@ void WebInterfaceModule::startServer_()
         if (!ioSvc_ && services_) {
             ioSvc_ = services_->get<IOServiceV2>(ServiceId::Io);
         }
-        const PoolDeviceService* poolSvc = services_ ? services_->get<PoolDeviceService>(ServiceId::PoolDevice) : nullptr;
+        const DomainStatusService* domainStatusSvc = services_
+            ? services_->get<DomainStatusService>(ServiceId::DomainStatus)
+            : nullptr;
         AsyncResponseStream* response = request->beginResponseStream("application/json");
         addNoCacheHeaders_(response);
-        sendWaveshareIoSummaryResponse_(*response, ioSvc_, poolSvc);
+        sendWaveshareIoSummaryResponse_(*response, ioSvc_, domainStatusSvc);
         request->send(response);
 #else
         request->send(404, "application/json",

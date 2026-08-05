@@ -9,7 +9,7 @@
 
 enum class HmiLedCondition : uint8_t {
     AlarmActive = 0,
-    SensorFault,
+    DomainSlotError,
     CaptivePortalActive,
     OtaInProgress,
     NetworkLost,
@@ -19,7 +19,7 @@ enum class HmiLedCondition : uint8_t {
 
 enum class HmiLedDisplayState : uint8_t {
     AlarmActive,
-    SensorFault,
+    DomainSlotError,
     CaptivePortalActive,
     OtaInProgress,
     NetworkLost,

@@ -30,6 +30,7 @@ enum class ServiceId : uint8_t {
     Locale,
     ActivityLog,
     I2cBus,
+    DomainStatus,
     Count
 };
 
@@ -70,6 +71,7 @@ constexpr const char* toString(ServiceId id)
         case ServiceId::Locale: return "locale";
         case ServiceId::ActivityLog: return "activitylog";
         case ServiceId::I2cBus: return "i2c_bus";
+        case ServiceId::DomainStatus: return "domain_status";
         case ServiceId::Count: return "count";
     }
     return "unknown";
