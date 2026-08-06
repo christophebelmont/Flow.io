@@ -14,6 +14,7 @@
 #include <HardwareSerial.h>
 #include <ESPAsyncWebServer.h>
 #include <freertos/queue.h>
+#include <memory>
 #include "Core/EventBus/EventBus.h"
 
 #ifndef FLOW_ENABLE_WEB_SERIAL_TERMINAL
@@ -25,6 +26,9 @@
 #endif
 
 struct BoardSpec;
+#if defined(FLOW_PROFILE_WAVESHARE)
+struct WebJsonBuffer;
+#endif
 
 class WebInterfaceModule : public Module {
 public:
@@ -175,6 +179,10 @@ private:
     void scheduleReboot_(uint32_t delayMs, const char* reason);
     uint8_t wsActiveSource_() const;
     void setWsActiveSource_(uint8_t source);
+#if defined(FLOW_PROFILE_WAVESHARE)
+    void refreshIoResponseCaches_();
+    void sendIoResponseCache_(AsyncWebServerRequest* request, bool topology);
+#endif
 
     HardwareSerial& uart_ = Serial2;
     uint32_t uartBaud_ = 115200U;
@@ -270,6 +278,20 @@ private:
     uint8_t wsSource_ = 0; // 0=supervisor local logs, 1=flow serial logs
     mutable portMUX_TYPE healthMux_ = portMUX_INITIALIZER_UNLOCKED;
     WebInterfaceHealth health_{};
+
+#if defined(FLOW_PROFILE_WAVESHARE)
+    std::shared_ptr<WebJsonBuffer> ioTopologyResponse_;
+    std::shared_ptr<WebJsonBuffer> ioRuntimeResponse_;
+    std::shared_ptr<WebJsonBuffer> ioRuntimeSpareResponse_;
+    void* ioResponseSnapshot_ = nullptr;
+    portMUX_TYPE ioResponseMux_ = portMUX_INITIALIZER_UNLOCKED;
+    uint32_t ioTopologyChangeGeneration_ = 1U;
+    uint32_t ioTopologyBuiltGeneration_ = 0U;
+    uint32_t ioTopologyRevision_ = 0U;
+    uint32_t ioLastTopologyBuildMs_ = 0U;
+    uint32_t ioLastRuntimeBuildMs_ = 0U;
+    uint32_t ioLastResponseBuildAttemptMs_ = 0U;
+#endif
 
     WebInterfaceService webInterfaceSvc_{
         ServiceBinding::bind<&WebInterfaceModule::setPaused_>,

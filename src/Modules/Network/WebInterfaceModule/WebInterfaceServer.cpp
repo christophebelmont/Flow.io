@@ -157,6 +157,78 @@ static int32_t requestIntParam_(AsyncWebServerRequest* request,
     return (int32_t)parsed;
 }
 
+#if defined(FLOW_PROFILE_WAVESHARE)
+struct WebJsonBuffer final : public Print {
+    explicit WebJsonBuffer(size_t requestedCapacity)
+        : capacity_(requestedCapacity)
+    {
+        if (capacity_ == 0U || !psramFound()) return;
+        data_ = static_cast<char*>(
+            heap_caps_malloc(capacity_, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        );
+    }
+
+    ~WebJsonBuffer() override
+    {
+        if (data_) heap_caps_free(data_);
+    }
+
+    WebJsonBuffer(const WebJsonBuffer&) = delete;
+    WebJsonBuffer& operator=(const WebJsonBuffer&) = delete;
+
+    size_t write(uint8_t value) override
+    {
+        return write(&value, 1U);
+    }
+
+    size_t write(const uint8_t* data, size_t size) override
+    {
+        if (!data_ || !data || size == 0U) return 0U;
+        if (overflow_ || length_ >= capacity_ || size > (capacity_ - length_ - 1U)) {
+            overflow_ = true;
+            return 0U;
+        }
+        memcpy(data_ + length_, data, size);
+        length_ += size;
+        return size;
+    }
+
+    bool finish()
+    {
+        if (!data_ || overflow_ || length_ >= capacity_) return false;
+        data_[length_] = '\0';
+        return true;
+    }
+
+    void reset()
+    {
+        length_ = 0U;
+        overflow_ = false;
+        if (data_ && capacity_ > 0U) data_[0] = '\0';
+    }
+
+    bool valid() const { return data_ != nullptr; }
+    bool overflowed() const { return overflow_; }
+    size_t length() const { return length_; }
+    size_t capacity() const { return capacity_; }
+
+    size_t fillAt(uint8_t* out, size_t maxLen, size_t index) const
+    {
+        if (!out || maxLen == 0U || !data_ || index >= length_) return 0U;
+        const size_t remaining = length_ - index;
+        const size_t count = remaining < maxLen ? remaining : maxLen;
+        memcpy(out, data_ + index, count);
+        return count;
+    }
+
+private:
+    char* data_ = nullptr;
+    size_t capacity_ = 0U;
+    size_t length_ = 0U;
+    bool overflow_ = false;
+};
+#endif
+
 template <size_t N>
 static inline void sendProgmemLiteral_(AsyncWebServerRequest* request, const char* contentType, const char (&content)[N])
 {
@@ -3321,7 +3393,7 @@ void waveshareCollectBindingPortStates_(const IOServiceV2* ioSvc,
     }
 }
 
-void wavesharePrintPoolDeviceJson_(AsyncResponseStream& response, const WaveshareIoSummaryState& state)
+void wavesharePrintPoolDeviceJson_(Print& response, const WaveshareIoSummaryState& state)
 {
     if (!state.hasPoolDevice) {
         response.print("null");
@@ -3340,24 +3412,85 @@ void wavesharePrintPoolDeviceJson_(AsyncResponseStream& response, const Waveshar
     response.print("}");
 }
 
-void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
-                               const WaveshareIoSummaryState& state,
-                               IoSlotId ioSlot,
-                               const DomainSlotPreset* domainPreset)
-{
-    char valueText[32] = {0};
-    if (state.hasValue) waveshareFormatIoValue_(state.meta, state.value, valueText, sizeof(valueText));
+struct WaveshareIoResponseSnapshot {
+    static constexpr size_t kBindingPortCount =
+        sizeof(Profiles::Waveshare::IoLayout::kBindingPorts) /
+        sizeof(Profiles::Waveshare::IoLayout::kBindingPorts[0]);
+    static constexpr size_t kDomainSlotCount =
+        sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0]);
 
+    WaveshareBindingPortState bindingStates[kBindingPortCount]{};
+    WaveshareIoSummaryState domainStates[kDomainSlotCount]{};
+    uint16_t bindingActive = 0U;
+    uint16_t bindingError = 0U;
+    uint16_t ioActive = 0U;
+    uint16_t ioError = 0U;
+    DomainStatusSummary domainSummary{};
+    uint8_t driverActive[11] = {0};
+    uint8_t driverError[11] = {0};
+};
+
+void waveshareCollectIoResponseSnapshot_(const IOServiceV2* ioSvc,
+                                         const DomainStatusService* domainStatusSvc,
+                                         WaveshareIoResponseSnapshot& snapshot)
+{
+    waveshareCollectBindingPortStates_(ioSvc,
+                                       snapshot.bindingStates,
+                                       WaveshareIoResponseSnapshot::kBindingPortCount);
+    for (const WaveshareBindingPortState& state : snapshot.bindingStates) {
+        if (!state.bound) continue;
+        if (state.valueOk) ++snapshot.bindingActive;
+        else ++snapshot.bindingError;
+    }
+
+    snapshot.domainSummary.total = (uint16_t)WaveshareIoResponseSnapshot::kDomainSlotCount;
+    for (size_t i = 0U; i < WaveshareIoResponseSnapshot::kDomainSlotCount; ++i) {
+        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
+        WaveshareIoSummaryState& state = snapshot.domainStates[i];
+        state = waveshareIoSummaryStateForSlot_(domainStatusSvc, preset.id);
+        if (state.active) ++snapshot.domainSummary.active;
+        else if (state.errorState) ++snapshot.domainSummary.error;
+        else ++snapshot.domainSummary.sleeping;
+    }
+
+    for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
+        const WaveshareIoSummaryState* state =
+            waveshareFindIoSummaryState_(snapshot.domainStates,
+                                         WaveshareIoResponseSnapshot::kDomainSlotCount,
+                                         binding.domainSlot);
+        if (!state) continue;
+        if (state->active) {
+            ++snapshot.ioActive;
+            if (state->hasMeta && state->meta.backend < 11U) {
+                ++snapshot.driverActive[state->meta.backend];
+            }
+        }
+        if (state->errorState) {
+            ++snapshot.ioError;
+            if (state->hasMeta && state->meta.backend < 11U) {
+                ++snapshot.driverError[state->meta.backend];
+            }
+        }
+    }
+}
+
+void wavesharePrintIoSlotTopologyJson_(Print& response,
+                                       const WaveshareIoSummaryState& state,
+                                       const DomainIoSlotBinding& binding,
+                                       const DomainSlotPreset* domainPreset)
+{
     response.print("{\"io_slot\":");
-    printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "" : waveshareIoSlotKindLabel_(ioSlotKind(ioSlot)));
+    printJsonEscaped_(response, waveshareIoSlotKindLabel_(ioSlotKind(binding.ioSlot)));
     response.print(",\"io_slot_index\":");
-    response.print(ioSlot == IO_SLOT_INVALID ? 0U : (unsigned)ioSlotIndex(ioSlot));
+    response.print((unsigned)ioSlotIndex(binding.ioSlot));
     response.print(",\"io_id\":");
-    response.print(ioSlot == IO_SLOT_INVALID ? (unsigned)IO_ID_INVALID : (unsigned)ioIdFromSlot(ioSlot));
+    response.print((unsigned)ioIdFromSlot(binding.ioSlot));
     response.print(",\"io_id_label\":");
-    printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "Non affecte" : "");
+    printJsonEscaped_(response, "");
+    response.print(",\"domain_slot_id\":");
+    response.print((unsigned)binding.domainSlot);
     response.print(",\"kind\":");
-    printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "unknown" : waveshareIoSlotKindLabel_(ioSlotKind(ioSlot)));
+    printJsonEscaped_(response, waveshareIoSlotKindLabel_(ioSlotKind(binding.ioSlot)));
     const IOBindingPortSpec* port = state.hasMeta ? waveshareFindPortForMeta_(state.meta) : nullptr;
     uint8_t portBackend = IO_BACKEND_GPIO;
     uint8_t portChannel = 0U;
@@ -3369,16 +3502,33 @@ void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
     else response.print("null");
     response.print(",\"binding_port\":");
     response.print(port ? (unsigned)port->portId : 0U);
+    response.print(",\"label\":");
+    printJsonEscaped_(response, domainPreset && domainPreset->displayName ? domainPreset->displayName : "");
+    response.print(",\"config_name\":");
+    printJsonEscaped_(response, state.hasMeta ? state.meta.name : "");
+    response.print("}");
+}
+
+void wavesharePrintIoSlotRuntimeJson_(Print& response,
+                                      const WaveshareIoSummaryState& state,
+                                      const DomainIoSlotBinding& binding)
+{
+    char valueText[32] = {0};
+    if (state.hasValue) waveshareFormatIoValue_(state.meta, state.value, valueText, sizeof(valueText));
+    response.print("{\"domain_slot_id\":");
+    response.print((unsigned)binding.domainSlot);
+    response.print(",\"io_slot\":");
+    printJsonEscaped_(response, waveshareIoSlotKindLabel_(ioSlotKind(binding.ioSlot)));
+    response.print(",\"io_slot_index\":");
+    response.print((unsigned)ioSlotIndex(binding.ioSlot));
+    response.print(",\"io_id\":");
+    response.print((unsigned)ioIdFromSlot(binding.ioSlot));
     response.print(",\"state\":");
     printJsonEscaped_(response, state.state);
     response.print(",\"last_value\":");
     printJsonEscaped_(response, valueText[0] != '\0' ? valueText : "-");
     response.print(",\"ts_ms\":");
     response.print(state.hasValue ? (unsigned long)state.value.tsMs : 0UL);
-    response.print(",\"label\":");
-    printJsonEscaped_(response, domainPreset && domainPreset->displayName ? domainPreset->displayName : "");
-    response.print(",\"config_name\":");
-    printJsonEscaped_(response, state.hasMeta ? state.meta.name : "");
     response.print(",\"error\":");
     printJsonEscaped_(response, state.error);
     response.print(",\"pool_device\":");
@@ -3386,95 +3536,17 @@ void wavesharePrintIoSlotJson_(AsyncResponseStream& response,
     response.print("}");
 }
 
-void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
-                                     const IOServiceV2* ioSvc,
-                                     const DomainStatusService* domainStatusSvc)
+void buildWaveshareIoTopologyResponse_(Print& response,
+                                       const WaveshareIoResponseSnapshot& snapshot,
+                                       uint32_t revision)
 {
     using namespace Profiles::Waveshare::IoLayout;
-    constexpr size_t kBindingPortCount = sizeof(kBindingPorts) / sizeof(kBindingPorts[0]);
-    constexpr size_t kDomainSlotCount = sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0]);
-    WaveshareBindingPortState bindingStates[kBindingPortCount]{};
-    WaveshareIoSummaryState domainStates[kDomainSlotCount]{};
-    uint16_t bindingActive = 0U;
-    uint16_t bindingError = 0U;
-    uint16_t ioActive = 0U;
-    uint16_t ioError = 0U;
-    DomainStatusSummary domainSummary{};
-    uint8_t driverActive[11] = {0};
-    uint8_t driverError[11] = {0};
-
-    waveshareCollectBindingPortStates_(ioSvc, bindingStates, kBindingPortCount);
-    for (const WaveshareBindingPortState& state : bindingStates) {
-        if (!state.bound) continue;
-        if (state.valueOk) ++bindingActive;
-        else ++bindingError;
-    }
-
-    domainSummary.total = (uint16_t)kDomainSlotCount;
-    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
-        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
-        WaveshareIoSummaryState& state = domainStates[i];
-        state = waveshareIoSummaryStateForSlot_(domainStatusSvc, preset.id);
-        if (state.active) ++domainSummary.active;
-        else if (state.errorState) ++domainSummary.error;
-        else ++domainSummary.sleeping;
-    }
-
-    for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
-        const WaveshareIoSummaryState* state =
-            waveshareFindIoSummaryState_(domainStates, kDomainSlotCount, binding.domainSlot);
-        if (!state) continue;
-        if (state->active) {
-            ++ioActive;
-            if (state->hasMeta && state->meta.backend < 11U) ++driverActive[state->meta.backend];
-        }
-        if (state->errorState) {
-            ++ioError;
-            if (state->hasMeta && state->meta.backend < 11U) ++driverError[state->meta.backend];
-        }
-    }
-
-    response.print("{\"ok\":true,\"summary\":{");
-    response.print("\"binding_ports_total\":");
-    response.print((unsigned)(sizeof(kBindingPorts) / sizeof(kBindingPorts[0])));
-    response.print(",\"binding_ports_active\":");
-    response.print((unsigned)bindingActive);
-    response.print(",\"binding_ports_error\":");
-    response.print((unsigned)bindingError);
-    response.print(",\"io_slots_total\":");
-    response.print((unsigned)(sizeof(PoolDomain::kDomainIoSlots) / sizeof(PoolDomain::kDomainIoSlots[0])));
-    response.print(",\"io_slots_active\":");
-    response.print((unsigned)ioActive);
-    response.print(",\"io_slots_error\":");
-    response.print((unsigned)ioError);
-    response.print(",\"domain_slots_total\":");
-    response.print((unsigned)(sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0])));
-    response.print(",\"domain_slots_active\":");
-    response.print((unsigned)domainSummary.active);
-    response.print(",\"domain_slots_error\":");
-    response.print((unsigned)domainSummary.error);
-    response.print(",\"error_slots\":");
-    response.print((unsigned)domainSummary.error);
-    response.print("},\"drivers\":[");
+    response.print("{\"ok\":true,\"schema\":2,\"revision\":");
+    response.print((unsigned long)revision);
+    response.print(",\"binding_ports\":[");
     bool first = true;
-    for (uint8_t backend = 0U; backend < 11U; ++backend) {
-        if (driverActive[backend] == 0U && driverError[backend] == 0U) continue;
-        if (!first) response.print(',');
-        response.print("{\"driver\":");
-        printJsonEscaped_(response, waveshareIoBackendLabel_(backend));
-        response.print(",\"active_slots\":");
-        response.print((unsigned)driverActive[backend]);
-        response.print(",\"error_slots\":");
-        response.print((unsigned)driverError[backend]);
-        response.print("}");
-        first = false;
-    }
-
-    response.print("],\"binding_ports\":[");
-    first = true;
-    for (size_t portIndex = 0U; portIndex < kBindingPortCount; ++portIndex) {
+    for (size_t portIndex = 0U; portIndex < WaveshareIoResponseSnapshot::kBindingPortCount; ++portIndex) {
         const IOBindingPortSpec& spec = kBindingPorts[portIndex];
-        const WaveshareBindingPortState& state = bindingStates[portIndex];
         uint8_t backend = IO_BACKEND_GPIO;
         uint8_t channel = 0U;
         (void)waveshareIoPortBackendChannel_(spec, backend, channel);
@@ -3491,6 +3563,105 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
         printJsonEscaped_(response, waveshareIoBackendLabel_(backend));
         response.print(",\"channel\":");
         response.print((unsigned)channel);
+        response.print("}");
+        first = false;
+    }
+
+    response.print("],\"io_slots\":[");
+    first = true;
+    for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
+        const WaveshareIoSummaryState* state =
+            waveshareFindIoSummaryState_(snapshot.domainStates,
+                                         WaveshareIoResponseSnapshot::kDomainSlotCount,
+                                         binding.domainSlot);
+        if (!state) continue;
+        if (!first) response.print(',');
+        wavesharePrintIoSlotTopologyJson_(response,
+                                          *state,
+                                          binding,
+                                          waveshareFindDomainSlotPreset_(binding.domainSlot));
+        first = false;
+    }
+
+    response.print("],\"domain_slots\":[");
+    first = true;
+    for (size_t i = 0U; i < WaveshareIoResponseSnapshot::kDomainSlotCount; ++i) {
+        const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
+        const DomainIoSlotBinding* binding = waveshareFindDomainBinding_(preset.id);
+        const IoSlotId ioSlot = binding ? binding->ioSlot : IO_SLOT_INVALID;
+        const WaveshareIoSummaryState& state = snapshot.domainStates[i];
+        if (!first) response.print(',');
+        response.print("{\"domain_slot_id\":");
+        response.print((unsigned)preset.id);
+        response.print(",\"endpoint_id\":");
+        printJsonEscaped_(response, preset.endpointId ? preset.endpointId : "");
+        response.print(",\"io_name\":");
+        printJsonEscaped_(response, state.hasMeta ? state.meta.name : "");
+        response.print(",\"display_name\":");
+        printJsonEscaped_(response, preset.displayName ? preset.displayName : "");
+        response.print(",\"slot_kind\":");
+        printJsonEscaped_(response, waveshareIoSlotKindLabel_(preset.slotKind));
+        response.print(",\"io_slot\":");
+        printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "" : waveshareIoSlotKindLabel_(ioSlotKind(ioSlot)));
+        response.print(",\"io_slot_index\":");
+        response.print(ioSlot == IO_SLOT_INVALID ? 0U : (unsigned)ioSlotIndex(ioSlot));
+        response.print("}");
+        first = false;
+    }
+    response.print("]}");
+}
+
+void buildWaveshareIoRuntimeResponse_(Print& response,
+                                      const WaveshareIoResponseSnapshot& snapshot,
+                                      uint32_t topologyRevision)
+{
+    using namespace Profiles::Waveshare::IoLayout;
+    response.print("{\"ok\":true,\"schema\":2,\"topology_revision\":");
+    response.print((unsigned long)topologyRevision);
+    response.print(",\"summary\":{");
+    response.print("\"binding_ports_total\":");
+    response.print((unsigned)WaveshareIoResponseSnapshot::kBindingPortCount);
+    response.print(",\"binding_ports_active\":");
+    response.print((unsigned)snapshot.bindingActive);
+    response.print(",\"binding_ports_error\":");
+    response.print((unsigned)snapshot.bindingError);
+    response.print(",\"io_slots_total\":");
+    response.print((unsigned)(sizeof(PoolDomain::kDomainIoSlots) / sizeof(PoolDomain::kDomainIoSlots[0])));
+    response.print(",\"io_slots_active\":");
+    response.print((unsigned)snapshot.ioActive);
+    response.print(",\"io_slots_error\":");
+    response.print((unsigned)snapshot.ioError);
+    response.print(",\"domain_slots_total\":");
+    response.print((unsigned)(sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0])));
+    response.print(",\"domain_slots_active\":");
+    response.print((unsigned)snapshot.domainSummary.active);
+    response.print(",\"domain_slots_error\":");
+    response.print((unsigned)snapshot.domainSummary.error);
+    response.print(",\"error_slots\":");
+    response.print((unsigned)snapshot.domainSummary.error);
+    response.print("},\"drivers\":[");
+    bool first = true;
+    for (uint8_t backend = 0U; backend < 11U; ++backend) {
+        if (snapshot.driverActive[backend] == 0U && snapshot.driverError[backend] == 0U) continue;
+        if (!first) response.print(',');
+        response.print("{\"driver\":");
+        printJsonEscaped_(response, waveshareIoBackendLabel_(backend));
+        response.print(",\"active_slots\":");
+        response.print((unsigned)snapshot.driverActive[backend]);
+        response.print(",\"error_slots\":");
+        response.print((unsigned)snapshot.driverError[backend]);
+        response.print("}");
+        first = false;
+    }
+
+    response.print("],\"binding_ports\":[");
+    first = true;
+    for (size_t portIndex = 0U; portIndex < WaveshareIoResponseSnapshot::kBindingPortCount; ++portIndex) {
+        const IOBindingPortSpec& spec = kBindingPorts[portIndex];
+        const WaveshareBindingPortState& state = snapshot.bindingStates[portIndex];
+        if (!first) response.print(',');
+        response.print("{\"port_id\":");
+        response.print((unsigned)spec.portId);
         response.print(",\"io_id\":");
         response.print(state.bound ? (unsigned)state.ioId : (unsigned)IO_ID_INVALID);
         response.print(",\"io_id_label\":");
@@ -3509,40 +3680,25 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
     first = true;
     for (const DomainIoSlotBinding& binding : PoolDomain::kDomainIoSlots) {
         const WaveshareIoSummaryState* state =
-            waveshareFindIoSummaryState_(domainStates, kDomainSlotCount, binding.domainSlot);
+            waveshareFindIoSummaryState_(snapshot.domainStates,
+                                         WaveshareIoResponseSnapshot::kDomainSlotCount,
+                                         binding.domainSlot);
         if (!state) continue;
         if (!first) response.print(',');
-        wavesharePrintIoSlotJson_(response,
-                                  *state,
-                                  binding.ioSlot,
-                                  waveshareFindDomainSlotPreset_(binding.domainSlot));
+        wavesharePrintIoSlotRuntimeJson_(response, *state, binding);
         first = false;
     }
 
     response.print("],\"domain_slots\":[");
     first = true;
-    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
+    for (size_t i = 0U; i < WaveshareIoResponseSnapshot::kDomainSlotCount; ++i) {
         const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
-        const DomainIoSlotBinding* binding = waveshareFindDomainBinding_(preset.id);
         if (!first) response.print(',');
-        const IoSlotId ioSlot = binding ? binding->ioSlot : IO_SLOT_INVALID;
-        const WaveshareIoSummaryState& state = domainStates[i];
+        const WaveshareIoSummaryState& state = snapshot.domainStates[i];
         char valueText[32] = {0};
         if (state.hasValue) waveshareFormatIoValue_(state.meta, state.value, valueText, sizeof(valueText));
         response.print("{\"domain_slot_id\":");
         response.print((unsigned)preset.id);
-        response.print(",\"endpoint_id\":");
-        printJsonEscaped_(response, preset.endpointId ? preset.endpointId : "");
-        response.print(",\"io_name\":");
-        printJsonEscaped_(response, state.hasMeta ? state.meta.name : "");
-        response.print(",\"display_name\":");
-        printJsonEscaped_(response, preset.displayName ? preset.displayName : "");
-        response.print(",\"slot_kind\":");
-        printJsonEscaped_(response, waveshareIoSlotKindLabel_(preset.slotKind));
-        response.print(",\"io_slot\":");
-        printJsonEscaped_(response, ioSlot == IO_SLOT_INVALID ? "" : waveshareIoSlotKindLabel_(ioSlotKind(ioSlot)));
-        response.print(",\"io_slot_index\":");
-        response.print(ioSlot == IO_SLOT_INVALID ? 0U : (unsigned)ioSlotIndex(ioSlot));
         response.print(",\"state\":");
         printJsonEscaped_(response, state.state);
         response.print(",\"last_value\":");
@@ -3555,11 +3711,11 @@ void sendWaveshareIoSummaryResponse_(AsyncResponseStream& response,
 
     response.print("],\"error_slots\":[");
     first = true;
-    for (size_t i = 0U; i < kDomainSlotCount; ++i) {
+    for (size_t i = 0U; i < WaveshareIoResponseSnapshot::kDomainSlotCount; ++i) {
         const DomainSlotPreset& preset = PoolDomain::kDomainSlots[i];
         const DomainIoSlotBinding* binding = waveshareFindDomainBinding_(preset.id);
         const IoSlotId ioSlot = binding ? binding->ioSlot : IO_SLOT_INVALID;
-        const WaveshareIoSummaryState& state = domainStates[i];
+        const WaveshareIoSummaryState& state = snapshot.domainStates[i];
         if (!state.errorState) continue;
         if (!first) response.print(',');
         response.print("{\"domain_slot_id\":");
@@ -3699,6 +3855,7 @@ void sendWaveshareAlarmDashboardSlotsResponse_(AsyncResponseStream& response,
         firstSlot = false;
     }
 }
+
 #endif
 
 bool parseRuntimeUiIdsCsv_(const char* raw, RuntimeUiId* idsOut, size_t capacity, size_t& countOut)
@@ -4510,7 +4667,147 @@ WebInterfaceModule::~WebInterfaceModule()
 {
     freeLocalLogQueue_();
     freeRuntimeValuesBodyScratch_();
+#if defined(FLOW_PROFILE_WAVESHARE)
+    if (ioResponseSnapshot_) heap_caps_free(ioResponseSnapshot_);
+#endif
 }
+
+#if defined(FLOW_PROFILE_WAVESHARE)
+void WebInterfaceModule::refreshIoResponseCaches_()
+{
+    constexpr uint32_t kRuntimeRefreshMs = 1000U;
+    constexpr uint32_t kTopologySafetyRefreshMs = 60000U;
+    constexpr uint32_t kRetryDelayMs = 250U;
+    constexpr size_t kTopologyCapacity = 32U * 1024U;
+    constexpr size_t kRuntimeCapacity = 24U * 1024U;
+
+    const uint32_t nowMs = millis();
+    if ((uint32_t)(nowMs - ioLastResponseBuildAttemptMs_) < kRetryDelayMs) return;
+
+    bool hasTopology = false;
+    bool hasRuntime = false;
+    uint32_t topologyChangeGeneration = 0U;
+    uint32_t topologyBuiltGeneration = 0U;
+    portENTER_CRITICAL(&ioResponseMux_);
+    hasTopology = (bool)ioTopologyResponse_;
+    hasRuntime = (bool)ioRuntimeResponse_;
+    topologyChangeGeneration = ioTopologyChangeGeneration_;
+    topologyBuiltGeneration = ioTopologyBuiltGeneration_;
+    portEXIT_CRITICAL(&ioResponseMux_);
+
+    const bool topologyDue = topologyChangeGeneration != topologyBuiltGeneration || !hasTopology ||
+        (uint32_t)(nowMs - ioLastTopologyBuildMs_) >= kTopologySafetyRefreshMs;
+    const bool runtimeDue = !hasRuntime ||
+        (uint32_t)(nowMs - ioLastRuntimeBuildMs_) >= kRuntimeRefreshMs;
+    if (!topologyDue && !runtimeDue) return;
+    ioLastResponseBuildAttemptMs_ = nowMs;
+
+    if (!ioSvc_ && services_) {
+        ioSvc_ = services_->get<IOServiceV2>(ServiceId::Io);
+    }
+    const DomainStatusService* domainStatusSvc = services_
+        ? services_->get<DomainStatusService>(ServiceId::DomainStatus)
+        : nullptr;
+    if (!ioSvc_ || !domainStatusSvc) return;
+
+    if (!ioResponseSnapshot_) {
+        ioResponseSnapshot_ = heap_caps_malloc(sizeof(WaveshareIoResponseSnapshot),
+                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    auto* snapshot = static_cast<WaveshareIoResponseSnapshot*>(ioResponseSnapshot_);
+    if (!snapshot) {
+        LOGW("IO web snapshot allocation failed bytes=%u", (unsigned)sizeof(WaveshareIoResponseSnapshot));
+        return;
+    }
+    memset(snapshot, 0, sizeof(*snapshot));
+    waveshareCollectIoResponseSnapshot_(ioSvc_, domainStatusSvc, *snapshot);
+
+    uint32_t publishedRevision = ioTopologyRevision_;
+    if (topologyDue) {
+        const uint32_t nextRevision = ioTopologyRevision_ + 1U;
+        auto next = std::make_shared<WebJsonBuffer>(kTopologyCapacity);
+        if (next && next->valid()) {
+            buildWaveshareIoTopologyResponse_(*next, *snapshot, nextRevision);
+        }
+        if (next && next->finish()) {
+            std::shared_ptr<WebJsonBuffer> previous;
+            portENTER_CRITICAL(&ioResponseMux_);
+            previous.swap(ioTopologyResponse_);
+            ioTopologyResponse_.swap(next);
+            ioTopologyRevision_ = nextRevision;
+            ioTopologyBuiltGeneration_ = topologyChangeGeneration;
+            publishedRevision = nextRevision;
+            portEXIT_CRITICAL(&ioResponseMux_);
+            ioLastTopologyBuildMs_ = nowMs;
+            LOGI("IO topology cache ready revision=%lu bytes=%u capacity=%u memory=psram",
+                 (unsigned long)nextRevision,
+                 (unsigned)ioTopologyResponse_->length(),
+                 (unsigned)kTopologyCapacity);
+        } else {
+            LOGE("IO topology cache overflow/allocation failure capacity=%u overflow=%u",
+                 (unsigned)kTopologyCapacity,
+                 (unsigned)(next && next->overflowed()));
+        }
+    }
+
+    if (runtimeDue) {
+        std::shared_ptr<WebJsonBuffer> next;
+        portENTER_CRITICAL(&ioResponseMux_);
+        if (ioRuntimeSpareResponse_ && ioRuntimeSpareResponse_.use_count() == 1) {
+            next.swap(ioRuntimeSpareResponse_);
+        }
+        portEXIT_CRITICAL(&ioResponseMux_);
+        if (next) next->reset();
+        else next = std::make_shared<WebJsonBuffer>(kRuntimeCapacity);
+        if (next && next->valid()) {
+            buildWaveshareIoRuntimeResponse_(*next, *snapshot, publishedRevision);
+        }
+        if (next && next->finish()) {
+            std::shared_ptr<WebJsonBuffer> previous;
+            portENTER_CRITICAL(&ioResponseMux_);
+            previous.swap(ioRuntimeResponse_);
+            ioRuntimeResponse_.swap(next);
+            if (!ioRuntimeSpareResponse_) {
+                ioRuntimeSpareResponse_.swap(previous);
+            }
+            portEXIT_CRITICAL(&ioResponseMux_);
+            ioLastRuntimeBuildMs_ = nowMs;
+        } else {
+            LOGE("IO runtime cache overflow/allocation failure capacity=%u overflow=%u",
+                 (unsigned)kRuntimeCapacity,
+                 (unsigned)(next && next->overflowed()));
+        }
+    }
+
+}
+
+void WebInterfaceModule::sendIoResponseCache_(AsyncWebServerRequest* request, bool topology)
+{
+    if (!request) return;
+    std::shared_ptr<WebJsonBuffer> state;
+    portENTER_CRITICAL(&ioResponseMux_);
+    state = topology ? ioTopologyResponse_ : ioRuntimeResponse_;
+    portEXIT_CRITICAL(&ioResponseMux_);
+
+    if (!state || !state->valid() || state->length() == 0U) {
+        request->send(503,
+                      "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"NotReady\",\"where\":\"io.cache\"}}");
+        return;
+    }
+
+    AsyncWebServerResponse* response = request->beginResponse(
+        "application/json",
+        state->length(),
+        [state](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+            return state->fillAt(buffer, maxLen, index);
+        }
+    );
+    addNoCacheHeaders_(response);
+    request->send(response);
+}
+
+#endif
 
 void WebInterfaceModule::initRuntimeValuesBodyScratch_()
 {
@@ -4910,6 +5207,7 @@ void WebInterfaceModule::init(ConfigStore& cfg, ServiceRegistry& services)
     fwUpdateSvc_ = services.get<FirmwareUpdateService>(ServiceId::FirmwareUpdate);
     if (eventBus_) {
         eventBus_->subscribe(EventId::DataChanged, &WebInterfaceModule::onEventStatic_, this);
+        eventBus_->subscribe(EventId::ConfigChanged, &WebInterfaceModule::onEventStatic_, this);
     }
 
     if (!services.add(ServiceId::WebInterface, &webInterfaceSvc_)) {
@@ -6650,24 +6948,33 @@ void WebInterfaceModule::startServer_()
                       "{\"ok\":false,\"err\":{\"code\":\"Disabled\",\"where\":\"runtime.alarms.disabled\"}}");
     });
 
-    server_.on("/api/io/summary", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        HttpLatencyScope latency(request, "/api/io/summary");
-        LOGD("runtime.call route=/api/io/summary");
+    server_.on("/api/io/topology", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/io/topology");
+        LOGD("runtime.call route=/api/io/topology");
 #if defined(FLOW_PROFILE_WAVESHARE)
-        if (!ioSvc_ && services_) {
-            ioSvc_ = services_->get<IOServiceV2>(ServiceId::Io);
-        }
-        const DomainStatusService* domainStatusSvc = services_
-            ? services_->get<DomainStatusService>(ServiceId::DomainStatus)
-            : nullptr;
-        AsyncResponseStream* response = request->beginResponseStream("application/json");
-        addNoCacheHeaders_(response);
-        sendWaveshareIoSummaryResponse_(*response, ioSvc_, domainStatusSvc);
-        request->send(response);
+        sendIoResponseCache_(request, true);
 #else
         request->send(404, "application/json",
-                      "{\"ok\":false,\"err\":{\"code\":\"Unsupported\",\"where\":\"io.summary\"}}");
+                      "{\"ok\":false,\"err\":{\"code\":\"Unsupported\",\"where\":\"io.topology\"}}");
 #endif
+    });
+
+    server_.on("/api/io/runtime", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        HttpLatencyScope latency(request, "/api/io/runtime");
+        LOGD("runtime.call route=/api/io/runtime");
+#if defined(FLOW_PROFILE_WAVESHARE)
+        sendIoResponseCache_(request, false);
+#else
+        request->send(404, "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"Unsupported\",\"where\":\"io.runtime\"}}");
+#endif
+    });
+
+    server_.on("/api/io/summary", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(410,
+                      "application/json",
+                      "{\"ok\":false,\"err\":{\"code\":\"Replaced\",\"where\":\"io.summary\","
+                      "\"detail\":\"Use /api/io/topology and /api/io/runtime\"}}");
     });
 
     server_.on("/api/runtime/dashboard_slots", HTTP_GET, [this](AsyncWebServerRequest* request) {

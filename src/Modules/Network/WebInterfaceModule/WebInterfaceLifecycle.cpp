@@ -145,6 +145,14 @@ void WebInterfaceModule::onEventStatic_(const Event& e, void* user)
 
 void WebInterfaceModule::onEvent_(const Event& e)
 {
+    if (e.id == EventId::ConfigChanged) {
+#if defined(FLOW_PROFILE_WAVESHARE)
+        portENTER_CRITICAL(&ioResponseMux_);
+        ++ioTopologyChangeGeneration_;
+        portEXIT_CRITICAL(&ioResponseMux_);
+#endif
+        return;
+    }
     if (e.id != EventId::DataChanged) return;
     if (!e.payload || e.len < sizeof(DataChangedPayload)) return;
     const DataChangedPayload* p = static_cast<const DataChangedPayload*>(e.payload);
@@ -232,6 +240,10 @@ void WebInterfaceModule::loop()
         vTaskDelay(pdMS_TO_TICKS(25));
         return;
     }
+
+#if defined(FLOW_PROFILE_WAVESHARE)
+    refreshIoResponseCaches_();
+#endif
 
     const bool wsClientActive = started_ && (wsLog_.count() > 0U);
     const bool flowSourceActive = wsClientActive && (wsActiveSource_() == 1U) && bridgeUartEnabled_;

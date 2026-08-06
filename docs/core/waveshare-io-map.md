@@ -33,8 +33,11 @@ en entrée ou en sortie. GPIO45 n'est pas réservé à Venice/Tx433.
 ## Binding ports
 
 Chaque entrée de `kBindingPorts` porte un `boardLabel` correspondant au marquage
-matériel (`GPIO04`, `GPA0`, `GPB0`, `EXIO1`, etc.). L'API `/api/io/summary`
-l'expose dans le champ `board_port`, accompagné du champ `direction` (`input` ou
+matériel (`GPIO04`, `GPA0`, `GPB0`, `EXIO1`, etc.). L'API `/api/io/topology`
+expose la configuration stable des ports et des slots, tandis que `/api/io/runtime`
+expose leurs états et valeurs actualisés. Les deux réponses sont préparées dans des
+tampons bornés en PSRAM avant leur transmission HTTP.
+La topologie expose le marquage dans le champ `board_port`, accompagné du champ `direction` (`input` ou
 `output`). La page **Entrées/Sorties** affiche le nom physique et le sens du port
 séparément du numéro de canal interne du driver. La colonne `IoId` contient l'identifiant
 numérique de l'endpoint lié, ou « Non affecté » lorsque le port est libre. Dans la table

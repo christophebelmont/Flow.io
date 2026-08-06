@@ -2105,6 +2105,7 @@
     let flowStatusReqSeq = 0;
     let ioSummaryReqSeq = 0;
     let ioSummaryLoadedOnce = false;
+    let ioTopologyCache = null;
     fieldApplyCheckIcon = iconCheckText();
     const flowCfgBackupFormat = 'flowio-configstore-backup';
     const flowCfgBackupVersion = 1;
@@ -5468,17 +5469,75 @@
       }
     }
 
-    async function fetchIoSummary() {
-      const data = await fetchOkJson('/api/io/summary', { cache: 'no-store' }, 'lecture entrées/sorties indisponible');
-      if (!data || data.ok !== true) throw new Error('résumé entrées/sorties indisponible');
+    function mergeIoTopologyAndRuntime(topology, runtime) {
+      const bindingRuntime = new Map(
+        (Array.isArray(runtime && runtime.binding_ports) ? runtime.binding_ports : [])
+          .map((row) => [Number(row && row.port_id), row])
+      );
+      const ioRuntime = new Map(
+        (Array.isArray(runtime && runtime.io_slots) ? runtime.io_slots : [])
+          .map((row) => [Number(row && row.domain_slot_id), row])
+      );
+      const domainRuntime = new Map(
+        (Array.isArray(runtime && runtime.domain_slots) ? runtime.domain_slots : [])
+          .map((row) => [Number(row && row.domain_slot_id), row])
+      );
+
+      return {
+        ok: true,
+        summary: runtime && runtime.summary,
+        drivers: Array.isArray(runtime && runtime.drivers) ? runtime.drivers : [],
+        binding_ports: (Array.isArray(topology && topology.binding_ports) ? topology.binding_ports : [])
+          .map((row) => Object.assign({}, row, bindingRuntime.get(Number(row && row.port_id)) || {})),
+        io_slots: (Array.isArray(topology && topology.io_slots) ? topology.io_slots : [])
+          .map((row) => Object.assign({}, row, ioRuntime.get(Number(row && row.domain_slot_id)) || {})),
+        domain_slots: (Array.isArray(topology && topology.domain_slots) ? topology.domain_slots : [])
+          .map((row) => Object.assign({}, row, domainRuntime.get(Number(row && row.domain_slot_id)) || {})),
+        error_slots: Array.isArray(runtime && runtime.error_slots) ? runtime.error_slots : []
+      };
+    }
+
+    async function fetchIoTopology(forceRefresh) {
+      if (!forceRefresh && ioTopologyCache) return ioTopologyCache;
+      const data = await fetchOkJson(
+        '/api/io/topology',
+        { cache: 'no-store' },
+        'topologie entrées/sorties indisponible'
+      );
+      ioTopologyCache = data;
       return data;
+    }
+
+    async function fetchIoRuntime() {
+      return fetchOkJson(
+        '/api/io/runtime',
+        { cache: 'no-store' },
+        'état entrées/sorties indisponible'
+      );
+    }
+
+    async function fetchIoSummary(forceTopologyRefresh) {
+      let results = await Promise.all([
+        fetchIoTopology(!!forceTopologyRefresh),
+        fetchIoRuntime()
+      ]);
+      let topology = results[0];
+      let runtime = results[1];
+      const topologyRevision = Number(topology && topology.revision);
+      const runtimeRevision = Number(runtime && runtime.topology_revision);
+      if (Number.isFinite(runtimeRevision) && runtimeRevision !== topologyRevision) {
+        results = await Promise.all([fetchIoTopology(true), fetchIoRuntime()]);
+        topology = results[0];
+        runtime = results[1];
+      }
+      return mergeIoTopologyAndRuntime(topology, runtime);
     }
 
     async function refreshIoSummary(forceRefresh) {
       const reqSeq = ++ioSummaryReqSeq;
       if (forceRefresh || !ioSummaryLoadedOnce) renderIoSummarySkeleton();
       try {
-        const data = await fetchIoSummary();
+        const data = await fetchIoSummary(forceRefresh || !ioTopologyCache);
         if (reqSeq !== ioSummaryReqSeq) return;
         ioSummaryLoadedOnce = true;
         renderIoSummary(data);
