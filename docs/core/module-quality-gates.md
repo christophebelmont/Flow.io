@@ -5,22 +5,22 @@ Elle remplace l'ancienne matrice historique `FlowIO` / `Supervisor` par une
 vue centrée sur le profil réellement compilé et instancié par
 `src/Profiles/Waveshare`.
 
-Dernière analyse: 2026-06-13.  
+Dernière vérification: 2026-08-09.
 Commande de vérification: `~/.platformio/penv/bin/pio run -e Waveshare-ESP32-S3`.
 
 Résultat build:
 
 - statut: succès
-- génération cfgdocs: `docs=514`, `cfgmods=93`, `modules web chunks=118`
-- image: `1 946 862` octets sur `2 097 152` octets, soit `92,8 %` de la
+- génération cfgdocs: `docs=624`, `cfgmods=107`, `modules web chunks=134`
+- image: `2 055 846` octets sur `6 553 600` octets, soit `31,4 %` de la
   partition applicative
-- RAM PlatformIO: `124 588` octets sur `327 680`, soit `38,0 %`
-- DIRAM résumé linker: `209 026` octets utilisés sur `341 760`, soit `61,16 %`
+- RAM PlatformIO: `106 916` octets sur `327 680`, soit `32,6 %`
+- DIRAM résumé linker: `191 354` octets utilisés sur `341 760`, soit `55,99 %`
 
-Conclusion globale: le profil est compilable et structurellement cohérent, mais
-la marge flash est faible. Les modules réseau, interface web, MQTT, OTA, IO et
-logique piscine doivent donc être évalués aussi sur leur coût binaire et leur
-capacité à rester sobres.
+Conclusion globale: le profil est compilable et structurellement cohérent avec le
+TFT actif. La partition OTA 16 Mio conserve une marge applicative confortable; les
+modules réseau, interface web, MQTT, OTA, IO et logique piscine restent à surveiller
+pour leur consommation de RAM interne.
 
 ## Périmètre Waveshare
 
@@ -32,30 +32,32 @@ dans `src/Profiles/Waveshare/WaveshareBootstrap.cpp`.
 Modules enregistrés au runtime:
 
 1. `loghub`
-2. `log.bootcapture` si `FLOW_ENABLE_BOOT_LOG_CAPTURE=1` (actif dans cet env)
-3. `log.dispatcher`
-4. `log.sink.serial`
-5. `eventbus`
-6. `config`
-7. `datastore`
-8. `cmd`
-9. `hmi.udp.server`
-10. `hmi`
-11. `hmi.buzzer`
-12. `alarms`
-13. `ethernet`
-14. `wifi`
-15. `wifiprov`
-16. `webinterface`
-17. `fwupdate`
-18. `time`
-19. `mqtt`
-20. `ha` seulement si `mqtt/enabled=true` dans NVS au boot
-21. `system`
-22. `io`
-23. `poollogic`
-24. `pooldev`
-25. `sysmon`
+2. `activitylog`
+3. `log.bootcapture` si `FLOW_ENABLE_BOOT_LOG_CAPTURE=1` (actif dans cet env)
+4. `log.dispatcher`
+5. `log.sink.serial`
+6. `eventbus`
+7. `config`
+8. `datastore`
+9. `cmd`
+10. `hmi.udp.server`
+11. `hmi`
+12. `hmi.buzzer`
+13. `alarms`
+14. `ethernet`
+15. `wifi`
+16. `wifiprov`
+17. `webinterface`
+18. `fwupdate`
+19. `tft.s3` si `FLOW_ENABLE_TFT_S3=1` (actif dans cet env)
+20. `time`
+21. `mqtt`
+22. `ha` seulement si `mqtt/enabled=true` dans NVS au boot
+23. `system`
+24. `io`
+25. `poollogic`
+26. `pooldev`
+27. `sysmon`
 
 Modules compilés mais non enregistrés par ce profil:
 
@@ -68,14 +70,13 @@ Modules exclus explicitement par `build_src_filter` de `Waveshare-ESP32-S3`:
 - modules `FlowConnectDisplay/*`
 - `i2ccfg.server`, `i2ccfg.client`
 - `SupervisorHMIModule`
-- `TFTModuleS3`
 
 Notes Waveshare importantes:
 
 - Ethernet W5500 activé par build flag `ENABLE_ETHERNET=1`; câblage dans
   `src/Board/WaveshareBoard.h`.
-- TFT ST7789 local désactivé dans ce profil: `TFTModuleS3` n'est pas compilé et
-  les pins TFT du board sont à `-1`.
+- TFT ST7789 local activé par `FLOW_ENABLE_TFT_S3=1`; GPIO21, 45, 1, 47, 2 et
+  48 sont réservés à l'affichage.
 - HMI locale principale: UART2 Nextion et endpoint UDP remote HMI, pilotés par
   `HMIModule` + `HmiUdpServerModule`.
 - Buzzer Waveshare dédié: `HMIBuzzerModule`, GPIO46, actif haut.
@@ -579,7 +580,7 @@ Rôle: transport MQTT, producteurs runtime/config, commandes entrantes.
 
 Points forts:
 
-- capacités Waveshare dans `WaveshareBoard.h`: stack `5712`, RX queue `8`,
+- capacités Waveshare dans `WaveshareBoard.h`: stack `7168`, RX queue `8`,
   producteurs `24`, jobs `192`, queues `80/80/128`
 - buffers Waveshare explicites: topic `70`, dynamic topic `160`, rx payload
   `384`, ack/reply/publish `1536`
@@ -606,7 +607,7 @@ Rôle: Home Assistant Discovery via MQTT.
 
 Points forts:
 
-- capacités Waveshare board: sensors `48`, binary sensors `6`, switches `16`,
+- capacités Waveshare board: sensors `48`, binary sensors `16`, switches `16`,
   numbers `30`, buttons `24`, selects `6`
 - mode one-shot activé par `FLOW_HA_ONESHOT_DISCOVERY=1`, adapté à la RAM
 - service `HAService`

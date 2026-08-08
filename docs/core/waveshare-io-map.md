@@ -6,6 +6,17 @@ Ce document est la référence du profil `Waveshare-ESP32-S3`. Il distingue troi
 - `io_slot`: endpoint logique publié par `IOModule` (`aNN`, `iNN`, `dNN`);
 - `domain_slot`: rôle métier Pool relié à un `io_slot`.
 
+La résolution se fait dans cet ordre:
+
+```text
+domain_slot (besoin métier) -> io_slot (endpoint stable) -> binding_port (ressource physique)
+```
+
+Le domaine choisit par exemple `ActuatorFiltrationPump -> d00`; la configuration de
+`d00` choisit ensuite le port physique `300 / EXIO1`. La valeur `binding_port=0`
+signifie « non connecté ». Un binding peut être changé en configuration sans modifier
+le rôle métier ni les topics runtime de l'IO slot.
+
 Les valeurs du profil ne nécessitent aucune migration NVS. La capacité IO compilée est
 `{16, 13, 16, 16, 13, 16}`: 16 analogiques, 13 entrées digitales, 16 sorties digitales,
 puis les trois capacités de configuration correspondantes.
@@ -27,10 +38,17 @@ puis les trois capacités de configuration correspondantes.
 | OneWire air | GPIO19 | DS18B20 air |
 
 GPIO19 et GPIO20 sont exclusivement utilisés par OneWire. GPIO3 n'est pas exposé.
-GPIO1, GPIO2, GPIO21, GPIO45, GPIO47 et GPIO48 sont disponibles comme GPIO standards
-en entrée ou en sortie. GPIO45 n'est pas réservé à Venice/Tx433.
+Dans l'environnement de production `Waveshare-ESP32-S3`, le TFT local est actif et
+réserve GPIO21 (backlight), GPIO45 (CS), GPIO1 (DC), GPIO47 (RST), GPIO2 (MOSI) et
+GPIO48 (SCLK). Les identifiants de binding génériques correspondants restent déclarés
+dans `kBindingPorts` pour les builds sans TFT, mais ils ne doivent pas être affectés
+tant que `FLOW_ENABLE_TFT_S3=1`.
 
 ## Binding ports
+
+Le profil déclare 64 binding ports: 21 sources analogiques, 21 entrées digitales et
+22 sorties digitales. Un binding port décrit une capacité physique; il ne crée un
+endpoint runtime que lorsqu'un IO slot lui est affecté.
 
 Chaque entrée de `kBindingPorts` porte un `boardLabel` correspondant au marquage
 matériel (`GPIO04`, `GPA0`, `GPB0`, `EXIO1`, etc.). L'API `/api/io/topology`
@@ -91,12 +109,12 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 | 224 | `PortMcpInGpa4` | MCP GPA4 / canal 4 | `i10`, Chlorine Level |
 | 225 | `PortMcpInGpa5` | MCP GPA5 / canal 5 | `i11`, Pool Level |
 | 226 | `PortMcpInGpa6` | MCP GPA6 / canal 6 | `i12`, Water Meter |
-| 240 | `PortGpio1Input` | GPIO1 | Non affecté |
-| 241 | `PortGpio2Input` | GPIO2 | Non affecté |
-| 242 | `PortGpio21Input` | GPIO21 | Non affecté |
-| 243 | `PortGpio45Input` | GPIO45 | Non affecté |
-| 244 | `PortGpio47Input` | GPIO47 | Non affecté |
-| 245 | `PortGpio48Input` | GPIO48 | Non affecté |
+| 240 | `PortGpio1Input` | GPIO1 | Réservé TFT en production |
+| 241 | `PortGpio2Input` | GPIO2 | Réservé TFT en production |
+| 242 | `PortGpio21Input` | GPIO21 | Réservé TFT en production |
+| 243 | `PortGpio45Input` | GPIO45 | Réservé TFT en production |
+| 244 | `PortGpio47Input` | GPIO47 | Réservé TFT en production |
+| 245 | `PortGpio48Input` | GPIO48 | Réservé TFT en production |
 
 ### Sorties digitales
 
@@ -118,16 +136,27 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 | 325 | `PortMcpOutGpb5` | MCP GPB5 / canal 13 | `d13` |
 | 326 | `PortMcpOutGpb6` | MCP GPB6 / canal 14 | `d14` |
 | 327 | `PortMcpOutGpb7` | MCP GPB7 / canal 15 | `d15` |
-| 340 | `PortGpio1Output` | GPIO1 | Non affecté |
-| 341 | `PortGpio2Output` | GPIO2 | Non affecté |
-| 342 | `PortGpio21Output` | GPIO21 | Non affecté |
-| 343 | `PortGpio45Output` | GPIO45 | Non affecté |
-| 344 | `PortGpio47Output` | GPIO47 | Non affecté |
-| 345 | `PortGpio48Output` | GPIO48 | Non affecté |
+| 340 | `PortGpio1Output` | GPIO1 | Réservé TFT en production |
+| 341 | `PortGpio2Output` | GPIO2 | Réservé TFT en production |
+| 342 | `PortGpio21Output` | GPIO21 | Réservé TFT en production |
+| 343 | `PortGpio45Output` | GPIO45 | Réservé TFT en production |
+| 344 | `PortGpio47Output` | GPIO47 | Réservé TFT en production |
+| 345 | `PortGpio48Output` | GPIO48 | Réservé TFT en production |
 
 Un GPIO standard ne doit pas être lié simultanément à un slot d'entrée et à un slot de sortie.
+Avec le TFT actif, les six GPIO réservés ne doivent être liés à aucun IO slot.
 
 ## IO slots
+
+Les IO slots portent les identifiants runtime stables publiés par `IOModule`:
+
+- `a00..a15` pour les mesures analogiques;
+- `i00..i12` pour les entrées digitales;
+- `d00..d15` pour les sorties digitales.
+
+Leur nom, leur calibration, leur polarité, leur mode et leur `binding_port` sont
+configurables et persistés en NVS. Les tableaux suivants décrivent les valeurs par
+défaut du profil.
 
 ### Entrées analogiques
 
@@ -201,6 +230,10 @@ politique existante de préservation du latch TCA9554 lors d'un redémarrage cha
 
 Seuls les rôles métier occupent un domain slot. Les DIN génériques `i00..i07`, `d06`,
 les sorties MCP `d08..d15` et les GPIO standards n'en occupent pas.
+
+Un domain slot ne connaît pas directement le matériel. Il fixe le type d'endpoint et
+l'IO slot attendu par `PoolLogicModule` ou `PoolDeviceModule`; le binding physique est
+résolu ensuite par `IOModule`.
 
 | Domain ID | Constante | Type | IO slot |
 |---:|---|---|---|

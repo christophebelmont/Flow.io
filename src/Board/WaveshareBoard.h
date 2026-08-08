@@ -7,8 +7,8 @@
  *
  * This file is the hardware description for the Waveshare ESP32-S3 based
  * Waveshare target. It is intentionally kept as a single, editable map of the
- * board: serial ports, I2C buses, 1-Wire probes, IO points, disabled TFT
- * wiring, supervisor inputs, MQTT/Home Assistant sizing, and Ethernet wiring.
+ * board: serial ports, I2C buses, 1-Wire probes, IO points, TFT wiring,
+ * supervisor inputs, MQTT/Home Assistant sizing, and Ethernet wiring.
  *
  * When adapting the firmware to a modified board, change the values here
  * first. The rest of the application consumes this profile through BoardSpec.
@@ -292,6 +292,7 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
     {"digital_in8_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn8, 11, false, 0},
     {"water_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe1, 20, false, 0},
     {"air_temperature_ds18b20", IoCapability::OneWireTemp, BoardSignal::TempProbe2, 19, false, 0},
+#if !defined(FLOW_ENABLE_TFT_S3) || (FLOW_ENABLE_TFT_S3 == 0)
     {"gpio1_input", IoCapability::DigitalIn, BoardSignal::None, 1, false, 0},
     {"gpio1_output", IoCapability::DigitalOut, BoardSignal::None, 1, false, 0},
     {"gpio2_input", IoCapability::DigitalIn, BoardSignal::None, 2, false, 0},
@@ -304,15 +305,15 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
     {"gpio47_output", IoCapability::DigitalOut, BoardSignal::None, 47, false, 0},
     {"gpio48_input", IoCapability::DigitalIn, BoardSignal::None, 48, false, 0},
     {"gpio48_output", IoCapability::DigitalOut, BoardSignal::None, 48, false, 0},
+#endif
 };
 
 /*
  * Local ST7789 TFT display wiring and timing.
  *
- * TFT support is intentionally disabled on the Waveshare ESP32-S3 target. Keep
- * the pin entries at -1 so these ESP32 GPIOs are not reserved by this board
- * profile. The previous TFT wiring is kept in comments next to each disabled
- * field for reference.
+ * TFT support is enabled by the Waveshare-ESP32-S3 environment. While enabled,
+ * these pins are omitted from the generic IO point table above so the display
+ * owns them exclusively.
  *
  * Field order:
  *   resX, resY, rotation, colStart, rowStart, backlightPin, csPin, dcPin,
@@ -329,8 +330,7 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
  *   Controller pixel offsets. Keep 0 unless the rendered image is shifted.
  *
  * backlightPin / csPin / dcPin / rstPin / misoPin / mosiPin / sclkPin:
- *   GPIO wiring for the TFT backlight and SPI bus. Use -1 when TFT support is
- *   disabled or the signal is unwired.
+ *   GPIO wiring for the TFT backlight and SPI bus. Use -1 for an unwired MISO.
  *
  * swapColorBytes / invertColors:
  *   Color-format corrections required by some ST7789 panels.
@@ -344,9 +344,7 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
  *
  * NVS behavior:
  *   Not stored in NVS. The display resolution, SPI pins, color flags, SPI clock,
- *   and render gap are compiled hardware settings and always apply. The
- *   disabled pin values below therefore release the old TFT GPIO reservations at
- *   build time.
+ *   and render gap are compiled hardware settings and always apply.
  */
 inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
     240,       // resX: horizontal pixels.
@@ -354,13 +352,23 @@ inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
     1,         // rotation.
     0,         // colStart.
     0,         // rowStart.
-    -1,        // backlightPin disabled; was GPIO1 / TFT_BL.
-    -1,        // csPin disabled; was GPIO21 / SPI_CS.
-    -1,        // dcPin disabled; was GPIO45 / TFT_DC.
-    -1,        // rstPin disabled; was GPIO2 / TFT_RES.
-    -1,        // misoPin disabled; was not wired for this TFT.
-    -1,        // mosiPin disabled; was GPIO47 / SPI_MOSI.
-    -1,        // sclkPin disabled; was GPIO48 / SPI_SCL.
+#if defined(FLOW_ENABLE_TFT_S3) && (FLOW_ENABLE_TFT_S3 != 0)
+    21,        // backlightPin: TFT_BL.
+    45,        // csPin: SPI_CS.
+    1,         // dcPin: TFT_DC.
+    47,        // rstPin: TFT_RES.
+    -1,        // misoPin: not wired for this TFT.
+    2,         // mosiPin: SPI_MOSI.
+    48,        // sclkPin: SPI_SCLK.
+#else
+    -1,        // backlightPin: TFT disabled in this environment.
+    -1,        // csPin: TFT disabled in this environment.
+    -1,        // dcPin: TFT disabled in this environment.
+    -1,        // rstPin: TFT disabled in this environment.
+    -1,        // misoPin: not wired for this TFT.
+    -1,        // mosiPin: TFT disabled in this environment.
+    -1,        // sclkPin: TFT disabled in this environment.
+#endif
     false,     // swapColorBytes.
     true,      // invertColors.
     40000000U, // spiHz.
@@ -375,7 +383,7 @@ inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
  *   factoryResetDebounceMs.
  *
  * pirPin:
- *   Optional local motion sensor GPIO. Kept disabled while TFT support is off.
+ *   Optional local motion sensor GPIO. No PIR sensor is assigned on this board.
  *
  * pirDebounceMs / pirActiveHigh:
  *   Debounce time and polarity for the PIR input.
@@ -388,7 +396,9 @@ inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
  *   Debounce time for the factory-reset input if it is enabled.
  *
  * NVS behavior:
- *   Not stored in NVS while TFTModuleS3 support is disabled for this profile.
+ *   pirPin is copied into the TFTModuleS3 "motion_gpio" persistent config as
+ *   the boot default; an existing NVS value overrides it. The debounce and
+ *   polarity settings are compiled hardware settings.
  */
 inline constexpr SupervisorInputSpec kWaveshareESP32S3Inputs{
     -1,   // pirPin disabled; was GPIO11 motion sensor for TFT wake.

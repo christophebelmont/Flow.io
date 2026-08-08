@@ -1,10 +1,27 @@
-# flow.io
+# flow.io sur Waveshare ESP32-S3
 
-flow.io est une plateforme autonome permettant de gérer automatiquement votre piscine: elle automatise la gestion de la qualité de l'eau, réduit les opérations manuelles, et donne une supervision claire des équipements en local comme à distance.
+flow.io est une plateforme autonome de gestion de piscine. Son matériel de référence est désormais le module industriel **Waveshare ESP32-S3-POE-ETH-8DI-8RO**, piloté par l'environnement PlatformIO `Waveshare-ESP32-S3`.
 
 <p align="center">
-  <img src="docs/pictures/Logo_flowio.png" alt="flow.io" width="260">
+  <img src="docs/pictures/waveshare-esp32-s3-poe-eth-8di-8ro.png" alt="Module Waveshare ESP32-S3-POE-ETH-8DI-8RO utilisé par flow.io" width="520">
 </p>
+
+<p align="center">
+  <a href="https://www.waveshare.com/esp32-s3-eth-8di-8ro.htm">Waveshare ESP32-S3-POE-ETH-8DI-8RO</a> — 8 entrées digitales isolées, 8 relais, Ethernet W5500, Wi-Fi/BLE et RS485.
+</p>
+
+Le profil Waveshare réunit sur un même ESP32-S3 la logique piscine, les entrées/sorties, Ethernet et Wi-Fi, le provisioning, l'interface web, MQTT, Home Assistant, les mises à jour et l'interface HMI. Les anciens profils `FlowIO` et `Supervisor` restent présents dans le dépôt pour les installations historiques.
+
+Pour démarrer:
+
+```sh
+~/.platformio/penv/bin/pio run -e Waveshare-ESP32-S3
+~/.platformio/penv/bin/pio run -e Waveshare-ESP32-S3 -t upload
+```
+
+- [Mise en service du profil Waveshare](docs/integration/mise-en-service.md)
+- [Cartographie complète des binding ports, IO slots et domain slots](docs/core/waveshare-io-map.md)
+- [Documentation technique](docs/README.md)
 
 ## Pourquoi flow.io
 
@@ -19,11 +36,27 @@ flow.io apporte un pilotage cohérent de bout en bout.
 
 ![PoolMaster Ecosystem](docs/pictures/PoolMaster%20Ecosystem.png)
 
-## Cartes matérielles supportées
+## Matériel de référence
 
-flow.io peut fonctionner avec plusieurs cartes matérielles selon le niveau d'intégration recherché: carte au format PoolMaster pour une intégration complète dans l'écosystème historique, carte au format DIN pour une installation propre en coffret électrique, ou cartes industrielles prêtes à câbler.
+Le profil `Waveshare-ESP32-S3` exploite notamment:
 
-La dernière version tire notamment profit de l'ESP32-S3 embarqué dans la carte [WAVESHARE ESP32-S3-ETH-8DI-8RO](https://www.waveshare.com/esp32-s3-eth-8di-8ro.htm). Cette carte industrielle regroupe 8 entrées digitales, 8 relais, Ethernet, Wi-Fi, Bluetooth LE, RS485, USB-C, alimentation large plage, protections d'isolation, borniers de câblage et boîtier ABS montable sur rail DIN. Elle inclut aussi une horloge temps réel PCF85063ATL, utile pour conserver l'heure et sécuriser les plannings lorsque le réseau ou le NTP ne sont pas disponibles. L'ensemble permet de construire une installation flow.io à prix abordable, dans un format compact avec une finition professionnelle.
+- les 8 entrées digitales isolées de la carte, exposées par défaut comme `i00` à `i07`;
+- les 8 relais pilotés par le TCA9554, exposés comme `d00` à `d07`;
+- l'Ethernet 10/100 via W5500, avec repli Wi-Fi et provisioning local;
+- l'horloge temps réel PCF85063ATL, le buzzer et la LED RGB;
+- un bus I2C d'extension pour les convertisseurs, capteurs et expanders du profil;
+- deux bus 1-Wire pour les sondes de température d'eau et d'air;
+- un écran local ST7789 optionnel, câblé par le profil de production.
+
+Le modèle d'E/S sépare volontairement trois niveaux:
+
+| Niveau | Rôle | Exemple |
+|---|---|---|
+| `domain_slot` | besoin métier piscine | `ActuatorFiltrationPump` |
+| `io_slot` | endpoint logique stable | `d00` |
+| `binding_port` | ressource physique sélectionnée | `300` / `EXIO1` |
+
+La chaîne complète est donc `domain_slot -> io_slot -> binding_port`. Elle permet de conserver une logique métier stable tout en réaffectant un capteur ou un actionneur à une autre ressource physique. La [cartographie Waveshare](docs/core/waveshare-io-map.md) inventorie tous les ports, slots et bindings par défaut.
 
 ## Surveillance et contrôle en continu
 
@@ -106,7 +139,3 @@ La documentation complète (architecture, services Core, flux EventBus/DataStore
 - [Documentation complète](docs/README.md)
 - [Protocole flow.io <-> Supervisor (I2C cfg/status)](docs/core/flow-supervisor-i2c-protocol.md)
 - [Quality Gates Modules (notes + description des 10 points)](docs/core/module-quality-gates.md)
-
-## Documentation utilisateur
-
-- [Documentation utilisateurs (PDF)](docs/Documentation%20utilisateur.pdf)
