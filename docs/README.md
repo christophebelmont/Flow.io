@@ -1,12 +1,34 @@
-# Documentation flow.io — Waveshare ESP32-S3
+# Documentation flow.io
 
-Le profil matériel et firmware de référence de flow.io est désormais `Waveshare-ESP32-S3`. Il cible le module industriel **Waveshare ESP32-S3-POE-ETH-8DI-8RO** et rassemble la logique piscine, les E/S, le réseau, l'interface web, MQTT, Home Assistant, les mises à jour et l'HMI dans un même ESP32-S3.
+<p align="center">
+  <img src="pictures/Logo_flowio.png" alt="Logo flow.io" width="260">
+</p>
+
+Le profil matériel et firmware de référence de flow.io est `Waveshare-ESP32-S3`. Il rassemble la logique piscine, les E/S, le réseau, l'interface web, MQTT, Home Assistant, les mises à jour et l'HMI dans un même ESP32-S3.
+
+## Ensemble matériel de référence
+
+### Contrôleur Waveshare ESP32-S3
+
+Le firmware cible le module industriel **Waveshare ESP32-S3-POE-ETH-8DI-8RO**.
 
 <p align="center">
   <img src="pictures/waveshare-esp32-s3-poe-eth-8di-8ro.png" alt="Module Waveshare ESP32-S3-POE-ETH-8DI-8RO utilisé par flow.io" width="520">
 </p>
 
-La carte de référence fournit 8 entrées digitales isolées, 8 relais, Ethernet W5500, Wi-Fi/BLE, RS485, RTC, buzzer, LED RGB et boîtier rail DIN. Le profil flow.io complète ces ressources avec ses capteurs analogiques, ses sondes 1-Wire et ses extensions I2C. Voir la [fiche officielle Waveshare](https://www.waveshare.com/esp32-s3-eth-8di-8ro.htm).
+La carte fournit 8 entrées digitales isolées, 8 relais, Ethernet W5500, Wi-Fi/BLE, RS485, RTC, buzzer, LED RGB et boîtier rail DIN. Le profil flow.io complète ces ressources avec ses capteurs analogiques, ses sondes 1-Wire et ses extensions I2C. Voir la [fiche officielle Waveshare](https://www.waveshare.com/esp32-s3-eth-8di-8ro.htm).
+
+### Carte flow.io Companion
+
+La carte **flow.io Companion** sert d'interface d'intégration entre le contrôleur Waveshare et les équipements de la piscine.
+
+<p align="center">
+  <img src="pictures/flowio-companion-waveshare.png" alt="Carte flow.io Companion pour Waveshare ESP32-S3" width="820">
+</p>
+
+Une nappe dédiée relie le connecteur d'extension du Waveshare à la Companion. Les signaux sont ainsi reportés sur des connecteurs et borniers clairement identifiés pour présenter directement les ports piscine: pH, ORP, pression et niveau d'eau, températures, niveaux des cuves, compteur d'eau, entrées digitales, I2C et HMI Nextion.
+
+Cette organisation facilite le raccordement des modules piscine dans un ensemble compact et intégré. Elle réduit les liaisons fil à fil, simplifie la mise en service et rend le câblage plus lisible et maintenable. Le Waveshare conserve l'exécution du firmware et le pilotage des E/S; la Companion assure leur présentation et leur distribution physique.
 
 ## Démarrage rapide
 

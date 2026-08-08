@@ -76,7 +76,23 @@ Ces entrées sont des IO génériques et n'ont pas de domain slot Pool par défa
 
 Toutes les sorties sont actives à l'état haut et démarrent à OFF. `d00` préserve l'état matériel du latch TCA9554 lors d'un redémarrage chaud.
 
-## 4. TFT local
+## 4. Raccorder la carte Companion
+
+La carte flow.io Companion se raccorde au connecteur d'extension du Waveshare au moyen d'une nappe dédiée. Cette liaison reporte les alimentations et signaux utiles vers les borniers fonctionnels de la Companion, sans modifier leur affectation logicielle.
+
+Procédure recommandée:
+
+1. couper toutes les alimentations du Waveshare, de la Companion et des équipements;
+2. raccorder la nappe sur les deux connecteurs en respectant son orientation et la broche 1;
+3. vérifier que chaque connecteur est complètement engagé et qu'aucune rangée n'est décalée;
+4. raccorder les capteurs et modules sur les ports fonctionnels de la Companion;
+5. contrôler la continuité et les tensions avant de remettre l'ensemble sous tension.
+
+La Companion présente notamment les raccordements pH, ORP, pression d'eau, températures d'eau et d'air, niveaux du bassin et des cuves, compteur d'eau, entrées digitales, extensions I2C et HMI Nextion. Elle permet ainsi de regrouper les modules piscine autour d'un câblage intégré plutôt que de les relier individuellement au connecteur interne du Waveshare.
+
+Les libellés de la Companion décrivent le câblage physique. La correspondance logicielle reste définie par la chaîne `domain_slot -> io_slot -> binding_port` documentée dans la [cartographie IO](../core/waveshare-io-map.md).
+
+## 5. TFT local
 
 Le build de production active `FLOW_ENABLE_TFT_S3=1` et réserve:
 
@@ -91,7 +107,7 @@ Le build de production active `FLOW_ENABLE_TFT_S3=1` et réserve:
 
 Ne pas affecter les binding ports génériques associés à ces GPIO tant que le TFT est actif.
 
-## 5. Extensions et rôles métier
+## 6. Extensions et rôles métier
 
 Les capteurs métier et les extensions MCP23017 ne correspondent pas nécessairement aux huit borniers DI/relai intégrés. Leur chaîne d'affectation est:
 
@@ -107,7 +123,7 @@ Exemples:
 
 Consulter la [cartographie exhaustive](../core/waveshare-io-map.md) avant de câbler les capteurs ou de modifier un binding.
 
-## 6. Vérifications au premier démarrage
+## 7. Vérifications au premier démarrage
 
 Vérifier dans le moniteur série:
 
@@ -120,6 +136,6 @@ Vérifier dans le moniteur série:
 
 Dans l'interface web, la page **Entrées/Sorties** permet de contrôler la topologie, les valeurs runtime et l'affectation des binding ports. Vérifier d'abord les entrées sans charge, puis chaque relais avec un circuit de test adapté avant de raccorder les équipements piscine.
 
-## 7. Profils secondaires
+## 8. Profils secondaires
 
 Les environnements `FlowIO` et `Supervisor` restent compilables pour les installations historiques à deux ESP32. Ils ne doivent pas être utilisés pour une nouvelle installation Waveshare sauf besoin de compatibilité explicite.

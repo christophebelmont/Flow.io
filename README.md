@@ -1,6 +1,16 @@
-# flow.io sur Waveshare ESP32-S3
+# flow.io
 
-flow.io est une plateforme autonome de gestion de piscine. Son matériel de référence est désormais le module industriel **Waveshare ESP32-S3-POE-ETH-8DI-8RO**, piloté par l'environnement PlatformIO `Waveshare-ESP32-S3`.
+<p align="center">
+  <img src="docs/pictures/Logo_flowio.png" alt="Logo flow.io" width="260">
+</p>
+
+flow.io est une plateforme autonome de gestion de piscine: elle automatise la qualité de l'eau, le fonctionnement des équipements et la supervision locale ou distante.
+
+## Matériel de référence: Waveshare et carte Companion
+
+### Contrôleur Waveshare ESP32-S3
+
+Le contrôleur principal est le module industriel **Waveshare ESP32-S3-POE-ETH-8DI-8RO**, piloté par l'environnement PlatformIO `Waveshare-ESP32-S3`.
 
 <p align="center">
   <img src="docs/pictures/waveshare-esp32-s3-poe-eth-8di-8ro.png" alt="Module Waveshare ESP32-S3-POE-ETH-8DI-8RO utilisé par flow.io" width="520">
@@ -10,9 +20,38 @@ flow.io est une plateforme autonome de gestion de piscine. Son matériel de réf
   <a href="https://www.waveshare.com/esp32-s3-eth-8di-8ro.htm">Waveshare ESP32-S3-POE-ETH-8DI-8RO</a> — 8 entrées digitales isolées, 8 relais, Ethernet W5500, Wi-Fi/BLE et RS485.
 </p>
 
-Le profil Waveshare réunit sur un même ESP32-S3 la logique piscine, les entrées/sorties, Ethernet et Wi-Fi, le provisioning, l'interface web, MQTT, Home Assistant, les mises à jour et l'interface HMI. Les anciens profils `FlowIO` et `Supervisor` restent présents dans le dépôt pour les installations historiques.
+Le profil réunit sur un même ESP32-S3 la logique piscine, les entrées/sorties, Ethernet et Wi-Fi, le provisioning, l'interface web, MQTT, Home Assistant, les mises à jour et l'interface HMI. Il exploite aussi le RTC, le buzzer, la LED RGB, deux bus 1-Wire et un bus I2C d'extension.
 
-Pour démarrer:
+### Carte flow.io Companion
+
+La carte **flow.io Companion** complète le module Waveshare pour constituer un ensemble de raccordement intégré destiné à la piscine.
+
+<p align="center">
+  <img src="docs/pictures/flowio-companion-waveshare.png" alt="Carte flow.io Companion pour Waveshare ESP32-S3" width="820">
+</p>
+
+Une nappe dédiée raccorde directement le connecteur d'extension du Waveshare à la carte Companion. Elle reporte les signaux utiles sur des borniers et connecteurs identifiés par fonction afin de présenter clairement les ports piscine et de faciliter le branchement des modules:
+
+- sondes pH, ORP et pression d'eau;
+- températures d'eau et d'air;
+- niveaux du bassin et des cuves de traitement;
+- compteur d'eau et entrées digitales Waveshare;
+- extensions I2C, afficheur Nextion et connecteurs internes;
+- alimentations et points de raccordement adaptés aux modules intégrés.
+
+Le Waveshare reste le contrôleur qui exécute le firmware; la Companion organise et distribue son câblage. Elle évite les liaisons fil à fil dispersées et permet de monter les modules piscine de manière plus lisible, compacte et maintenable.
+
+Le logiciel conserve trois niveaux indépendants du format physique de la Companion:
+
+| Niveau | Rôle | Exemple |
+|---|---|---|
+| `domain_slot` | besoin métier piscine | `ActuatorFiltrationPump` |
+| `io_slot` | endpoint logique stable | `d00` |
+| `binding_port` | ressource physique sélectionnée | `300` / `EXIO1` |
+
+La chaîne complète est `domain_slot -> io_slot -> binding_port`. La [cartographie Waveshare](docs/core/waveshare-io-map.md) inventorie tous les ports, slots et bindings par défaut.
+
+### Compiler le firmware principal
 
 ```sh
 ~/.platformio/penv/bin/pio run -e Waveshare-ESP32-S3
@@ -35,28 +74,6 @@ Sans orchestration continue, on observe vite:
 flow.io apporte un pilotage cohérent de bout en bout.
 
 ![PoolMaster Ecosystem](docs/pictures/PoolMaster%20Ecosystem.png)
-
-## Matériel de référence
-
-Le profil `Waveshare-ESP32-S3` exploite notamment:
-
-- les 8 entrées digitales isolées de la carte, exposées par défaut comme `i00` à `i07`;
-- les 8 relais pilotés par le TCA9554, exposés comme `d00` à `d07`;
-- l'Ethernet 10/100 via W5500, avec repli Wi-Fi et provisioning local;
-- l'horloge temps réel PCF85063ATL, le buzzer et la LED RGB;
-- un bus I2C d'extension pour les convertisseurs, capteurs et expanders du profil;
-- deux bus 1-Wire pour les sondes de température d'eau et d'air;
-- un écran local ST7789 optionnel, câblé par le profil de production.
-
-Le modèle d'E/S sépare volontairement trois niveaux:
-
-| Niveau | Rôle | Exemple |
-|---|---|---|
-| `domain_slot` | besoin métier piscine | `ActuatorFiltrationPump` |
-| `io_slot` | endpoint logique stable | `d00` |
-| `binding_port` | ressource physique sélectionnée | `300` / `EXIO1` |
-
-La chaîne complète est donc `domain_slot -> io_slot -> binding_port`. Elle permet de conserver une logique métier stable tout en réaffectant un capteur ou un actionneur à une autre ressource physique. La [cartographie Waveshare](docs/core/waveshare-io-map.md) inventorie tous les ports, slots et bindings par défaut.
 
 ## Surveillance et contrôle en continu
 
