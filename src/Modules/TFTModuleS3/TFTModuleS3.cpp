@@ -409,11 +409,6 @@ TFTModuleS3::TFTModuleS3(const BoardSpec& board)
     : displayCfg_(displaySpecFromBoard_(board)),
       display_(&spiBus_, displayCfg_.csPin, displayCfg_.dcPin, displayCfg_.rstPin)
 {
-    const SupervisorBoardSpec* sup = boardSupervisorConfig(board);
-    const SupervisorBoardSpec& cfg = sup ? *sup : fallbackBoardSpec_();
-    cfgData_.motionGpio = cfg.inputs.pirPin;
-    pirDebounceMs_ = cfg.inputs.pirDebounceMs;
-    pirActiveHigh_ = cfg.inputs.pirActiveHigh;
     lastMotionMs_ = millis();
 
     for (uint8_t i = 0; i < DashboardSlotCount; ++i) {
@@ -509,7 +504,7 @@ void TFTModuleS3::init(ConfigStore& cfg, ServiceRegistry& services)
     constexpr uint8_t module = (uint8_t)ConfigModuleId::TftS3;
     cfg.registerVar(enabledVar_, module, kCfgBranch);
     cfg.registerVar(autoOffVar_, module, kCfgBranch);
-    cfg.registerVar(motionGpioVar_, module, kCfgBranch);
+    cfg.registerVar(motionIoIdVar_, module, kCfgBranch);
 
     for (uint8_t i = 0; i < DashboardSlotCount; ++i) {
         const uint8_t branch = (uint8_t)(kCfgBranchSensorBase + i);
@@ -541,6 +536,7 @@ void TFTModuleS3::init(ConfigStore& cfg, ServiceRegistry& services)
 
 void TFTModuleS3::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
+    if (!ioSvc_) ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
     if (!cfgMqttPubConfigured_) {
         cfgMqttPub_.configure(this,
                               kCfgProducerId,
@@ -549,7 +545,7 @@ void TFTModuleS3::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
                               services);
         cfgMqttPubConfigured_ = true;
     }
-    updateMotionInput_();
+    resetMotionInput_();
     redrawRequested_ = true;
 }
 
@@ -600,7 +596,7 @@ void TFTModuleS3::onEvent_(const Event& e)
     if (e.id == EventId::ConfigChanged && e.payload && e.len >= sizeof(ConfigChangedPayload)) {
         const ConfigChangedPayload* p = static_cast<const ConfigChangedPayload*>(e.payload);
         if (p->moduleId == (uint8_t)ConfigModuleId::TftS3) {
-            updateMotionInput_();
+            resetMotionInput_();
             invalidateRenderCache_();
             redrawRequested_ = true;
         }
@@ -658,49 +654,46 @@ void TFTModuleS3::applyBacklight_(bool on)
     }
 }
 
-void TFTModuleS3::updateMotionInput_()
+void TFTModuleS3::resetMotionInput_()
 {
-    if (!cfgData_.enabled) {
-        appliedMotionGpio_ = -1;
-        motionInputConfigured_ = false;
-        pirRawState_ = false;
-        pirStableState_ = false;
-        pirDebounceChangedAtMs_ = millis();
-        return;
-    }
-
-    int32_t pin = cfgData_.motionGpio;
-    if (pin < 0 || pin > 48) pin = -1;
-    if (motionInputConfigured_ && appliedMotionGpio_ == pin) return;
-
-    appliedMotionGpio_ = pin;
-    motionInputConfigured_ = (pin >= 0);
-    pirRawState_ = false;
-    pirStableState_ = false;
-    pirDebounceChangedAtMs_ = millis();
-    if (motionInputConfigured_) {
-        pinMode((uint8_t)appliedMotionGpio_, INPUT);
-        lastMotionMs_ = millis();
-    }
+    motionInputReady_ = false;
+    motionReadErrorLogged_ = false;
+    lastMotionMs_ = millis();
+    if (cfgData_.enabled && displayReady_) applyBacklight_(true);
 }
 
 void TFTModuleS3::updateBacklight_()
 {
-    if (!cfgData_.autoOff60s || !motionInputConfigured_) {
+    if (!cfgData_.autoOff60s) {
         applyBacklight_(true);
         return;
     }
 
     const uint32_t now = millis();
-    const bool rawActive = (digitalRead((uint8_t)appliedMotionGpio_) == (pirActiveHigh_ ? HIGH : LOW));
-    if (rawActive != pirRawState_) {
-        pirRawState_ = rawActive;
-        pirDebounceChangedAtMs_ = now;
+    uint8_t motionActive = 0U;
+    IoStatus status = IO_ERR_INVALID_ARG;
+    if (cfgData_.motionIoId >= IO_ID_DI_BASE && cfgData_.motionIoId < IO_ID_AI_BASE) {
+        status = (ioSvc_ && ioSvc_->readDigital)
+            ? ioSvc_->readDigital(ioSvc_->ctx, cfgData_.motionIoId, &motionActive, nullptr, nullptr)
+            : IO_ERR_NOT_READY;
     }
-    if ((now - pirDebounceChangedAtMs_) >= pirDebounceMs_ && pirStableState_ != pirRawState_) {
-        pirStableState_ = pirRawState_;
-        if (pirStableState_) lastMotionMs_ = now;
+    if (status != IO_OK) {
+        if (!motionReadErrorLogged_) {
+            LOGW("TFT motion input unavailable io_id=%u status=%u; backlight forced on",
+                 (unsigned)cfgData_.motionIoId,
+                 (unsigned)status);
+            motionReadErrorLogged_ = true;
+        }
+        motionInputReady_ = false;
+        lastMotionMs_ = now;
+        applyBacklight_(true);
+        return;
     }
+
+    if (!motionInputReady_) lastMotionMs_ = now;
+    motionInputReady_ = true;
+    motionReadErrorLogged_ = false;
+    if (motionActive != 0U) lastMotionMs_ = now;
     applyBacklight_((now - lastMotionMs_) < kBacklightTimeoutMs);
 }
 

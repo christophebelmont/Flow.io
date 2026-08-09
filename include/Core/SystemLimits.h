@@ -39,7 +39,10 @@ constexpr uint16_t LogQueueLen = 256;
  *  Sized to absorb startup bursts while limiting DRAM usage. */
 constexpr uint8_t EventQueueLen = 40;
 /** @brief Maximum number of EventBus subscribers (`EventBus::MAX_SUBSCRIBERS`). */
-constexpr uint8_t EventSubscribersMax = 50;
+#ifndef FLOW_EVENT_SUBSCRIBERS_MAX
+#define FLOW_EVENT_SUBSCRIBERS_MAX 50
+#endif
+constexpr uint8_t EventSubscribersMax = FLOW_EVENT_SUBSCRIBERS_MAX;
 
 /** @brief Core runtime limits shared by the module framework. */
 namespace Core {

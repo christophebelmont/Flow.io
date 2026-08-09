@@ -26,8 +26,7 @@ enum DomainSlot : DomainSlotId {
     ActuatorFillPump = 18,
     ActuatorChlorineGenerator = 19,
     ActuatorWaterHeater = 20,
-    // Kept outside the active Waveshare domain so shared modules still compile.
-    SensorWaterCounter = 21,
+    SensorWaterCounter = 21, // Kept outside the active Waveshare domain so shared modules still compile.
     ActuatorLights = 22
 #else
     SensorOrp = 1,
@@ -67,9 +66,9 @@ enum Device : PoolDeviceId {
 };
 
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-constexpr uint8_t DeviceCount = 7;
+constexpr uint8_t DeviceCount = 8;
 constexpr uint8_t SensorCount = 13;
-constexpr uint8_t DomainSlotCount = 20;
+constexpr uint8_t DomainSlotCount = 21;
 #else
 constexpr uint8_t DeviceCount = 8;
 constexpr uint8_t SensorCount = 10;

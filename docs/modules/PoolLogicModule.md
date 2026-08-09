@@ -66,14 +66,35 @@ Si une de ces conditions n'est pas remplie, `heat_assist` reste inactif.
 
 1. Si la pompe est déjà en marche, le chauffage suit une hystérésis classique autour de la consigne.
 2. Si la pompe est arrêtée en mode auto, le système lance une **filtration de sondage de 5 minutes**.
-3. Cette phase de sondage est répétée toutes les **30 minutes** en régime normal, puis toutes les **20 minutes** après un cycle de chauffe terminé.
+3. Sur le profil Waveshare ESP32-S3, cette phase est répétée selon un intervalle adaptatif de **20 à 60 minutes entre deux mesures validées**. Les profils historiques conservent la cadence de 30 minutes en régime normal, puis 20 minutes après un cycle de chauffe terminé.
 4. À la fin des 5 minutes, la température est lue.
 5. Si l'eau est sous le seuil bas d'hystérésis, la pompe reste ON et le chauffage passe ON jusqu'au seuil haut d'hystérésis.
-6. Quand le seuil haut est atteint, chauffage OFF, pompe OFF, puis reprise du cycle de sondage en cadence 5 minutes / 20 minutes.
+6. Quand le seuil haut est atteint, le chauffage s'arrête. Hors fenêtre journalière, la pompe s'arrête aussi et le cycle de sondage reprend à la cadence calculée; pendant la fenêtre, la filtration continue normalement.
+
+Sur Waveshare ESP32-S3, la fin de la filtration journalière est traitée comme une transition continue:
+
+- si la dernière température validée demande du chauffage, la pompe reste en marche et Heat Assist active directement la chauffe
+- si aucun chauffage n'est nécessaire, la pompe s'arrête et le prochain sondage est calculé depuis cette dernière mesure
+- si la température finale est indisponible, la pompe s'arrête et l'intervalle de secours est armé, sans redémarrage immédiat
+- si la consigne de chauffage est atteinte pendant la fenêtre journalière, seul le chauffage s'arrête; la filtration continue jusqu'à la fin de sa fenêtre
+
+### Cadence adaptative Waveshare ESP32-S3
+
+Le calcul utilise uniquement la dernière température d'eau validée après au moins 5 minutes de circulation. La température de la canalisation lorsque la pompe est arrêtée n'est donc jamais utilisée comme température du bassin.
+
+L'écart thermique est calculé ainsi:
+
+`écart = max(0, température d'eau validée - température extérieure)`
+
+- écart inférieur ou égal à 10 °C: mesure toutes les 60 minutes
+- écart supérieur ou égal à 20 °C: mesure toutes les 20 minutes
+- entre 10 et 20 °C: interpolation linéaire, à raison de 4 minutes de moins par degré supplémentaire
+
+La pompe démarre 5 minutes avant l'échéance. Ainsi, un intervalle calculé de 20 minutes produit 15 minutes d'arrêt puis 5 minutes de circulation avant la nouvelle mesure. Si la température extérieure n'est pas disponible ou n'est plus fraîche, l'intervalle de secours est de 30 minutes.
 
 ### Exemples concrets
 
-1. Eau froide le matin (pompe arrêtée): 08:00 sondage 5 min, 08:05 eau sous seuil bas donc chauffage ON + pompe ON, puis 10:10 seuil haut atteint donc chauffage OFF + pompe OFF. Ensuite le module passe en sondage périodique 5 min / 20 min.
+1. Eau froide le matin (pompe arrêtée): 08:00 sondage 5 min, 08:05 eau sous seuil bas donc chauffage ON + pompe ON, puis 10:10 seuil haut atteint donc chauffage OFF + pompe OFF. Sur Waveshare, le prochain sondage est alors planifié selon l'écart entre cette dernière température d'eau validée et la température extérieure.
 
 2. Eau proche de la consigne (pompe arrêtée): sondage 5 min, mesure au-dessus du seuil bas, pas de chauffe, retour en attente jusqu'au prochain sondage.
 
@@ -86,8 +107,9 @@ Si une de ces conditions n'est pas remplie, `heat_assist` reste inactif.
 - `PSI_BLOCKED`: chauffage bloqué par la sécurité pression.
 - `SETPOINT_INVALID`: consigne chauffage invalide.
 - `TEMP_UNAVAILABLE`: température indisponible au moment de la décision.
-- `PROBE_WAIT_30M`: attente avant le prochain sondage (cadence normale).
-- `PROBE_WAIT_20M`: attente avant le prochain sondage (après cycle de chauffe).
+- `PROBE_WAIT_30M`: attente avant le prochain sondage (profil historique, cadence normale).
+- `PROBE_WAIT_20M`: attente avant le prochain sondage (profil historique, après cycle de chauffe).
+- `PROBE_WAIT_ADAPTIVE`: attente adaptative du profil Waveshare ESP32-S3.
 - `PROBE_RUNNING`: cycle de sondage 5 min en cours.
 - `HEATING`: chauffe active (pompe + chauffage).
 - `IDLE_PUMP_ON`: pompe en marche mais pas de demande de chauffe.
@@ -716,11 +738,12 @@ Sémantique importante:
 - `en`: protocole autorisé (`auto_mode` + `heater_auto_mode`)
 - `pr`: sondage 5 min en cours
 - `ha`: chauffe active
-- `fc`: cadence rapide active (5 min / 20 min)
+- `fc`: cadence rapide historique active (toujours `false` sur Waveshare ESP32-S3)
 - `ri`: motif courant brut (code interne)
-- `ivm`: intervalle d'attente courant en minutes (20 ou 30)
 - `prm`: temps restant du sondage courant (ms)
-- `irm`: temps restant avant prochain sondage (ms)
+- `irm`: temps restant avant le démarrage du prochain sondage (ms)
+
+La température d'eau validée, la température extérieure, leur écart et l'intervalle adaptatif restent des états internes. Ils ne sont pas publiés dans ce snapshot MQTT; leurs changements significatifs sont visibles uniquement dans les logs de niveau `DEBUG`.
 
 ### Snapshot `rt/poollogic/disinfection`
 

@@ -223,10 +223,14 @@ bool PoolLogicModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, u
     if (idx == 2) {
         constexpr uint8_t kHeatAssistFlagProbeRunning = (1U << 0);
         constexpr uint8_t kHeatAssistFlagHeatingActive = (1U << 1);
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
         constexpr uint8_t kHeatAssistFlagFastCycle = (1U << 2);
+#endif
         const bool probeRunning = (heatAssistFlags_ & kHeatAssistFlagProbeRunning) != 0U;
         const bool heatingActive = (heatAssistFlags_ & kHeatAssistFlagHeatingActive) != 0U;
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
         const bool fastCycle = (heatAssistFlags_ & kHeatAssistFlagFastCycle) != 0U;
+#endif
         const uint16_t nowSec = (uint16_t)((nowMs / 1000UL) & 0xFFFFU);
         const uint16_t probeStartSec = (uint16_t)(heatAssistTimingPacked_ & 0xFFFFU);
         const uint16_t lastProbeEndSec = (uint16_t)((heatAssistTimingPacked_ >> 16) & 0xFFFFU);
@@ -239,6 +243,7 @@ bool PoolLogicModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, u
                 case HeatAssistReason::TempUnavailable: return "TEMP_UNAVAILABLE";
                 case HeatAssistReason::ProbeWait30m: return "PROBE_WAIT_30M";
                 case HeatAssistReason::ProbeWait20m: return "PROBE_WAIT_20M";
+                case HeatAssistReason::ProbeWaitAdaptive: return "PROBE_WAIT_ADAPTIVE";
                 case HeatAssistReason::ProbeRunning: return "PROBE_RUNNING";
                 case HeatAssistReason::Heating: return "HEATING";
                 case HeatAssistReason::IdlePumpOn: return "IDLE_PUMP_ON";
@@ -246,8 +251,15 @@ bool PoolLogicModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, u
                 default: return "UNKNOWN";
             }
         };
-        const uint32_t idleIntervalMin = fastCycle ? 20U : 30U;
-        const uint32_t idleIntervalSec = idleIntervalMin * 60U;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        const uint32_t measurementIntervalMin = heatAssistIntervalMin_;
+        const uint32_t measurementIntervalSec = measurementIntervalMin * 60U;
+        const uint32_t idleIntervalSec =
+            (measurementIntervalSec > 5U * 60U) ? (measurementIntervalSec - 5U * 60U) : 0U;
+#else
+        const uint32_t measurementIntervalMin = fastCycle ? 20U : 30U;
+        const uint32_t idleIntervalSec = measurementIntervalMin * 60U;
+#endif
         const uint32_t probeRemainMs = probeRunning
                                            ? ((((uint16_t)(nowSec - probeStartSec)) >= 5U * 60U)
                                                   ? 0U
@@ -257,19 +269,32 @@ bool PoolLogicModule::buildRuntimeSnapshot(uint8_t idx, char* out, size_t len, u
         const uint32_t idleRemainMs = probeRunning
                                           ? 0U
                                           : ((idleElapsedSec >= idleIntervalSec) ? 0U : (idleIntervalSec - idleElapsedSec) * 1000U);
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        const int wrote = snprintf(out,
+                                   len,
+                                   "{\"en\":%s,\"pr\":%s,\"ha\":%s,\"fc\":false,"
+                                   "\"ri\":\"%s\",\"prm\":%lu,\"irm\":%lu,\"t\":%lu}",
+                                   (autoMode_ && heaterAutoMode_) ? "true" : "false",
+                                   probeRunning ? "true" : "false",
+                                   heatingActive ? "true" : "false",
+                                   reasonToStr(),
+                                   (unsigned long)probeRemainMs,
+                                   (unsigned long)idleRemainMs,
+                                   (unsigned long)nowMs);
+#else
         const int wrote = snprintf(out,
                                    len,
                                    "{\"en\":%s,\"pr\":%s,\"ha\":%s,\"fc\":%s,"
-                                   "\"ri\":\"%s\",\"ivm\":%lu,\"prm\":%lu,\"irm\":%lu,\"t\":%lu}",
+                                   "\"ri\":\"%s\",\"prm\":%lu,\"irm\":%lu,\"t\":%lu}",
                                    (autoMode_ && heaterAutoMode_) ? "true" : "false",
                                    probeRunning ? "true" : "false",
                                    heatingActive ? "true" : "false",
                                    fastCycle ? "true" : "false",
                                    reasonToStr(),
-                                   (unsigned long)idleIntervalMin,
                                    (unsigned long)probeRemainMs,
                                    (unsigned long)idleRemainMs,
                                    (unsigned long)nowMs);
+#endif
         if (wrote < 0 || (size_t)wrote >= len) return false;
         maxTsOut = nowMs ? nowMs : 1U;
         return true;

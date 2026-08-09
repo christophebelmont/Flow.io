@@ -89,6 +89,7 @@ static constexpr uint32_t kHomePeriodicRefreshPeriodMs = 10000U;
 static constexpr uint32_t kNextionPageProbeInitialPeriodMs = 1000U;
 static constexpr uint8_t kNextionPageProbeInitialAttempts = 10U;
 static constexpr uint32_t kNextionPageProbeSteadyPeriodMs = 30000U;
+static constexpr uint32_t kNextionMotionWakeRetryMs = 1000U;
 static constexpr uint32_t kDisplayVersionProbePeriodMs = 60000U;
 static constexpr uint32_t kInvalidClockStamp = 0xFFFFFFFFUL;
 static constexpr uint32_t kRtcFallbackDelayMs = 30000U;
@@ -637,6 +638,7 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(ledsEnabledVar_);
     cfg.registerVar(waveshareLedEnabledVar_);
     cfg.registerVar(nextionEnabledVar_);
+    cfg.registerVar(nextionMotionIoIdVar_);
     cfg.registerVar(remoteUdpEnabledVar_);
     cfg.registerVar(veniceEnabledVar_);
     cfg.registerVar(veniceTxGpioVar_);
@@ -727,6 +729,7 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     lastLedPageToggleMs_ = millis();
     lastClockCheckMs_ = 0;
     lastHomePeriodicRefreshMs_ = 0;
+    lastNextionMotionWakeAttemptMs_ = 0;
     lastDisplayVersionProbeMs_ = 0;
     lastClockMinuteStamp_ = kInvalidClockStamp;
     lastClockDayStamp_ = kInvalidClockStamp;
@@ -736,6 +739,9 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
     rtcFallbackCompleted_ = false;
     rtcPushPending_ = false;
     nextionVersionDetected_ = false;
+    nextionMotionInputReady_ = false;
+    nextionMotionActiveLast_ = false;
+    nextionMotionReadErrorLogged_ = false;
     nextionVersion_[0] = '\0';
     activeConfigContextToken_ = 0U;
     nextConfigContextToken_ = 1U;
@@ -792,6 +798,11 @@ void HMIModule::init(ConfigStore& cfg, ServiceRegistry& services)
 
 void HMIModule::onConfigLoaded(ConfigStore&, ServiceRegistry& services)
 {
+    if (!ioSvc_) ioSvc_ = services.get<IOServiceV2>(ServiceId::Io);
+    nextionMotionInputReady_ = false;
+    nextionMotionActiveLast_ = false;
+    nextionMotionReadErrorLogged_ = false;
+    lastNextionMotionWakeAttemptMs_ = 0U;
     domainStatusSvc_ = services.get<DomainStatusService>(ServiceId::DomainStatus);
     refreshNetworkExpectations_();
     refreshLocale_();
@@ -1132,11 +1143,9 @@ uint32_t HMIModule::buildHomeStateBits_() const
         if (poolDeviceRuntimeState(*dsSvc_->store, robotDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_ROBOT_ON);
         }
-#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
         if (poolDeviceRuntimeState(*dsSvc_->store, lightsDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_LIGHTS_ON);
         }
-#endif
         if (poolDeviceRuntimeState(*dsSvc_->store, heaterDeviceSlot_, state) && state.actualOn) {
             bits |= (1UL << HMI_HOME_STATE_HEATER_ON);
         }
@@ -1845,6 +1854,12 @@ void HMIModule::onEvent_(const Event& e)
             homePublishMask |= kHomePublishAll;
         }
         if (p->module[0] && strncmp(p->module, kHmiModulePrefix, strlen(kHmiModulePrefix)) == 0) {
+            if (strcmp(p->nvsKey, NvsKeys::Hmi::NextionMotionIoId) == 0) {
+                nextionMotionInputReady_ = false;
+                nextionMotionActiveLast_ = false;
+                nextionMotionReadErrorLogged_ = false;
+                lastNextionMotionWakeAttemptMs_ = 0U;
+            }
             applyOutputConfig_();
             applyFrontLedPanelConfig_();
             ledDirty = cfgData_.ledsEnabled;
@@ -1890,9 +1905,7 @@ void HMIModule::onEvent_(const Event& e)
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + phPumpDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + orpPumpDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + robotDeviceSlot_) ||
-#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + lightsDeviceSlot_) ||
-#endif
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + heaterDeviceSlot_) ||
                    p->id == (DataKey)(DATAKEY_POOL_DEVICE_STATE_BASE + fillingDeviceSlot_)) {
             homePublishMask |= kHomePublishStateBits;
@@ -2350,16 +2363,11 @@ bool HMIModule::executeHmiCommand_(HmiCommandId command, uint8_t value)
             return executePoolLogicModePatch_("winter_mode", !modes.winterMode);
 
         case HmiCommandId::HomeLightsToggle:
-#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
-            setHomeErrorMessage_("Unavailable", true);
-            return false;
-#else
             if (!readPoolDeviceActualOn_(lightsDeviceSlot_, current)) {
                 setHomeErrorMessage_("ReadStateFailed", true);
                 return false;
             }
             return executePoolDeviceWrite_(lightsDeviceSlot_, !current);
-#endif
 
         case HmiCommandId::HomeRobotToggle:
             if (!readPoolDeviceActualOn_(robotDeviceSlot_, current)) {
@@ -2713,6 +2721,61 @@ bool HMIModule::isDisplaySleeping_() const
     return false;
 }
 
+void HMIModule::updateNextionMotionWake_(uint32_t nowMs)
+{
+    if (!driverReady_ || driver_ != static_cast<IHmiDriver*>(&nextion_)) return;
+
+    // IO_ID_INVALID is the non-Waveshare default and disables motion wake.
+    if (cfgData_.nextionMotionIoId == IO_ID_INVALID) return;
+
+    uint8_t motionActive = 0U;
+    IoStatus status = IO_ERR_INVALID_ARG;
+    if (cfgData_.nextionMotionIoId >= IO_ID_DI_BASE && cfgData_.nextionMotionIoId < IO_ID_AI_BASE) {
+        status = (ioSvc_ && ioSvc_->readDigital)
+            ? ioSvc_->readDigital(ioSvc_->ctx, cfgData_.nextionMotionIoId, &motionActive, nullptr, nullptr)
+            : IO_ERR_NOT_READY;
+    }
+
+    if (status != IO_OK) {
+        if (!nextionMotionReadErrorLogged_) {
+            LOGW("HMI Nextion motion input unavailable io_id=%u status=%u; motion wake disabled",
+                 (unsigned)cfgData_.nextionMotionIoId,
+                 (unsigned)status);
+            nextionMotionReadErrorLogged_ = true;
+        }
+        nextionMotionInputReady_ = false;
+        nextionMotionActiveLast_ = false;
+        return;
+    }
+
+    const bool active = motionActive != 0U;
+    const bool activated = active && (!nextionMotionInputReady_ || !nextionMotionActiveLast_);
+    nextionMotionInputReady_ = true;
+    nextionMotionActiveLast_ = active;
+    nextionMotionReadErrorLogged_ = false;
+
+    // Wake on a new motion edge even if the sleep notification was missed. If
+    // the panel sleeps while the PIR remains active, wake it again immediately.
+    if (!active || (!activated && !nextion_.isSleeping())) return;
+    if (lastNextionMotionWakeAttemptMs_ != 0U &&
+        (uint32_t)(nowMs - lastNextionMotionWakeAttemptMs_) < kNextionMotionWakeRetryMs) {
+        return;
+    }
+
+    lastNextionMotionWakeAttemptMs_ = nowMs;
+    const bool woke = nextion_.wakeFromSleep();
+    if (!woke) {
+        LOGW("HMI Nextion motion wake failed io_id=%u", (unsigned)cfgData_.nextionMotionIoId);
+        return;
+    }
+
+    LOGI("HMI Nextion woke by motion io_id=%u", (unsigned)cfgData_.nextionMotionIoId);
+    resetClockPublishStamps_();
+    queueHomePublish_(kHomePublishAll);
+    lastHomePeriodicRefreshMs_ = nowMs;
+    viewDirty_ = true;
+}
+
 bool HMIModule::render_()
 {
     if (!driver_) return false;
@@ -2911,6 +2974,7 @@ void HMIModule::loop()
     }
 
     const uint32_t now = millis();
+    updateNextionMotionWake_(now);
     if (homeBindingsRefreshPending_) {
         homeBindingsRefreshPending_ = false;
         refreshHomeBindings_();

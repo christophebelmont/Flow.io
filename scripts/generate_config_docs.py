@@ -343,7 +343,14 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
-def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("", "0", "false", "off", "no")
+
+
+def _apply_profile_specific_io_enum_sets(meta: dict, profile: str, tft_enabled: bool = False) -> dict:
     if not isinstance(meta, dict):
         return meta
     enum_sets = meta.get("enum_sets")
@@ -446,6 +453,9 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
             244: "GPIO47 - ESP32-S3 input [244]",
             245: "GPIO48 - ESP32-S3 input [245]",
         }
+        if tft_enabled:
+            for reserved_port in (240, 241, 242, 243, 244, 245):
+                din_labels_waveshare.pop(reserved_port, None)
 
         selected_labels = None
         if profile == "flowio":
@@ -512,6 +522,9 @@ def _apply_profile_specific_io_enum_sets(meta: dict, profile: str) -> dict:
                 344: "GPIO47 - ESP32-S3 output [344]",
                 345: "GPIO48 - ESP32-S3 output [345]",
             }
+            if tft_enabled:
+                for reserved_port in (340, 341, 342, 343, 344, 345):
+                    dout_labels_waveshare.pop(reserved_port, None)
             relabeled: List[dict] = []
             present_values = set()
             for entry in filtered:
@@ -587,6 +600,7 @@ def main() -> None:
 
     pio_env = _detect_pio_env()
     profile = _profile_override_from_project_options() or _profile_from_pio_env(pio_env)
+    tft_enabled = _env_flag("FLOW_CFGDOC_TFT_ENABLED")
 
     if profile == "waveshare":
         # The Waveshare runtime exposes GPIO04..GPIO11 plus five MCP23017 inputs.
@@ -601,7 +615,7 @@ def main() -> None:
     combined_meta = _resolve_meta_i18n(_merge_meta_dict(cfgdocs_meta, cfgmods_meta), i18n)
     if profile == "waveshare":
         combined_meta = _prune_io_slot_meta(combined_meta, analog_last=15, digital_last=12, output_last=15)
-    combined_meta = _apply_profile_specific_io_enum_sets(combined_meta, profile)
+    combined_meta = _apply_profile_specific_io_enum_sets(combined_meta, profile, tft_enabled)
 
     merged_docs = _resolved_docs(dict(cfgdocs_docs), i18n)
 
@@ -633,7 +647,7 @@ def main() -> None:
         f"[generate_config_docs] wrote {out_path} "
         f"(docs={len(cfgdocs_payload['docs'])} cfgmods={len(cfgmods_payload['docs'])} "
         f"text_files={len(cfgdocs_files) + len(cfgmods_files)} i18n_files={len(i18n_files)} "
-        f"pio_env={pio_env or '-'} profile={profile})"
+        f"pio_env={pio_env or '-'} profile={profile} tft={int(tft_enabled)})"
     )
 
 

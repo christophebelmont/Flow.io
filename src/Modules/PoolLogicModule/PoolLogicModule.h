@@ -134,6 +134,7 @@ private:
         TempUnavailable,
         ProbeWait30m,
         ProbeWait20m,
+        ProbeWaitAdaptive,
         ProbeRunning,
         Heating,
         IdlePumpOn,
@@ -254,6 +255,14 @@ private:
     uint32_t heatAssistTimingPacked_ = 0;
     uint8_t heatAssistFlags_ = 0;
     HeatAssistReason heatAssistReason_ = HeatAssistReason::Disabled;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+    float heatAssistValidatedWaterTempC_ = 0.0f;
+    float heatAssistAirTempC_ = 0.0f;
+    float heatAssistDeltaC_ = 0.0f;
+    uint16_t heatAssistIntervalMin_ = 30U;
+    bool heatAssistValidatedWaterTempValid_ = false;
+    bool heatAssistAdaptiveInputsValid_ = false;
+#endif
     TemporalPidState phPidState_{};
     TemporalPidState orpPidState_{};
 

@@ -508,6 +508,7 @@ namespace Hmi {
 constexpr char LedsEnabled[] = "hmi_leds"; // HMI module persisted key for logical LED-panel writes enable.
 constexpr char WaveshareLedEnabled[] = "hmi_wsled"; // HMI module persisted key for Waveshare WS2812 status LED enable.
 constexpr char NextionEnabled[] = "hmi_nxen"; // HMI module persisted key for Nextion output enable.
+constexpr char NextionMotionIoId[] = "hmi_nxio"; // Logical digital input used to wake the local Nextion display.
 constexpr char FlowConnectUdpEnabled[] = "hmi_fcden"; // HMI module persisted key for Flow Connect Display UDP driver enable.
 constexpr char FlowConnectUdpToken[] = "hmi_fcdtk"; // Shared token for Flow Connect Display UDP pairing.
 constexpr char RemoteUdpEnabledLegacy[] = "hmi_udpen"; // Legacy remote UDP display driver enable key.

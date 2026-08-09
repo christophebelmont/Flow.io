@@ -169,7 +169,7 @@ Le profil Waveshare instancie aujourd'hui:
 | `SensorPhLevel` | `PortMcpInGpa3` | état |
 | `SensorChlorineLevel` | `PortMcpInGpa4` | état |
 | `SensorPoolLevel` | `PortMcpInGpa5` | état |
-| `SensorWaterMeter` | `PortMcpInGpa6` | compteur, front montant, debounce `100000 us` |
+| `SensorWaterMeter` | `PortDin0` (optocoupleur GPIO4) | compteur, front montant, debounce `100000 us` |
 
 ### Sorties digitales
 
@@ -181,7 +181,7 @@ Le profil Waveshare instancie aujourd'hui:
 | `ActuatorRobot` | `PortExio4` |
 | `ActuatorFillPump` | `PortExio5` |
 | `ActuatorChlorineGenerator` | `PortExio6` |
-| sortie libre `d06` | `PortExio7` |
+| éclairage `d06` (`Lights`) | `PortExio7` |
 | `ActuatorWaterHeater` | `PortExio8` |
 
 ## Configuration et NVS

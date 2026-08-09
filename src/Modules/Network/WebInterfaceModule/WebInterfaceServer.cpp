@@ -2388,14 +2388,19 @@ bool waveshareBuildStatusDomainJson_(FlowStatusDomain domain,
         JsonObject wifi = doc.createNestedObject("wifi");
         const bool wifiUp = dataStore ? networkReady(*dataStore) : false;
         const bool wifiConnected = WiFi.isConnected();
+        const bool ethernetActive = wifiUp && !wifiConnected;
         wifi["rdy"] = wifiUp;
-        wifi["typ"] = (wifiUp && !wifiConnected) ? "ethernet" : "wifi";
+        wifi["typ"] = ethernetActive ? "ethernet" : "wifi";
         IpV4 ip = dataStore ? networkIp(*dataStore) : IpV4{{0, 0, 0, 0}};
         char ipText[20] = {0};
         snprintf(ipText, sizeof(ipText), "%u.%u.%u.%u", (unsigned)ip.b[0], (unsigned)ip.b[1], (unsigned)ip.b[2], (unsigned)ip.b[3]);
         wifi["ip"] = ipText;
         uint8_t mac[6] = {0};
-        WiFi.macAddress(mac);
+        if (ethernetActive) {
+            ETH.macAddress(mac);
+        } else {
+            WiFi.macAddress(mac);
+        }
         char macText[18] = {0};
         snprintf(macText, sizeof(macText), "%02X:%02X:%02X:%02X:%02X:%02X",
                  (unsigned)mac[0], (unsigned)mac[1], (unsigned)mac[2],

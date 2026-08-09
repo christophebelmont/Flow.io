@@ -282,10 +282,10 @@ inline constexpr IoPointSpec kWaveshareESP32S3IoPoints[] = {
     {"exio6", IoCapability::DigitalOut, BoardSignal::Relay6, 5, false, 0},
     {"exio7", IoCapability::DigitalOut, BoardSignal::Relay7, 6, false, 0},
     {"exio8", IoCapability::DigitalOut, BoardSignal::Relay8, 7, false, 0},
-    {"digital_in1_ph_level", IoCapability::DigitalIn, BoardSignal::DigitalIn1, 4, false, 0},
+    {"digital_in1_water_counter", IoCapability::DigitalIn, BoardSignal::DigitalIn1, 4, false, 0},
     {"digital_in2_disinfectant_level", IoCapability::DigitalIn, BoardSignal::DigitalIn2, 5, false, 0},
     {"digital_in3_pool_level", IoCapability::DigitalIn, BoardSignal::DigitalIn3, 6, false, 0},
-    {"digital_in4_water_counter", IoCapability::DigitalIn, BoardSignal::DigitalIn4, 7, false, 0},
+    {"digital_in4_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn4, 7, false, 0},
     {"digital_in5_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn5, 8, false, 0},
     {"digital_in6_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn6, 9, false, 0},
     {"digital_in7_unused", IoCapability::DigitalIn, BoardSignal::DigitalIn7, 10, false, 0},
@@ -396,9 +396,8 @@ inline constexpr St7789DisplaySpec kWaveshareESP32S3Display{
  *   Debounce time for the factory-reset input if it is enabled.
  *
  * NVS behavior:
- *   pirPin is copied into the TFTModuleS3 "motion_gpio" persistent config as
- *   the boot default; an existing NVS value overrides it. The debounce and
- *   polarity settings are compiled hardware settings.
+ *   TFTModuleS3 does not consume these direct-PIR settings; it reads a logical
+ *   IOModule input selected by its persistent "motion_io_id" configuration.
  */
 inline constexpr SupervisorInputSpec kWaveshareESP32S3Inputs{
     -1,   // pirPin disabled; was GPIO11 motion sensor for TFT wake.

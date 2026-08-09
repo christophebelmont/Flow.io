@@ -134,12 +134,14 @@ inline constexpr IOBindingPortSpec kBindingPorts[] = {
     {PortMcpInGpa4, IO_PORT_KIND_MCP23017_INPUT, 4, ExpanderMcp23017, "GPA4"},
     {PortMcpInGpa5, IO_PORT_KIND_MCP23017_INPUT, 5, ExpanderMcp23017, "GPA5"},
     {PortMcpInGpa6, IO_PORT_KIND_MCP23017_INPUT, 6, ExpanderMcp23017, "GPA6"},
+#if !defined(FLOW_ENABLE_TFT_S3) || (FLOW_ENABLE_TFT_S3 == 0)
     {PortGpio1Input, IO_PORT_KIND_GPIO_INPUT, 1, 0, "GPIO01"},
     {PortGpio2Input, IO_PORT_KIND_GPIO_INPUT, 2, 0, "GPIO02"},
     {PortGpio21Input, IO_PORT_KIND_GPIO_INPUT, 21, 0, "GPIO21"},
     {PortGpio45Input, IO_PORT_KIND_GPIO_INPUT, 45, 0, "GPIO45"},
     {PortGpio47Input, IO_PORT_KIND_GPIO_INPUT, 47, 0, "GPIO47"},
     {PortGpio48Input, IO_PORT_KIND_GPIO_INPUT, 48, 0, "GPIO48"},
+#endif
     {PortExio1, IO_PORT_KIND_TCA9554_OUTPUT, 0, ExpanderTca9554, "EXIO1"},
     {PortExio2, IO_PORT_KIND_TCA9554_OUTPUT, 1, ExpanderTca9554, "EXIO2"},
     {PortExio3, IO_PORT_KIND_TCA9554_OUTPUT, 2, ExpanderTca9554, "EXIO3"},
@@ -156,12 +158,14 @@ inline constexpr IOBindingPortSpec kBindingPorts[] = {
     {PortMcpOutGpb5, IO_PORT_KIND_MCP23017_OUTPUT, 13, ExpanderMcp23017, "GPB5"},
     {PortMcpOutGpb6, IO_PORT_KIND_MCP23017_OUTPUT, 14, ExpanderMcp23017, "GPB6"},
     {PortMcpOutGpb7, IO_PORT_KIND_MCP23017_OUTPUT, 15, ExpanderMcp23017, "GPB7"},
+#if !defined(FLOW_ENABLE_TFT_S3) || (FLOW_ENABLE_TFT_S3 == 0)
     {PortGpio1Output, IO_PORT_KIND_GPIO_OUTPUT, 1, 0, "GPIO01"},
     {PortGpio2Output, IO_PORT_KIND_GPIO_OUTPUT, 2, 0, "GPIO02"},
     {PortGpio21Output, IO_PORT_KIND_GPIO_OUTPUT, 21, 0, "GPIO21"},
     {PortGpio45Output, IO_PORT_KIND_GPIO_OUTPUT, 45, 0, "GPIO45"},
     {PortGpio47Output, IO_PORT_KIND_GPIO_OUTPUT, 47, 0, "GPIO47"},
     {PortGpio48Output, IO_PORT_KIND_GPIO_OUTPUT, 48, 0, "GPIO48"},
+#endif
 };
 
 static_assert((sizeof(kExpanders) / sizeof(kExpanders[0])) <= IO_MAX_EXPANDERS,
@@ -201,7 +205,7 @@ inline constexpr DigitalInputRoleDefault kDigitalInputRoleDefaults[] = {
     {PoolIds::SensorPhLevel, PortMcpInGpa3, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
     {PoolIds::SensorChlorineLevel, PortMcpInGpa4, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
     {PoolIds::SensorPoolLevel, PortMcpInGpa5, IO_DIGITAL_INPUT_STATE, IO_EDGE_RISING, 0U},
-    {PoolIds::SensorWaterMeter, PortMcpInGpa6, IO_DIGITAL_INPUT_COUNTER, IO_EDGE_RISING, 100000U},
+    {PoolIds::SensorWaterMeter, PortDin0, IO_DIGITAL_INPUT_COUNTER, IO_EDGE_RISING, 100000U},
 };
 
 struct DigitalOutputRoleDefault {
@@ -221,6 +225,7 @@ inline constexpr DigitalOutputRoleDefault kDigitalOutputRoleDefaults[] = {
     {PoolIds::ActuatorRobot, PortExio4, true, false, false, 0U}, // Robot.
     {PoolIds::ActuatorFillPump, PortExio5, true, false, false, 0U}, // Pompe de remplissage.
     {PoolIds::ActuatorChlorineGenerator, PortExio6, true, false, false, 0U}, // Electrolyseur.
+    {PoolIds::ActuatorLights, PortExio7, true, false, false, 0U}, // Eclairage.
     {PoolIds::ActuatorWaterHeater, PortExio8, true, false, false, 0U}, // Chauffage.
 };
 
@@ -238,6 +243,14 @@ inline constexpr const DigitalInputRoleDefault* digitalInputDefaultForDomainSlot
         if (entry.domainSlot == domainSlot) return &entry;
     }
     return nullptr;
+}
+
+inline constexpr bool digitalInputPortUsedByDomainRole(PhysicalPortId bindingPort)
+{
+    for (const DigitalInputRoleDefault& entry : kDigitalInputRoleDefaults) {
+        if (entry.bindingPort == bindingPort) return true;
+    }
+    return false;
 }
 
 inline constexpr const DigitalOutputRoleDefault* digitalOutputDefaultForDomainSlot(DomainSlotId domainSlot)

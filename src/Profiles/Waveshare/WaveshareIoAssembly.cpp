@@ -576,7 +576,10 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         def.mode = IO_DIGITAL_INPUT_STATE;
         def.edgeMode = IO_EDGE_RISING;
         def.counterDebounceUs = 0U;
-        def.bindingPort = digitalInputPortFromOrdinal((uint8_t)(i + 1U));
+        const PhysicalPortId defaultPort = digitalInputPortFromOrdinal((uint8_t)(i + 1U));
+        def.bindingPort = FlowIoLayout::digitalInputPortUsedByDomainRole(defaultPort)
+            ? IO_PORT_INVALID
+            : defaultPort;
         requireSetup(modules.ioModule.defineDigitalInput(def), "define waveshare digital input");
     }
     for (uint8_t logicalIdx = 8U; logicalIdx < Limits::Io::MaxDigitalInputs; ++logicalIdx) {
@@ -636,7 +639,7 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
 #if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
     if (!modules.ioModule.digitalOutputSlotUsed(6U)) {
         IODigitalOutputDefinition def{};
-        snprintf(def.id, sizeof(def.id), "Spare");
+        snprintf(def.id, sizeof(def.id), "Lights");
         def.ioId = (IoId)(IO_ID_DO_BASE + 6U);
         def.bindingPort = FlowIoLayout::PortExio7;
         def.activeHigh = true;
@@ -645,7 +648,7 @@ void configureIoModule(const AppContext& ctx, ModuleInstances& modules)
         def.retainOnWarmReboot = false;
         def.momentary = false;
         def.pulseMs = 0;
-        requireSetup(modules.ioModule.defineDigitalOutput(def), "define spare EXIO output");
+        requireSetup(modules.ioModule.defineDigitalOutput(def), "define lights EXIO output");
     }
 
     static constexpr uint8_t kMcpOutputCount = 8U;

@@ -510,7 +510,7 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "h"
         };
         static const char* kHeatAssistStatusFrTemplate =
-            R"({% set st = value_json.ri | default('UNKNOWN', true) %}{% if st == 'DISABLED' %}Désactivé{% elif st == 'MANUAL_MODE' %}Mode manuel{% elif st == 'PSI_BLOCKED' %}Pression bloquée{% elif st == 'SETPOINT_INVALID' %}Consigne invalide{% elif st == 'TEMP_UNAVAILABLE' %}Température indisponible{% elif st == 'PROBE_WAIT_30M' %}Attente sonde 30 min{% elif st == 'PROBE_WAIT_20M' %}Attente sonde 20 min{% elif st == 'PROBE_RUNNING' %}Sondage en cours{% elif st == 'HEATING' %}Chauffe active{% elif st == 'IDLE_PUMP_ON' %}Pompe active sans chauffe{% elif st == 'SETPOINT_REACHED' %}Consigne atteinte{% else %}Inconnu{% endif %})";
+            R"({% set st = value_json.ri | default('UNKNOWN', true) %}{% if st == 'DISABLED' %}Désactivé{% elif st == 'MANUAL_MODE' %}Mode manuel{% elif st == 'PSI_BLOCKED' %}Pression bloquée{% elif st == 'SETPOINT_INVALID' %}Consigne invalide{% elif st == 'TEMP_UNAVAILABLE' %}Température indisponible{% elif st == 'PROBE_WAIT_30M' %}Attente sonde 30 min{% elif st == 'PROBE_WAIT_20M' %}Attente sonde 20 min{% elif st == 'PROBE_WAIT_ADAPTIVE' %}Attente sonde adaptative{% elif st == 'PROBE_RUNNING' %}Sondage en cours{% elif st == 'HEATING' %}Chauffe active{% elif st == 'IDLE_PUMP_ON' %}Pompe active sans chauffe{% elif st == 'SETPOINT_REACHED' %}Consigne atteinte{% else %}Inconnu{% endif %})";
         const HASensorEntry heatAssistStatus{
             "poollogic",
             "pl_has_rsn",
@@ -973,10 +973,8 @@ void PoolLogicModule::init(ConfigStore& cfg, ServiceRegistry& services)
             "poollogic.orp_pump.toggle",
             "poollogic.dis_pump.write",
             "poollogic.dis_pump.toggle",
-#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
             "poollogic.lights.write",
             "poollogic.lights.toggle",
-#endif
             "poollogic.robot.write",
             "poollogic.robot.toggle",
             "poollogic.heater.write",

@@ -40,14 +40,15 @@ puis les trois capacités de configuration correspondantes.
 GPIO19 et GPIO20 sont exclusivement utilisés par OneWire. GPIO3 n'est pas exposé.
 Dans l'environnement de production `Waveshare-ESP32-S3`, le TFT local est actif et
 réserve GPIO21 (backlight), GPIO45 (CS), GPIO1 (DC), GPIO47 (RST), GPIO2 (MOSI) et
-GPIO48 (SCLK). Les identifiants de binding génériques correspondants restent déclarés
-dans `kBindingPorts` pour les builds sans TFT, mais ils ne doivent pas être affectés
-tant que `FLOW_ENABLE_TFT_S3=1`.
+GPIO48 (SCLK). Leurs identifiants de binding génériques sont retirés de `kBindingPorts`
+et des listes de configuration lorsque `FLOW_ENABLE_TFT_S3=1`; ils restent disponibles
+dans les builds sans TFT.
 
 ## Binding ports
 
-Le profil déclare 64 binding ports: 21 sources analogiques, 21 entrées digitales et
-22 sorties digitales. Un binding port décrit une capacité physique; il ne crée un
+Le profil de production avec TFT déclare 52 binding ports: 21 sources analogiques,
+15 entrées digitales et 16 sorties digitales. Les builds sans TFT ajoutent les six
+GPIO génériques en entrée et en sortie, soit 64 ports. Un binding port décrit une capacité physique; il ne crée un
 endpoint runtime que lorsqu'un IO slot lui est affecté.
 
 Chaque entrée de `kBindingPorts` porte un `boardLabel` correspondant au marquage
@@ -94,7 +95,7 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 
 | ID | Constante | Kind/canal | Affectation par défaut |
 |---:|---|---|---|
-| 200 | `PortDin0` | GPIO4 | `i00` |
+| 200 | `PortDin0` | GPIO4 optocouplé | `i12`, Water Meter |
 | 201 | `PortDin1` | GPIO5 | `i01` |
 | 202 | `PortDin2` | GPIO6 | `i02` |
 | 203 | `PortDin3` | GPIO7 | `i03` |
@@ -108,13 +109,8 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 | 223 | `PortMcpInGpa3` | MCP GPA3 / canal 3 | `i09`, pH Level |
 | 224 | `PortMcpInGpa4` | MCP GPA4 / canal 4 | `i10`, Chlorine Level |
 | 225 | `PortMcpInGpa5` | MCP GPA5 / canal 5 | `i11`, Pool Level |
-| 226 | `PortMcpInGpa6` | MCP GPA6 / canal 6 | `i12`, Water Meter |
-| 240 | `PortGpio1Input` | GPIO1 | Réservé TFT en production |
-| 241 | `PortGpio2Input` | GPIO2 | Réservé TFT en production |
-| 242 | `PortGpio21Input` | GPIO21 | Réservé TFT en production |
-| 243 | `PortGpio45Input` | GPIO45 | Réservé TFT en production |
-| 244 | `PortGpio47Input` | GPIO47 | Réservé TFT en production |
-| 245 | `PortGpio48Input` | GPIO48 | Réservé TFT en production |
+| 226 | `PortMcpInGpa6` | MCP GPA6 / canal 6 | Non affecté |
+| 240..245 | `PortGpio*Input` | GPIO1, 2, 21, 45, 47, 48 | Builds sans TFT uniquement |
 
 ### Sorties digitales
 
@@ -126,7 +122,7 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 | 303 | `PortExio4` | TCA9554 bit 3 | `d03`, Robot |
 | 304 | `PortExio5` | TCA9554 bit 4 | `d04`, Remplissage |
 | 305 | `PortExio6` | TCA9554 bit 5 | `d05`, Electrolyse |
-| 306 | `PortExio7` | TCA9554 bit 6 | `d06`, Spare |
+| 306 | `PortExio7` | TCA9554 bit 6 | `d06`, Lights |
 | 307 | `PortExio8` | TCA9554 bit 7 | `d07`, Water Heater |
 | 320 | `PortMcpOutGpb0` | MCP GPB0 / canal 8 | `d08` |
 | 321 | `PortMcpOutGpb1` | MCP GPB1 / canal 9 | `d09` |
@@ -136,12 +132,7 @@ le texte « Entrée » ou « Sortie » est disponible au survol et au focus clav
 | 325 | `PortMcpOutGpb5` | MCP GPB5 / canal 13 | `d13` |
 | 326 | `PortMcpOutGpb6` | MCP GPB6 / canal 14 | `d14` |
 | 327 | `PortMcpOutGpb7` | MCP GPB7 / canal 15 | `d15` |
-| 340 | `PortGpio1Output` | GPIO1 | Réservé TFT en production |
-| 341 | `PortGpio2Output` | GPIO2 | Réservé TFT en production |
-| 342 | `PortGpio21Output` | GPIO21 | Réservé TFT en production |
-| 343 | `PortGpio45Output` | GPIO45 | Réservé TFT en production |
-| 344 | `PortGpio47Output` | GPIO47 | Réservé TFT en production |
-| 345 | `PortGpio48Output` | GPIO48 | Réservé TFT en production |
+| 340..345 | `PortGpio*Output` | GPIO1, 2, 21, 45, 47, 48 | Builds sans TFT uniquement |
 
 Un GPIO standard ne doit pas être lié simultanément à un slot d'entrée et à un slot de sortie.
 Avec le TFT actif, les six GPIO réservés ne doivent être liés à aucun IO slot.
@@ -188,7 +179,7 @@ l'ADS1115 externe restent sélectionnables. Aucun de ces slots libres n'est asso
 
 | IO slot | Nom | Binding port | Mode |
 |---|---|---:|---|
-| `i00` | GPIO04 | 200 | État |
+| `i00` | GPIO04 | Non connecté | État |
 | `i01` | GPIO05 | 201 | État |
 | `i02` | GPIO06 | 202 | État |
 | `i03` | GPIO07 | 203 | État |
@@ -200,7 +191,7 @@ l'ADS1115 externe restent sélectionnables. Aucun de ces slots libres n'est asso
 | `i09` | pH Level | 223 | État |
 | `i10` | Chlorine Level | 224 | État |
 | `i11` | Pool Level | 225 | État |
-| `i12` | Water Meter | 226 | Compteur, front montant, debounce 100 ms |
+| `i12` | Water Meter | 200 / GPIO4 optocouplé | Compteur, front montant, debounce 100 ms |
 
 ### Sorties digitales
 
@@ -212,7 +203,7 @@ l'ADS1115 externe restent sélectionnables. Aucun de ces slots libres n'est asso
 | `d03` | Robot | 303 |
 | `d04` | Remplissage | 304 |
 | `d05` | Electrolyse | 305 |
-| `d06` | Spare | 306 |
+| `d06` | Lights | 306 |
 | `d07` | Water Heater | 307 |
 | `d08` | MCP B0 | 320 |
 | `d09` | MCP B1 | 321 |
@@ -228,7 +219,7 @@ politique existante de préservation du latch TCA9554 lors d'un redémarrage cha
 
 ## Domain slots Pool
 
-Seuls les rôles métier occupent un domain slot. Les DIN génériques `i00..i07`, `d06`,
+Seuls les rôles métier occupent un domain slot. Les DIN génériques `i00..i07`,
 les sorties MCP `d08..d15` et les GPIO standards n'en occupent pas.
 
 Un domain slot ne connaît pas directement le matériel. Il fixe le type d'endpoint et
@@ -257,7 +248,8 @@ résolu ensuite par `IOModule`.
 | 18 | `ActuatorFillPump` | Sortie digitale | `d04` |
 | 19 | `ActuatorChlorineGenerator` | Sortie digitale | `d05` |
 | 20 | `ActuatorWaterHeater` | Sortie digitale | `d07` |
+| 22 | `ActuatorLights` | Sortie digitale | `d06` |
 
-Le domaine contient 13 capteurs, 7 presets de pool devices et 20 liaisons
-`domain_slot -> io_slot`. Huit indices `pd00..pd07` restent alloués car le chauffage
-conserve l'identifiant `pd07`; `pd06/d06` est le slot générique Spare.
+Le domaine contient 13 capteurs, 8 presets de pool devices et 21 liaisons
+`domain_slot -> io_slot`. `DeviceLights` occupe `pd06` et pilote `d06`; le chauffage
+conserve l'identifiant `pd07`.

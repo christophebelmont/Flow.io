@@ -72,6 +72,12 @@ private:
             false;
 #endif
         bool nextionEnabled = true;
+        IoId nextionMotionIoId =
+#if FLOW_BUILD_IS_WAVESHARE
+            (IoId)(IO_ID_DI_BASE + 8U);
+#else
+            IO_ID_INVALID;
+#endif
         bool remoteUdpEnabled =
 #ifdef FLOW_HMI_REMOTE_UDP
             (FLOW_HMI_REMOTE_UDP != 0);
@@ -93,6 +99,10 @@ private:
     ConfigVariable<bool,0> nextionEnabledVar_{
         NVS_KEY(NvsKeys::Hmi::NextionEnabled), "enabled", "hmi/nextion",
         ConfigType::Bool, &cfgData_.nextionEnabled, ConfigPersistence::Persistent, 0
+    };
+    ConfigVariable<IoId,0> nextionMotionIoIdVar_{
+        NVS_KEY(NvsKeys::Hmi::NextionMotionIoId), "motion_io_id", "hmi/nextion",
+        ConfigType::UInt16, &cfgData_.nextionMotionIoId, ConfigPersistence::Persistent, 0
     };
     ConfigVariable<bool,0> remoteUdpEnabledVar_{
         NVS_KEY(NvsKeys::Hmi::FlowConnectUdpEnabled), "enabled", "hmi/nextion_udp",
@@ -200,6 +210,7 @@ private:
     uint32_t lastClockCheckMs_ = 0;
     uint32_t lastHomePeriodicRefreshMs_ = 0;
     uint32_t lastNextionPageProbeMs_ = 0;
+    uint32_t lastNextionMotionWakeAttemptMs_ = 0;
     uint32_t lastDisplayVersionProbeMs_ = 0;
     uint32_t lastClockMinuteStamp_ = 0xFFFFFFFFUL;
     uint32_t lastClockDayStamp_ = 0xFFFFFFFFUL;
@@ -209,6 +220,9 @@ private:
     bool rtcFallbackCompleted_ = false;
     bool rtcPushPending_ = false;
     bool nextionVersionDetected_ = false;
+    bool nextionMotionInputReady_ = false;
+    bool nextionMotionActiveLast_ = false;
+    bool nextionMotionReadErrorLogged_ = false;
     char nextionVersion_[HMI_DISPLAY_VERSION_TEXT_MAX]{};
     bool homeBindingsRefreshPending_ = false;
     char homeErrorMessage_[96]{};
@@ -292,6 +306,7 @@ private:
     bool prevAlarmPage_();
     bool isAlarmPageId_(uint8_t pageId) const;
     bool isDisplaySleeping_() const;
+    void updateNextionMotionWake_(uint32_t nowMs);
     void refreshNetworkExpectations_();
     void applyWs2812AutoWifiProfile_();
     void updateHmiLedConditions_();

@@ -20,6 +20,12 @@
       "label_t": "cfgdocs.hmi.nextion.enabled.label",
       "help_t": "cfgdocs.hmi.nextion.enabled.help"
     },
+    "hmi/nextion/motion_io_id": {
+      "type": "UInt16",
+      "label_t": "cfgdocs.hmi.nextion.motion_io_id.label",
+      "help_t": "cfgdocs.hmi.nextion.motion_io_id.help",
+      "enum_set": "flowio_logical_input_digital"
+    },
     "hmi/venice/enabled": {
       "type": "Bool",
       "label_t": "cfgdocs.hmi.venice.enabled.label",

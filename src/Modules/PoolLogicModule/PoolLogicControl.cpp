@@ -21,6 +21,13 @@ constexpr uint32_t kHeaterTempFreshMaxMs = 10UL * 60UL * 1000UL;
 constexpr uint16_t kHeatAssistProbeRunSec = 5U * 60U;
 constexpr uint16_t kHeatAssistIdleSlowSec = 30U * 60U;
 constexpr uint16_t kHeatAssistIdleFastSec = 20U * 60U;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+constexpr uint16_t kHeatAssistAdaptiveFallbackMin = 30U;
+constexpr uint16_t kHeatAssistAdaptiveMinIntervalMin = 20U;
+constexpr uint16_t kHeatAssistAdaptiveMaxIntervalMin = 60U;
+constexpr float kHeatAssistAdaptiveLowDeltaC = 10.0f;
+constexpr float kHeatAssistAdaptiveHighDeltaC = 20.0f;
+#endif
 constexpr uint8_t kHeatAssistFlagProbeRunning = (1U << 0);
 constexpr uint8_t kHeatAssistFlagHeatingActive = (1U << 1);
 constexpr uint8_t kHeatAssistFlagFastCycle = (1U << 2);
@@ -978,7 +985,17 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
         haveWaterTemp &&
         (waterTempTsMs != 0U) &&
         ((uint32_t)(nowMs - waterTempTsMs) <= kHeaterTempFreshMaxMs);
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+    uint32_t airTempTsMs = 0U;
+    const bool haveAirTemp = loadAnalogSensor_(airTempIoId_, airTemp, &airTempTsMs);
+    const bool airTempFresh =
+        haveAirTemp &&
+        std::isfinite(airTemp) &&
+        (airTempTsMs != 0U) &&
+        ((uint32_t)(nowMs - airTempTsMs) <= kHeaterTempFreshMaxMs);
+#else
     const bool haveAirTemp = loadAnalogSensor_(airTempIoId_, airTemp);
+#endif
     const bool haveOrp = loadAnalogSensor_(orpIoId_, orp);
     const bool haveLevel = loadDigitalSensor_(levelIoId_, poolLevelOn);
     const bool havePhTankLow = loadDigitalSensor_(phLevelIoId_, phTankLow);
@@ -1134,6 +1151,74 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
         return (uint16_t)(nowSec - pastSec);
     };
 
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+    auto refreshHeatAssistAdaptiveInterval = [&]() {
+        const bool wasValid = heatAssistAdaptiveInputsValid_;
+        const uint16_t previousIntervalMin = heatAssistIntervalMin_;
+        if (!heatAssistValidatedWaterTempValid_ ||
+            !std::isfinite(heatAssistValidatedWaterTempC_) ||
+            !airTempFresh) {
+            heatAssistAdaptiveInputsValid_ = false;
+            heatAssistIntervalMin_ = kHeatAssistAdaptiveFallbackMin;
+            if (wasValid || previousIntervalMin != heatAssistIntervalMin_) {
+                LOGD("Heat Assist adaptive fallback interval=%u min water_valid=%u air_fresh=%u",
+                     (unsigned)heatAssistIntervalMin_,
+                     heatAssistValidatedWaterTempValid_ ? 1u : 0u,
+                     airTempFresh ? 1u : 0u);
+            }
+            return;
+        }
+
+        heatAssistAirTempC_ = airTemp;
+        heatAssistDeltaC_ = heatAssistValidatedWaterTempC_ - heatAssistAirTempC_;
+        if (heatAssistDeltaC_ < 0.0f) heatAssistDeltaC_ = 0.0f;
+
+        if (heatAssistDeltaC_ <= kHeatAssistAdaptiveLowDeltaC) {
+            heatAssistIntervalMin_ = kHeatAssistAdaptiveMaxIntervalMin;
+        } else if (heatAssistDeltaC_ >= kHeatAssistAdaptiveHighDeltaC) {
+            heatAssistIntervalMin_ = kHeatAssistAdaptiveMinIntervalMin;
+        } else {
+            const float intervalMin =
+                (float)kHeatAssistAdaptiveMaxIntervalMin -
+                (heatAssistDeltaC_ - kHeatAssistAdaptiveLowDeltaC) * 4.0f;
+            heatAssistIntervalMin_ = (uint16_t)lroundf(intervalMin);
+        }
+        heatAssistAdaptiveInputsValid_ = true;
+        if (!wasValid || previousIntervalMin != heatAssistIntervalMin_) {
+            LOGD("Heat Assist adaptive interval water=%.2fC air=%.2fC delta=%.2fC interval=%u min",
+                 (double)heatAssistValidatedWaterTempC_,
+                 (double)heatAssistAirTempC_,
+                 (double)heatAssistDeltaC_,
+                 (unsigned)heatAssistIntervalMin_);
+        }
+    };
+
+    auto recordValidatedWaterTemperature = [&]() -> bool {
+        if (!waterTempFresh || !std::isfinite(waterTemp)) return false;
+        heatAssistValidatedWaterTempC_ = waterTemp;
+        heatAssistValidatedWaterTempValid_ = true;
+        refreshHeatAssistAdaptiveInterval();
+        return true;
+    };
+
+    // A regular filtration run also provides a trustworthy basin temperature.
+    // Do not retain the line temperature before water has circulated for 5 minutes.
+    const bool recordedUnderFlow =
+        heaterAutoMode_ &&
+        filtrationFsm_.on &&
+        stateUptimeSec_(filtrationFsm_, nowMs) >= kHeatAssistProbeRunSec &&
+        recordValidatedWaterTemperature();
+    if (recordedUnderFlow) {
+        // While normal filtration or heating is already circulating water, the
+        // latest trustworthy reading is also the origin of the next interval.
+        setLastProbeEndSec(nowSec);
+    } else {
+        // Keep the cadence responsive to outdoor-temperature changes while the
+        // pump is stopped, using only the last water value validated under flow.
+        refreshHeatAssistAdaptiveInterval();
+    }
+#endif
+
     // Filtration arbitration intentionally applies safety, then manual mode,
     // then automatic scheduling/winter logic in that order.
     bool filtrationDesiredBase = filtrationFsm_.on;
@@ -1243,6 +1328,11 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
         resetHeatAssistSession();
         setHeatAssistFlag(kHeatAssistFlagFastCycle, false);
         setLastProbeEndSec(0U);
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        heatAssistValidatedWaterTempValid_ = false;
+        heatAssistAdaptiveInputsValid_ = false;
+        heatAssistIntervalMin_ = kHeatAssistAdaptiveFallbackMin;
+#endif
         setHeatAssistReason(HeatAssistReason::Disabled);
     } else if (!autoMode_) {
         resetHeatAssistSession();
@@ -1258,8 +1348,29 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
     } else {
         const float heaterStartThreshold = heaterSetpoint_ - kHeaterHysteresisC;
         const float heaterStopThreshold = heaterSetpoint_ + kHeaterHysteresisC;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+        const bool heatAssistWaterTempAvailable = waterTempFresh && std::isfinite(waterTemp);
+        // The requested interval is measurement-to-measurement. Start the pump
+        // five minutes earlier so its validation run is included in that period.
+        const uint16_t measurementIntervalSec = (uint16_t)(heatAssistIntervalMin_ * 60U);
+        const uint16_t idleSec =
+            (measurementIntervalSec > kHeatAssistProbeRunSec)
+                ? (uint16_t)(measurementIntervalSec - kHeatAssistProbeRunSec)
+                : 0U;
+#else
+        const bool heatAssistWaterTempAvailable = waterTempFresh;
         const bool fastCycle = hasHeatAssistFlag(kHeatAssistFlagFastCycle);
         const uint16_t idleSec = fastCycle ? kHeatAssistIdleFastSec : kHeatAssistIdleSlowSec;
+#endif
+
+        auto setProbeWaitReason = [&]() {
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+            setHeatAssistReason(HeatAssistReason::ProbeWaitAdaptive);
+#else
+            setHeatAssistReason(fastCycle ? HeatAssistReason::ProbeWait20m
+                                          : HeatAssistReason::ProbeWait30m);
+#endif
+        };
 
         auto startProbe = [&]() {
             setHeatAssistFlag(kHeatAssistFlagProbeRunning, true);
@@ -1272,7 +1383,7 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
 
         if (hasHeatAssistFlag(kHeatAssistFlagHeatingActive)) {
             filtrationDesired = true;
-            if (!waterTempFresh) {
+            if (!heatAssistWaterTempAvailable) {
                 heaterDesired = false;
                 setHeatAssistReason(HeatAssistReason::TempUnavailable);
             } else if (waterTemp >= heaterStopThreshold) {
@@ -1280,9 +1391,21 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
                 setHeatAssistFlag(kHeatAssistFlagProbeRunning, false);
                 setProbeStartSec(0U);
                 setLastProbeEndSec(nowSec);
+#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
                 setHeatAssistFlag(kHeatAssistFlagFastCycle, true);
+#endif
                 heaterDesired = false;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                // Heating may reach its setpoint while the daily filtration
+                // window is still active. In that case, keep filtration running.
+                filtrationDesired = filtrationDesiredBase;
+                LOGD("Heat Assist setpoint reached water=%.2fC setpoint=%.2fC filtration_window=%u",
+                     (double)waterTemp,
+                     (double)heaterSetpoint_,
+                     filtrationDesiredBase ? 1u : 0u);
+#else
                 filtrationDesired = false;
+#endif
                 setHeatAssistReason(HeatAssistReason::SetpointReached);
             } else {
                 heaterDesired = true;
@@ -1295,7 +1418,10 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
             if (probeElapsedSec >= kHeatAssistProbeRunSec) {
                 setHeatAssistFlag(kHeatAssistFlagProbeRunning, false);
                 setProbeStartSec(0U);
-                if (!waterTempFresh) {
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                (void)recordValidatedWaterTemperature();
+#endif
+                if (!heatAssistWaterTempAvailable) {
                     filtrationDesired = filtrationDesiredBase;
                     setLastProbeEndSec(nowSec);
                     setHeatAssistReason(HeatAssistReason::TempUnavailable);
@@ -1307,25 +1433,69 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
                 } else {
                     setLastProbeEndSec(nowSec);
                     filtrationDesired = filtrationDesiredBase;
-                    setHeatAssistReason(fastCycle ? HeatAssistReason::ProbeWait20m
-                                                  : HeatAssistReason::ProbeWait30m);
+                    setProbeWaitReason();
                 }
             } else {
                 setHeatAssistReason(HeatAssistReason::ProbeRunning);
             }
         } else if (filtrationFsm_.on || filtrationDesiredBase) {
             filtrationDesired = filtrationDesiredBase;
-            if (!waterTempFresh) {
+            if (!heatAssistWaterTempAvailable) {
                 heaterDesired = false;
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                if (filtrationFsm_.on && !filtrationDesiredBase) {
+                    // The daily run is ending without a usable final sample.
+                    // Anchor the fallback interval now to prevent relay chatter.
+                    setLastProbeEndSec(nowSec);
+                    if (!heatAssistValidatedWaterTempValid_) {
+                        heatAssistAdaptiveInputsValid_ = false;
+                        heatAssistIntervalMin_ = kHeatAssistAdaptiveFallbackMin;
+                    }
+                    if (filtrationFsm_.lastDesired) {
+                        LOGD("Heat Assist filtration end temp unavailable; retry interval=%u min",
+                             (unsigned)heatAssistIntervalMin_);
+                    }
+                }
+#endif
                 setHeatAssistReason(HeatAssistReason::TempUnavailable);
             } else {
-                if (heaterFsm_.on) {
-                    heaterDesired = (waterTemp < heaterStopThreshold);
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                if (!recordedUnderFlow) {
+                    // A newly-started daily filtration has not circulated long
+                    // enough yet. Keep the heater off until its water sample is valid.
+                    heaterDesired = false;
+                    setHeatAssistReason(HeatAssistReason::IdlePumpOn);
                 } else {
-                    heaterDesired = (waterTemp <= heaterStartThreshold);
+#endif
+                    if (heaterFsm_.on) {
+                        heaterDesired = (waterTemp < heaterStopThreshold);
+                    } else {
+                        heaterDesired = (waterTemp <= heaterStartThreshold);
+                    }
+                    if (heaterDesired) {
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                        // The water is already validated under flow: hand over
+                        // directly to heating without stopping and restarting the pump.
+                        setHeatAssistFlag(kHeatAssistFlagHeatingActive, true);
+                        filtrationDesired = true;
+                        LOGD("Heat Assist filtration-to-heating handoff water=%.2fC setpoint=%.2fC",
+                             (double)waterTemp,
+                             (double)heaterSetpoint_);
+#endif
+                        setHeatAssistReason(HeatAssistReason::Heating);
+                    } else {
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
+                        if (filtrationFsm_.on && !filtrationDesiredBase && filtrationFsm_.lastDesired) {
+                            LOGD("Heat Assist filtration end no heat water=%.2fC next_interval=%u min",
+                                 (double)waterTemp,
+                                 (unsigned)heatAssistIntervalMin_);
+                        }
+#endif
+                        setHeatAssistReason(HeatAssistReason::IdlePumpOn);
+                    }
+#if defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
                 }
-                setHeatAssistReason(heaterDesired ? HeatAssistReason::Heating
-                                                  : HeatAssistReason::IdlePumpOn);
+#endif
             }
         } else {
             heaterDesired = false;
@@ -1336,8 +1506,7 @@ void PoolLogicModule::runControlLoop_(uint32_t nowMs)
             if (dueForProbe) {
                 startProbe();
             } else {
-                setHeatAssistReason(fastCycle ? HeatAssistReason::ProbeWait20m
-                                              : HeatAssistReason::ProbeWait30m);
+                setProbeWaitReason();
             }
         }
     }

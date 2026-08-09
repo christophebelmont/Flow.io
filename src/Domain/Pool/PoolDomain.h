@@ -28,6 +28,7 @@ inline constexpr DomainSlotPreset kDomainSlots[] = {
     {PoolIds::ActuatorRobot, IO_SLOT_DIGITAL_OUTPUT, "io_robot", "Robot", 3, true, 0},
     {PoolIds::ActuatorFillPump, IO_SLOT_DIGITAL_OUTPUT, "io_fill_pmp", "Remplissage", 4, true, 0},
     {PoolIds::ActuatorChlorineGenerator, IO_SLOT_DIGITAL_OUTPUT, "io_chl_gen", "Electrolyse", 5, true, 0},
+    {PoolIds::ActuatorLights, IO_SLOT_DIGITAL_OUTPUT, "io_lights", "Lights", 6, true, 0},
     {PoolIds::ActuatorWaterHeater, IO_SLOT_DIGITAL_OUTPUT, "io_wat_htr", "Water Heater", 7, true, 0},
 #else
     {PoolIds::SensorOrp, IO_SLOT_ANALOG_INPUT, "ORP", "ORP", 0, true, 0},
@@ -72,6 +73,7 @@ inline constexpr DomainIoSlotBinding kDomainIoSlots[] = {
     {PoolIds::ActuatorRobot, digitalOutputSlot(3)},
     {PoolIds::ActuatorFillPump, digitalOutputSlot(4)},
     {PoolIds::ActuatorChlorineGenerator, digitalOutputSlot(5)},
+    {PoolIds::ActuatorLights, digitalOutputSlot(6)},
     {PoolIds::ActuatorWaterHeater, digitalOutputSlot(7)},
 #else
     {PoolIds::SensorOrp, analogInputSlot(0)},
@@ -108,9 +110,7 @@ inline constexpr PoolDevicePreset kPoolDevices[] = {
      PoolDefaults::FillPumpMaxUptimeDaySec},
     {PoolIds::DeviceChlorineGenerator, PoolIds::ActuatorChlorineGenerator, "io_chl_gen", "Chlorine Generator", "mdi:flash", POOL_DEVICE_RELAY_STD, 0.0f, 0.0f, 0.0f,
      PoolIds::DeviceFiltrationPump, PoolDefaults::ChlorineGeneratorMaxUptimeDaySec},
-#if !defined(FLOW_BOARD_WAVESHARE_ESP32_S3)
     {PoolIds::DeviceLights, PoolIds::ActuatorLights, "io_lights", "Lights", "mdi:lightbulb", POOL_DEVICE_RELAY_STD, 0.0f, 0.0f, 0.0f, POOL_DEVICE_INVALID, 0},
-#endif
     {PoolIds::DeviceWaterHeater, PoolIds::ActuatorWaterHeater, "io_wat_htr", "Water Heater", "mdi:water-boiler", POOL_DEVICE_RELAY_STD, 0.0f, 0.0f, 0.0f,
      POOL_DEVICE_INVALID, 0},
 };

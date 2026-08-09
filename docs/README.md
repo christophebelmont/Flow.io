@@ -68,11 +68,12 @@ La page [Binding ports, IO slots et domain slots](core/waveshare-io-map.md) cont
 | ORP / pH / pression / analogique libre | `a00..a03` | ADS1115 interne `100..103` |
 | température eau / air | `a04..a05` | OneWire `120..121` |
 | courant / tension | `a06..a07` | INA226 `140` / `139` |
-| PIR / niveaux / compteur d'eau | `i08..i12` | MCP23017 `220`, `223..226` |
+| PIR / niveaux | `i08..i11` | MCP23017 `220`, `223..225` |
+| compteur d'eau | `i12` | entrée optocouplée GPIO4, port `200` |
 | filtration / pH / chlore / robot | `d00..d03` | `EXIO1..EXIO4`, ports `300..303` |
-| remplissage / électrolyse / chauffage | `d04`, `d05`, `d07` | `EXIO5`, `EXIO6`, `EXIO8`, ports `304`, `305`, `307` |
+| remplissage / électrolyse / éclairage / chauffage | `d04..d07` | `EXIO5..EXIO8`, ports `304..307` |
 
-Les entrées isolées de la carte occupent `i00..i07`. `d06` est une sortie relais libre. Les sorties `d08..d15` utilisent le MCP23017 et restent sans rôle métier Pool par défaut.
+Les entrées isolées de la carte occupent `i00..i07`, mais GPIO4 est réservé par défaut au compteur `i12`; le binding initial de `i00` est donc « non connecté ». `d06` pilote l'éclairage (`Lights`) via `EXIO7`. Les sorties `d08..d15` utilisent le MCP23017 et restent sans rôle métier Pool par défaut.
 
 ## Matériel et interfaces du profil
 
