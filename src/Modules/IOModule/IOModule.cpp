@@ -172,7 +172,6 @@ static constexpr uint8_t kCfgBranchIoSht40 = 29;
 static constexpr uint8_t kCfgBranchIoBmp280 = 30;
 static constexpr uint8_t kCfgBranchIoBme680 = 31;
 static constexpr uint8_t kCfgBranchIoIna226 = 32;
-static constexpr uint8_t kCfgBranchIoMcp23017 = 48;
 static constexpr PhysicalPortId kLegacyDisconnectedBindingPort = 65535U;
 static constexpr char kLegacyCounterRuntimeKeyFmt[] = "ioi%02urt";
 
@@ -332,7 +331,6 @@ static constexpr MqttConfigRouteProducer::Route kIoCfgRoutes[] = {
     FLOW_IO_ANALOG_ROUTE_ENTRY(40, kCfgBranchIoA13, "13"),
     FLOW_IO_ANALOG_ROUTE_ENTRY(41, kCfgBranchIoA14, "14"),
     FLOW_IO_ANALOG_ROUTE_ENTRY(42, kCfgBranchIoA15, "15"),
-    {48, {(uint8_t)ConfigModuleId::Io, kCfgBranchIoMcp23017}, "io/drivers/mcp23017", "io/drivers/mcp23017", (uint8_t)MqttPublishPriority::Normal, nullptr},
     FLOW_IO_DIGITAL_OUTPUT_ROUTE_ENTRY(49, kCfgBranchIoD8, "08"),
     FLOW_IO_DIGITAL_OUTPUT_ROUTE_ENTRY(50, kCfgBranchIoD9, "09"),
     FLOW_IO_DIGITAL_OUTPUT_ROUTE_ENTRY(51, kCfgBranchIoD10, "10"),
@@ -458,7 +456,6 @@ void IOModule::setExpanders(const IOExpanderSpec* expanders, uint8_t count)
         expanderCfg_[spec.expanderId].enabled = spec.enabled;
         expanderCfg_[spec.expanderId].address = spec.address;
         expanderCfg_[spec.expanderId].maskDefault = spec.maskDefault;
-        expanderCfg_[spec.expanderId].activeLow = spec.activeLow;
         runtimeExpanders_[spec.expanderId].spec = &spec;
     }
 }
@@ -1856,10 +1853,138 @@ IoStatus IOModule::ioMeta_(IoId id, IoEndpointMeta* outMeta) const
     return IO_ERR_UNKNOWN_ID;
 }
 
+IoStatus IOModule::ioRuntimeStatus_(IoId id, IoRuntimeStatus* outStatus) const
+{
+    if (!outStatus) return IO_ERR_INVALID_ARG;
+    *outStatus = IoRuntimeStatus{};
+    outStatus->id = id;
+
+    IoEndpointMeta meta{};
+    const IoStatus metaStatus = ioMeta_(id, &meta);
+    if (metaStatus != IO_OK) return metaStatus;
+
+    if (!cfgData_.enabled) {
+        outStatus->state = IO_RUNTIME_MANUALLY_DISABLED;
+        outStatus->reason = IO_RUNTIME_REASON_IO_MODULE_DISABLED;
+        return IO_OK;
+    }
+
+    if (meta.bindingPort == IO_PORT_INVALID) {
+        outStatus->state = IO_RUNTIME_SLEEPING;
+        outStatus->reason = IO_RUNTIME_REASON_UNBOUND;
+        return IO_OK;
+    }
+
+    const IOBindingPortSpec* port = bindingPortSpec_(meta.bindingPort);
+    if (!port) {
+        outStatus->state = IO_RUNTIME_SLEEPING;
+        outStatus->reason = IO_RUNTIME_REASON_UNBOUND;
+        return IO_OK;
+    }
+
+    const bool usesExpander =
+        port->kind == IO_PORT_KIND_PCF8574_OUTPUT ||
+        port->kind == IO_PORT_KIND_TCA9554_OUTPUT ||
+        port->kind == IO_PORT_KIND_MCP23017_INPUT ||
+        port->kind == IO_PORT_KIND_MCP23017_OUTPUT;
+    if (usesExpander) {
+        outStatus->expanderId = port->expanderId;
+        if (!expanderEnabled_(port->expanderId)) {
+            outStatus->state = IO_RUNTIME_MANUALLY_DISABLED;
+            outStatus->reason = IO_RUNTIME_REASON_EXPANDER_DISABLED;
+            return IO_OK;
+        }
+    }
+
+    if (meta.kind == IO_KIND_ANALOG_IN) {
+        const uint8_t analogIdx = (uint8_t)(id - IO_ID_AI_BASE);
+        uint8_t source = IO_ANALOG_SOURCE_INVALID;
+        if (!resolveConfiguredAnalogSource_(analogIdx, source)) {
+            outStatus->state = IO_RUNTIME_SLEEPING;
+            outStatus->reason = IO_RUNTIME_REASON_UNBOUND;
+            return IO_OK;
+        }
+        if (analogSourceRequiresDriverEnable_(source) && !analogSourceDriverEnabled_(source)) {
+            outStatus->state = IO_RUNTIME_MANUALLY_DISABLED;
+            outStatus->reason = IO_RUNTIME_REASON_DRIVER_DISABLED;
+            return IO_OK;
+        }
+        if (analogSlots_[analogIdx].endpoint) {
+            outStatus->state = IO_RUNTIME_ACTIVE;
+            return IO_OK;
+        }
+    } else {
+        uint8_t slotIdx = 0xFFU;
+        if (findDigitalSlotByIoId_(id, slotIdx) && digitalSlots_[slotIdx].endpoint) {
+            outStatus->state = IO_RUNTIME_ACTIVE;
+            return IO_OK;
+        }
+    }
+
+    outStatus->state = IO_RUNTIME_ERROR;
+    if (usesExpander && port->expanderId < IO_MAX_EXPANDERS &&
+        runtimeExpanders_[port->expanderId].beginAttempted &&
+        !runtimeExpanders_[port->expanderId].beginOk) {
+        outStatus->reason = IO_RUNTIME_REASON_HARDWARE_NOT_DETECTED;
+    } else {
+        outStatus->reason = IO_RUNTIME_REASON_DRIVER_INIT_FAILED;
+    }
+    return IO_OK;
+}
+
+IoStatus IOModule::ioBindingPortStatus_(PhysicalPortId portId, IoRuntimeStatus* outStatus) const
+{
+    if (!outStatus) return IO_ERR_INVALID_ARG;
+    *outStatus = IoRuntimeStatus{};
+
+    const IOBindingPortSpec* port = bindingPortSpec_(portId);
+    if (!port) return IO_ERR_UNKNOWN_ID;
+
+    if (!cfgData_.enabled) {
+        outStatus->state = IO_RUNTIME_MANUALLY_DISABLED;
+        outStatus->reason = IO_RUNTIME_REASON_IO_MODULE_DISABLED;
+        return IO_OK;
+    }
+
+    const bool usesExpander =
+        port->kind == IO_PORT_KIND_PCF8574_OUTPUT ||
+        port->kind == IO_PORT_KIND_TCA9554_OUTPUT ||
+        port->kind == IO_PORT_KIND_MCP23017_INPUT ||
+        port->kind == IO_PORT_KIND_MCP23017_OUTPUT;
+    if (!usesExpander) {
+        outStatus->state = IO_RUNTIME_SLEEPING;
+        return IO_OK;
+    }
+
+    outStatus->expanderId = port->expanderId;
+    if (!expanderEnabled_(port->expanderId)) {
+        outStatus->state = IO_RUNTIME_MANUALLY_DISABLED;
+        outStatus->reason = IO_RUNTIME_REASON_EXPANDER_DISABLED;
+        return IO_OK;
+    }
+    if (port->expanderId < IO_MAX_EXPANDERS &&
+        runtimeExpanders_[port->expanderId].beginAttempted &&
+        !runtimeExpanders_[port->expanderId].beginOk) {
+        outStatus->state = IO_RUNTIME_ERROR;
+        outStatus->reason = IO_RUNTIME_REASON_HARDWARE_NOT_DETECTED;
+        return IO_OK;
+    }
+
+    outStatus->state = IO_RUNTIME_SLEEPING;
+    return IO_OK;
+}
+
 IoStatus IOModule::ioReadValue_(IoId id, IoValue* outValue) const
 {
     if (!outValue) return IO_ERR_INVALID_ARG;
     *outValue = IoValue{};
+
+    IoRuntimeStatus runtime{};
+    const IoStatus runtimeResult = ioRuntimeStatus_(id, &runtime);
+    if (runtimeResult != IO_OK) return runtimeResult;
+    if (runtime.state == IO_RUNTIME_MANUALLY_DISABLED) return IO_ERR_DISABLED;
+    if (runtime.state == IO_RUNTIME_ERROR) return IO_ERR_HW;
+    if (runtime.state != IO_RUNTIME_ACTIVE) return IO_ERR_NOT_READY;
 
     uint8_t slotIdx = 0xFF;
     if (findDigitalSlotByIoId_(id, slotIdx)) {
@@ -1913,6 +2038,13 @@ IoStatus IOModule::ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, Io
 {
     if (!outOn) return IO_ERR_INVALID_ARG;
 
+    IoRuntimeStatus runtime{};
+    const IoStatus runtimeResult = ioRuntimeStatus_(id, &runtime);
+    if (runtimeResult != IO_OK) return runtimeResult;
+    if (runtime.state == IO_RUNTIME_MANUALLY_DISABLED) return IO_ERR_DISABLED;
+    if (runtime.state == IO_RUNTIME_ERROR) return IO_ERR_HW;
+    if (runtime.state != IO_RUNTIME_ACTIVE) return IO_ERR_NOT_READY;
+
     uint8_t slotIdx = 0xFF;
     if (!findDigitalSlotByIoId_(id, slotIdx)) return IO_ERR_UNKNOWN_ID;
     const DigitalSlot& s = digitalSlots_[slotIdx];
@@ -1930,6 +2062,13 @@ IoStatus IOModule::ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, Io
 
 IoStatus IOModule::ioWriteDigital_(IoId id, uint8_t on, uint32_t tsMs)
 {
+    IoRuntimeStatus runtime{};
+    const IoStatus runtimeResult = ioRuntimeStatus_(id, &runtime);
+    if (runtimeResult != IO_OK) return runtimeResult;
+    if (runtime.state == IO_RUNTIME_MANUALLY_DISABLED) return IO_ERR_DISABLED;
+    if (runtime.state == IO_RUNTIME_ERROR) return IO_ERR_HW;
+    if (runtime.state != IO_RUNTIME_ACTIVE) return IO_ERR_NOT_READY;
+
     uint8_t slotIdx = 0xFF;
     if (!findDigitalSlotByIoId_(id, slotIdx)) return IO_ERR_UNKNOWN_ID;
     DigitalSlot& s = digitalSlots_[slotIdx];
@@ -1959,6 +2098,13 @@ IoStatus IOModule::ioReadAnalog_(IoId id, float* outValue, uint32_t* outTsMs, Io
 {
     if (!outValue) return IO_ERR_INVALID_ARG;
     if (id < IO_ID_AI_BASE || id >= IO_ID_AI_MAX) return IO_ERR_UNKNOWN_ID;
+
+    IoRuntimeStatus runtime{};
+    const IoStatus runtimeResult = ioRuntimeStatus_(id, &runtime);
+    if (runtimeResult != IO_OK) return runtimeResult;
+    if (runtime.state == IO_RUNTIME_MANUALLY_DISABLED) return IO_ERR_DISABLED;
+    if (runtime.state == IO_RUNTIME_ERROR) return IO_ERR_HW;
+    if (runtime.state != IO_RUNTIME_ACTIVE) return IO_ERR_NOT_READY;
 
     const uint8_t analogIdx = (uint8_t)(id - IO_ID_AI_BASE);
     const AnalogSlot& s = analogSlots_[analogIdx];
@@ -2001,6 +2147,14 @@ IoStatus IOModule::ioSensorStatus_(IoId id, IoSensorStatus* outStatus) const
 
     if (!cfgData_.enabled) {
         outStatus->invalidReasons = IO_SENSOR_INVALID_DISABLED;
+        return IO_OK;
+    }
+
+    IoRuntimeStatus runtime{};
+    const IoStatus runtimeResult = ioRuntimeStatus_(id, &runtime);
+    if (runtimeResult == IO_OK && runtime.state == IO_RUNTIME_MANUALLY_DISABLED) {
+        outStatus->enabled = 0U;
+        outStatus->invalidReasons = IO_SENSOR_INVALID_DISABLED | IO_SENSOR_INVALID_DRIVER_DISABLED;
         return IO_OK;
     }
 
@@ -2206,10 +2360,10 @@ uint8_t IOModule::expanderMaskDefault_(IOExpanderId expanderId) const
     return cfg ? cfg->maskDefault : 0;
 }
 
-bool IOModule::expanderActiveLow_(IOExpanderId expanderId) const
+bool IOModule::expanderOutputsInverted_(IOExpanderId expanderId) const
 {
-    const IOExpanderConfig* cfg = expanderConfig_(expanderId);
-    return cfg ? cfg->activeLow : false;
+    const IOExpanderSpec* spec = expanderSpec_(expanderId);
+    return spec ? spec->outputsInverted : false;
 }
 
 bool IOModule::validateExpanderTopology_()
@@ -2935,7 +3089,7 @@ bool IOModule::configureRuntime_()
 
         IDigitalPinDriver* driver = nullptr;
         const bool effectiveActiveHigh = (usesPcfOut || usesTcaOut || usesMcpOut)
-            ? (s.outDef.activeHigh != expanderActiveLow_(s.expanderId))
+            ? (s.outDef.activeHigh != expanderOutputsInverted_(s.expanderId))
             : s.outDef.activeHigh;
         if (usesPcfOut) {
             IMaskOutputDriver* pcf = beginMaskExpander_(s.expanderId, IO_EXPANDER_KIND_PCF8574, false);
@@ -3561,13 +3715,10 @@ void IOModule::init(ConfigStore& cfg, ServiceRegistry& services)
     cfg.registerVar(ina226AddressVar_, kCfgModuleId, kCfgBranchIoIna226);
     cfg.registerVar(ina226PollVar_, kCfgModuleId, kCfgBranchIoIna226);
     cfg.registerVar(ina226ShuntOhmsVar_, kCfgModuleId, kCfgBranchIoIna226);
-    cfg.registerVar(mcp23017EnabledVar_, kCfgModuleId, kCfgBranchIoMcp23017);
-    cfg.registerVar(mcp23017AddressVar_, kCfgModuleId, kCfgBranchIoMcp23017);
 #define FLOW_IO_REGISTER_EXPANDER_CFG(INDEX, BRANCH) \
     cfg.registerVar(exp##INDEX##EnabledVar_, kCfgModuleId, BRANCH); \
     cfg.registerVar(exp##INDEX##AddressVar_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(exp##INDEX##MaskDefaultVar_, kCfgModuleId, BRANCH); \
-    cfg.registerVar(exp##INDEX##ActiveLowVar_, kCfgModuleId, BRANCH);
+    cfg.registerVar(exp##INDEX##MaskDefaultVar_, kCfgModuleId, BRANCH);
     FLOW_IO_REGISTER_EXPANDER_CFG(0, kCfgBranchIoExp0)
     FLOW_IO_REGISTER_EXPANDER_CFG(1, kCfgBranchIoExp1)
     FLOW_IO_REGISTER_EXPANDER_CFG(2, kCfgBranchIoExp2)
@@ -3640,19 +3791,6 @@ void IOModule::onConfigLoaded(ConfigStore& cfg, ServiceRegistry& services)
     }
     for (uint8_t i = 0; i < DIGITAL_CFG_SLOTS; ++i) {
         digitalCfg_[i].bindingPort = normalizeConfiguredBindingPort(digitalCfg_[i].bindingPort);
-    }
-    Preferences prefs;
-    if (prefs.begin(NvsKeys::StorageNamespace, true)) {
-        if (const IOExpanderSpec* exp1 = expanderSpec_(1)) {
-            if (exp1->kind == IO_EXPANDER_KIND_MCP23017 &&
-                !prefs.isKey(NvsKeys::Io::IO_X1AD) &&
-                prefs.isKey(NvsKeys::Io::IO_MCPAD)) {
-                expanderCfg_[1].enabled = cfgData_.mcp23017Enabled;
-                expanderCfg_[1].address = cfgData_.mcp23017Address;
-                LOGI("io.expander01 using legacy mcp23017 config addr=0x%02X", expanderCfg_[1].address);
-            }
-        }
-        prefs.end();
     }
     const bool sdaValid = (cfgData_.i2cSda >= 0) && digitalPinIsValid((uint8_t)cfgData_.i2cSda);
     const bool sclValid = (cfgData_.i2cScl >= 0) && digitalPinIsValid((uint8_t)cfgData_.i2cScl);

@@ -878,6 +878,7 @@ body.web-icons-disabled .control-field-apply{font-size:15px;font-weight:800;lett
 .io-summary-card .status-card-head{margin-bottom:0;align-items:center;}
 .io-summary-card-value{min-width:54px;height:42px;border-radius:var(--radius);display:inline-flex;align-items:center;justify-content:center;padding:0 9px;font-size:18px;font-weight:800;line-height:1;color:var(--state-muted-fg);background:var(--state-muted-bg);box-shadow:inset 0 0 0 1px var(--state-muted-ring);}
 .io-summary-card-value.is-active{color:var(--state-ok-fg);background:var(--state-ok-bg);box-shadow:inset 0 0 0 1px var(--state-ok-ring);}
+.io-summary-card-value.is-disabled{color:var(--warning);background:rgba(240,138,0,0.12);box-shadow:inset 0 0 0 1px rgba(240,138,0,0.2);}
 .io-summary-card-value.is-error{color:var(--state-alert-fg);background:var(--state-alert-bg);box-shadow:inset 0 0 0 1px var(--state-alert-ring);}
 .io-table-stack{display:grid;gap:16px;min-width:0;}
 .io-table-section{display:grid;gap:8px;min-width:0;}
@@ -889,6 +890,7 @@ body.web-icons-disabled .control-field-apply{font-size:15px;font-weight:800;lett
 .io-compact-table tbody tr:nth-child(even) td{background:#FBFDFF;}
 .io-state-badge{display:inline-flex;align-items:center;justify-content:center;min-width:64px;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800;line-height:1;color:var(--state-muted-fg);background:rgba(128,145,168,0.12);}
 .io-state-badge.is-active{color:var(--state-ok-fg);background:var(--state-ok-bg);}
+.io-state-badge.is-disabled{color:var(--warning);background:rgba(240,138,0,0.12);}
 .io-state-badge.is-error{color:var(--state-alert-fg);background:var(--state-alert-bg);}
 .io-direction-badge{display:inline-flex;align-items:center;justify-content:center;width:28px;height:24px;border-radius:999px;padding:0;font-size:11px;font-weight:800;line-height:1;color:var(--state-muted-fg);background:rgba(128,145,168,0.12);cursor:help;}
 .io-direction-badge.is-input{color:var(--primary);background:var(--primary-soft);}

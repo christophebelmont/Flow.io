@@ -56,6 +56,10 @@ matériel (`GPIO04`, `GPA0`, `GPB0`, `EXIO1`, etc.). L'API `/api/io/topology`
 expose la configuration stable des ports et des slots, tandis que `/api/io/runtime`
 expose leurs états et valeurs actualisés. Les deux réponses sont préparées dans des
 tampons bornés en PSRAM avant leur transmission HTTP.
+Le schéma `3` distingue explicitement l'état `manually_disabled` de l'état `error`.
+Lorsqu'un `expanderXX` est désactivé, ses binding ports et tous les slots qui leur sont
+liés restent visibles, mais portent l'état `manually_disabled` avec la raison
+`expander_disabled`. Aucun accès matériel à cet expander n'est alors effectué.
 La topologie expose le marquage dans le champ `board_port`, accompagné du champ `direction` (`input` ou
 `output`). La page **Entrées/Sorties** affiche le nom physique et le sens du port
 séparément du numéro de canal interne du driver. La colonne `IoId` contient l'identifiant

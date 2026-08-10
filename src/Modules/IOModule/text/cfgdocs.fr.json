@@ -110,11 +110,6 @@
       "label_t": "cfgdocs.io.drivers.expander00.mask_default.label",
       "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
     },
-    "io/drivers/expander00/active_low": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.expander00.active_low.label",
-      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
-    },
     "io/drivers/expander01/enabled": {
       "type": "Bool",
       "label_t": "cfgdocs.io.drivers.expander01.enabled.label",
@@ -130,11 +125,6 @@
       "type": "UInt8",
       "label_t": "cfgdocs.io.drivers.expander01.mask_default.label",
       "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
-    },
-    "io/drivers/expander01/active_low": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.expander01.active_low.label",
-      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
     },
     "io/drivers/expander02/enabled": {
       "type": "Bool",
@@ -152,11 +142,6 @@
       "label_t": "cfgdocs.io.drivers.expander02.mask_default.label",
       "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
     },
-    "io/drivers/expander02/active_low": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.expander02.active_low.label",
-      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
-    },
     "io/drivers/expander03/enabled": {
       "type": "Bool",
       "label_t": "cfgdocs.io.drivers.expander03.enabled.label",
@@ -172,11 +157,6 @@
       "type": "UInt8",
       "label_t": "cfgdocs.io.drivers.expander03.mask_default.label",
       "help_t": "cfgdocs.io.drivers.expander.mask_default.help"
-    },
-    "io/drivers/expander03/active_low": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.expander03.active_low.label",
-      "help_t": "cfgdocs.io.drivers.expander.active_low.help"
     },
     "io/drivers/gpio/poll_ms": {
       "type": "Int32",
@@ -1356,17 +1336,6 @@
       "label_t": "cfgdocs.io.output.d07.retain_on_warm_reboot.label",
       "help_t": "cfgdocs.io.output.d07.retain_on_warm_reboot.help",
       "enum_set": "io_output_boot_behavior"
-    },
-    "io/drivers/mcp23017/enabled": {
-      "type": "Bool",
-      "label_t": "cfgdocs.io.drivers.mcp23017.enabled.label",
-      "help_t": "cfgdocs.io.drivers.mcp23017.enabled.help"
-    },
-    "io/drivers/mcp23017/address": {
-      "type": "UInt8",
-      "label_t": "cfgdocs.io.drivers.mcp23017.address.label",
-      "help_t": "cfgdocs.io.drivers.mcp23017.address.help",
-      "display_format": "hex"
     },
     "io/output/d08/binding_port": {
       "type": "UInt16",

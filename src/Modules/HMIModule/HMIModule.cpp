@@ -1685,7 +1685,7 @@ void HMIModule::logHmiLedDebug_(uint32_t nowMs)
          ws2812StatusLed_.isTransitionActive() ? 1U : 0U,
          hasDomainError ? (unsigned)domainError.domainSlot : (unsigned)DOMAIN_SLOT_INVALID,
          ioRef,
-         hasDomainError ? domainSlotErrorReasonName(domainError.errorReason) : "",
+         hasDomainError ? domainSlotStatusReasonName(domainError.reason) : "",
          hasDomainError && domainError.hasPoolDevice ? (unsigned)domainError.poolMeta.blockReason : 0U);
 }
 

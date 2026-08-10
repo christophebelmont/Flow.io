@@ -56,8 +56,6 @@ struct IOModuleConfig {
     uint8_t ina226Address = 0x40;
     int32_t ina226PollMs = 500;
     float ina226ShuntOhms = 0.1f;
-    bool mcp23017Enabled = true;
-    uint8_t mcp23017Address = 0x21;
     bool traceEnabled = FLOW_MODDEF_IO_TREN;
     int32_t tracePeriodMs = FLOW_MODDEF_IO_TRMS;
 };
@@ -107,15 +105,14 @@ struct IOExpanderSpec {
     bool enabled = false;
     uint8_t address = 0;
     uint8_t maskDefault = 0;
-    bool activeLow = false;
+    /** Fixed board-level output inversion; not user-configurable. */
+    bool outputsInverted = false;
 };
 
 struct IOExpanderConfig {
     bool enabled = false;
     uint8_t address = 0;
     uint8_t maskDefault = 0;
-    // Global polarity inversion combined with each logical output's activeHigh setting.
-    bool activeLow = false;
 };
 
 struct IOBindingPortSpec {

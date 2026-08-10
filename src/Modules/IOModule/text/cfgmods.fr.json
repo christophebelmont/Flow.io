@@ -142,9 +142,6 @@
       "label_t": "cfgmods.io.input.i07.mode.label",
       "help_t": "cfgmods.io.input.i07.mode.help",
       "enum_set": "flowio_digital_input_mode"
-    },
-    "io/drivers/mcp23017/address": {
-      "display_format": "hex"
     }
   },
   "meta": {

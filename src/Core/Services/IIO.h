@@ -34,7 +34,8 @@ enum IoStatus : uint8_t {
     IO_ERR_TYPE_MISMATCH = 3,
     IO_ERR_READ_ONLY = 4,
     IO_ERR_NOT_READY = 5,
-    IO_ERR_HW = 6
+    IO_ERR_HW = 6,
+    IO_ERR_DISABLED = 7
 };
 
 /** Runtime value type transported by I/O APIs. */
@@ -102,6 +103,61 @@ struct IoEndpointMeta {
     float maxValid = 0.0f;
 };
 
+/** Runtime availability of one configured I/O endpoint. */
+enum IoRuntimeState : uint8_t {
+    IO_RUNTIME_SLEEPING = 0,
+    IO_RUNTIME_ACTIVE = 1,
+    IO_RUNTIME_MANUALLY_DISABLED = 2,
+    IO_RUNTIME_ERROR = 3
+};
+
+/** Cause associated with IoRuntimeStatus::state. */
+enum IoRuntimeReason : uint8_t {
+    IO_RUNTIME_REASON_NONE = 0,
+    IO_RUNTIME_REASON_UNBOUND = 1,
+    IO_RUNTIME_REASON_IO_MODULE_DISABLED = 2,
+    IO_RUNTIME_REASON_DRIVER_DISABLED = 3,
+    IO_RUNTIME_REASON_EXPANDER_DISABLED = 4,
+    IO_RUNTIME_REASON_HARDWARE_NOT_DETECTED = 5,
+    IO_RUNTIME_REASON_DRIVER_INIT_FAILED = 6,
+    IO_RUNTIME_REASON_READ_FAILED = 7
+};
+
+/** Runtime status kept independently from endpoint hardware availability. */
+struct IoRuntimeStatus {
+    IoId id = IO_ID_INVALID;
+    uint8_t state = IO_RUNTIME_SLEEPING;
+    uint8_t reason = IO_RUNTIME_REASON_NONE;
+    uint8_t expanderId = 0xFFU;
+    uint8_t reserved = 0U;
+};
+
+constexpr const char* ioRuntimeStateName(uint8_t state)
+{
+    switch (state) {
+        case IO_RUNTIME_SLEEPING: return "sleeping";
+        case IO_RUNTIME_ACTIVE: return "active";
+        case IO_RUNTIME_MANUALLY_DISABLED: return "manually_disabled";
+        case IO_RUNTIME_ERROR: return "error";
+        default: return "sleeping";
+    }
+}
+
+constexpr const char* ioRuntimeReasonName(uint8_t reason)
+{
+    switch (reason) {
+        case IO_RUNTIME_REASON_NONE: return "";
+        case IO_RUNTIME_REASON_UNBOUND: return "unbound";
+        case IO_RUNTIME_REASON_IO_MODULE_DISABLED: return "io_module_disabled";
+        case IO_RUNTIME_REASON_DRIVER_DISABLED: return "driver_disabled";
+        case IO_RUNTIME_REASON_EXPANDER_DISABLED: return "expander_disabled";
+        case IO_RUNTIME_REASON_HARDWARE_NOT_DETECTED: return "hardware_not_detected";
+        case IO_RUNTIME_REASON_DRIVER_INIT_FAILED: return "driver_init_failed";
+        case IO_RUNTIME_REASON_READ_FAILED: return "read_failed";
+        default: return "unknown";
+    }
+}
+
 /** Per-cycle change summary exposed by IOServiceV2::lastCycle. */
 struct IoCycleInfo {
     IoSeq seq = 0;
@@ -147,6 +203,10 @@ struct IOServiceV2 {
     IoStatus (*idAt)(void* ctx, uint8_t index, IoId* outId);
     /** Fetch static metadata for a given endpoint id. */
     IoStatus (*meta)(void* ctx, IoId id, IoEndpointMeta* outMeta);
+    /** Fetch runtime availability for a configured endpoint. */
+    IoStatus (*runtimeStatus)(void* ctx, IoId id, IoRuntimeStatus* outStatus);
+    /** Fetch runtime availability for one profile binding port. */
+    IoStatus (*bindingPortStatus)(void* ctx, uint16_t bindingPort, IoRuntimeStatus* outStatus);
     /** Read the latest typed value for any endpoint kind. */
     IoStatus (*readValue)(void* ctx, IoId id, IoValue* outValue);
 

@@ -64,7 +64,7 @@ bool DomainStatusServiceProvider::slotStatus_(DomainSlotId domainSlot, DomainSlo
 
     const DomainIoSlotBinding* binding = findBinding_(domainSlot);
     if (!binding || binding->ioSlot == IO_SLOT_INVALID) {
-        outStatus->errorReason = DomainSlotErrorReason::Unbound;
+        outStatus->reason = DomainSlotStatusReason::Unbound;
         return true;
     }
 
@@ -72,7 +72,7 @@ bool DomainStatusServiceProvider::slotStatus_(DomainSlotId domainSlot, DomainSlo
     outStatus->ioId = ioIdFromSlot(binding->ioSlot);
     if (!ioSvc_ || !ioSvc_->meta ||
         ioSvc_->meta(ioSvc_->ctx, outStatus->ioId, &outStatus->meta) != IO_OK) {
-        outStatus->errorReason = DomainSlotErrorReason::NotConfigured;
+        outStatus->reason = DomainSlotStatusReason::NotConfigured;
         return true;
     }
 
@@ -95,21 +95,51 @@ bool DomainStatusServiceProvider::slotStatus_(DomainSlotId domainSlot, DomainSlo
     }
 
     if (!outStatus->hasBindingPort) {
-        outStatus->errorReason = DomainSlotErrorReason::NoBinding;
+        outStatus->reason = DomainSlotStatusReason::NoBinding;
         return true;
+    }
+
+    if (ioSvc_->runtimeStatus) {
+        IoRuntimeStatus runtime{};
+        if (ioSvc_->runtimeStatus(ioSvc_->ctx, outStatus->ioId, &runtime) == IO_OK) {
+            if (runtime.state == IO_RUNTIME_MANUALLY_DISABLED) {
+                outStatus->state = DomainSlotRuntimeState::ManuallyDisabled;
+                outStatus->reason =
+                    (runtime.reason == IO_RUNTIME_REASON_IO_MODULE_DISABLED)
+                        ? DomainSlotStatusReason::IoModuleDisabled
+                    : (runtime.reason == IO_RUNTIME_REASON_DRIVER_DISABLED)
+                        ? DomainSlotStatusReason::DriverDisabled
+                    : (runtime.reason == IO_RUNTIME_REASON_EXPANDER_DISABLED)
+                        ? DomainSlotStatusReason::ExpanderDisabled
+                        : DomainSlotStatusReason::SlotDisabled;
+                return true;
+            }
+            if (runtime.state == IO_RUNTIME_ERROR) {
+                outStatus->state = DomainSlotRuntimeState::Error;
+                outStatus->error = 1U;
+                outStatus->reason =
+                    (runtime.reason == IO_RUNTIME_REASON_HARDWARE_NOT_DETECTED)
+                        ? DomainSlotStatusReason::HardwareNotDetected
+                    : (runtime.reason == IO_RUNTIME_REASON_DRIVER_INIT_FAILED)
+                        ? DomainSlotStatusReason::DriverInitFailed
+                        : DomainSlotStatusReason::ReadFailed;
+                return true;
+            }
+        }
     }
 
     if (outStatus->meta.kind != IO_KIND_DIGITAL_OUT && ioSvc_->sensorStatus) {
         IoSensorStatus sensor{};
         const IoStatus sensorResult = ioSvc_->sensorStatus(ioSvc_->ctx, outStatus->ioId, &sensor);
         if (sensorResult == IO_OK && sensor.enabled == 0U) {
-            outStatus->errorReason = DomainSlotErrorReason::Disabled;
+            outStatus->state = DomainSlotRuntimeState::ManuallyDisabled;
+            outStatus->reason = DomainSlotStatusReason::DriverDisabled;
             return true;
         }
         if (sensorResult == IO_OK && sensor.enabled != 0U && sensor.valid == 0U) {
             outStatus->state = DomainSlotRuntimeState::Error;
             outStatus->error = 1U;
-            outStatus->errorReason = DomainSlotErrorReason::NoValidValue;
+            outStatus->reason = DomainSlotStatusReason::NoValidValue;
             return true;
         }
     }
@@ -117,13 +147,14 @@ bool DomainStatusServiceProvider::slotStatus_(DomainSlotId domainSlot, DomainSlo
     if (outStatus->hasPoolDevice) {
         if (!outStatus->poolMeta.enabled ||
             outStatus->poolMeta.blockReason == POOL_DEVICE_BLOCK_DISABLED) {
-            outStatus->errorReason = DomainSlotErrorReason::Disabled;
+            outStatus->state = DomainSlotRuntimeState::ManuallyDisabled;
+            outStatus->reason = DomainSlotStatusReason::SlotDisabled;
             return true;
         }
         if (outStatus->poolMeta.blockReason != POOL_DEVICE_BLOCK_NONE) {
             outStatus->state = DomainSlotRuntimeState::Error;
             outStatus->error = 1U;
-            outStatus->errorReason = DomainSlotErrorReason::PoolDeviceBlocked;
+            outStatus->reason = DomainSlotStatusReason::PoolDeviceBlocked;
             return true;
         }
     }
@@ -139,7 +170,7 @@ bool DomainStatusServiceProvider::slotStatus_(DomainSlotId domainSlot, DomainSlo
 
     outStatus->state = DomainSlotRuntimeState::Error;
     outStatus->error = 1U;
-    outStatus->errorReason = DomainSlotErrorReason::ReadFailed;
+    outStatus->reason = DomainSlotStatusReason::ReadFailed;
     return true;
 }
 
@@ -153,6 +184,7 @@ bool DomainStatusServiceProvider::summary_(DomainStatusSummary* outSummary) cons
         DomainSlotStatus status{};
         if (!slotStatus_(domain_->domainSlots[i].id, &status)) continue;
         if (status.state == DomainSlotRuntimeState::Active) ++outSummary->active;
+        else if (status.state == DomainSlotRuntimeState::ManuallyDisabled) ++outSummary->manuallyDisabled;
         else if (status.state == DomainSlotRuntimeState::Error) ++outSummary->error;
         else ++outSummary->sleeping;
     }

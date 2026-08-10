@@ -146,6 +146,8 @@ private:
     uint8_t ioCount_() const;
     IoStatus ioIdAt_(uint8_t index, IoId* outId) const;
     IoStatus ioMeta_(IoId id, IoEndpointMeta* outMeta) const;
+    IoStatus ioRuntimeStatus_(IoId id, IoRuntimeStatus* outStatus) const;
+    IoStatus ioBindingPortStatus_(PhysicalPortId portId, IoRuntimeStatus* outStatus) const;
     IoStatus ioReadValue_(IoId id, IoValue* outValue) const;
     IoStatus ioReadDigital_(IoId id, uint8_t* outOn, uint32_t* outTsMs, IoSeq* outSeq) const;
     IoStatus ioWriteDigital_(IoId id, uint8_t on, uint32_t tsMs);
@@ -215,7 +217,7 @@ private:
     bool expanderUsable_(IOExpanderId expanderId) const;
     uint8_t expanderAddress_(IOExpanderId expanderId) const;
     uint8_t expanderMaskDefault_(IOExpanderId expanderId) const;
-    bool expanderActiveLow_(IOExpanderId expanderId) const;
+    bool expanderOutputsInverted_(IOExpanderId expanderId) const;
     bool validateExpanderTopology_();
     static bool writeDigitalOut_(void* ctx, bool on);
     void applyBoardDefaults_(const BoardSpec& board);
@@ -363,6 +365,8 @@ private:
         ServiceBinding::bind<&IOModule::ioCount_>,
         ServiceBinding::bind<&IOModule::ioIdAt_>,
         ServiceBinding::bind<&IOModule::ioMeta_>,
+        ServiceBinding::bind<&IOModule::ioRuntimeStatus_>,
+        ServiceBinding::bind<&IOModule::ioBindingPortStatus_>,
         ServiceBinding::bind<&IOModule::ioReadValue_>,
         ServiceBinding::bind<&IOModule::ioReadDigital_>,
         ServiceBinding::bind<&IOModule::ioWriteDigital_>,
@@ -449,17 +453,14 @@ private:
     ConfigVariable<uint8_t,0> ina226AddressVar_ { NVS_KEY(NvsKeys::Io::IO_INAAD),"address","io/drivers/ina226",ConfigType::UInt8,&cfgData_.ina226Address,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> ina226PollVar_ { NVS_KEY(NvsKeys::Io::IO_INAPL),"poll_ms","io/drivers/ina226",ConfigType::Int32,&cfgData_.ina226PollMs,ConfigPersistence::Persistent,0 };
     ConfigVariable<float,0> ina226ShuntOhmsVar_ { NVS_KEY(NvsKeys::Io::IO_INASH),"shunt_ohms","io/drivers/ina226",ConfigType::Float,&cfgData_.ina226ShuntOhms,ConfigPersistence::Persistent,0 };
-    ConfigVariable<bool,0> mcp23017EnabledVar_ { NVS_KEY(NvsKeys::Io::IO_MCPEN),"enabled","io/drivers/mcp23017",ConfigType::Bool,&cfgData_.mcp23017Enabled,ConfigPersistence::Persistent,0 };
-    ConfigVariable<uint8_t,0> mcp23017AddressVar_ { NVS_KEY(NvsKeys::Io::IO_MCPAD),"address","io/drivers/mcp23017",ConfigType::UInt8,&cfgData_.mcp23017Address,ConfigPersistence::Persistent,0 };
-#define FLOW_IO_EXPANDER_CFG_DECL(INDEX, SLOT_STR, KEYEN, KEYAD, KEYMK, KEYAL) \
+#define FLOW_IO_EXPANDER_CFG_DECL(INDEX, SLOT_STR, KEYEN, KEYAD, KEYMK) \
     ConfigVariable<bool,0> exp##INDEX##EnabledVar_{NVS_KEY(NvsKeys::Io::KEYEN),"enabled","io/drivers/expander" SLOT_STR,ConfigType::Bool,&expanderCfg_[INDEX].enabled,ConfigPersistence::Persistent,0}; \
     ConfigVariable<uint8_t,0> exp##INDEX##AddressVar_{NVS_KEY(NvsKeys::Io::KEYAD),"address","io/drivers/expander" SLOT_STR,ConfigType::UInt8,&expanderCfg_[INDEX].address,ConfigPersistence::Persistent,0}; \
-    ConfigVariable<uint8_t,0> exp##INDEX##MaskDefaultVar_{NVS_KEY(NvsKeys::Io::KEYMK),"mask_default","io/drivers/expander" SLOT_STR,ConfigType::UInt8,&expanderCfg_[INDEX].maskDefault,ConfigPersistence::Persistent,0}; \
-    ConfigVariable<bool,0> exp##INDEX##ActiveLowVar_{NVS_KEY(NvsKeys::Io::KEYAL),"active_low","io/drivers/expander" SLOT_STR,ConfigType::Bool,&expanderCfg_[INDEX].activeLow,ConfigPersistence::Persistent,0};
-    FLOW_IO_EXPANDER_CFG_DECL(0, "00", IO_X0EN, IO_X0AD, IO_X0MK, IO_X0AL)
-    FLOW_IO_EXPANDER_CFG_DECL(1, "01", IO_X1EN, IO_X1AD, IO_X1MK, IO_X1AL)
-    FLOW_IO_EXPANDER_CFG_DECL(2, "02", IO_X2EN, IO_X2AD, IO_X2MK, IO_X2AL)
-    FLOW_IO_EXPANDER_CFG_DECL(3, "03", IO_X3EN, IO_X3AD, IO_X3MK, IO_X3AL)
+    ConfigVariable<uint8_t,0> exp##INDEX##MaskDefaultVar_{NVS_KEY(NvsKeys::Io::KEYMK),"mask_default","io/drivers/expander" SLOT_STR,ConfigType::UInt8,&expanderCfg_[INDEX].maskDefault,ConfigPersistence::Persistent,0};
+    FLOW_IO_EXPANDER_CFG_DECL(0, "00", IO_X0EN, IO_X0AD, IO_X0MK)
+    FLOW_IO_EXPANDER_CFG_DECL(1, "01", IO_X1EN, IO_X1AD, IO_X1MK)
+    FLOW_IO_EXPANDER_CFG_DECL(2, "02", IO_X2EN, IO_X2AD, IO_X2MK)
+    FLOW_IO_EXPANDER_CFG_DECL(3, "03", IO_X3EN, IO_X3AD, IO_X3MK)
 #undef FLOW_IO_EXPANDER_CFG_DECL
     ConfigVariable<bool,0> traceEnabledVar_ { NVS_KEY(NvsKeys::Io::IO_TREN),"trace_enabled","io/debug",ConfigType::Bool,&cfgData_.traceEnabled,ConfigPersistence::Persistent,0 };
     ConfigVariable<int32_t,0> tracePeriodVar_ { NVS_KEY(NvsKeys::Io::IO_TRMS),"trace_period_ms","io/debug",ConfigType::Int32,&cfgData_.tracePeriodMs,ConfigPersistence::Persistent,0 };

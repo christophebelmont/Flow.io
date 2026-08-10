@@ -22,7 +22,8 @@ enum PoolDeviceRuntimeBlockReason : uint8_t {
     POOL_DEVICE_BLOCK_INTERLOCK = 2,
     POOL_DEVICE_BLOCK_IO_ERROR = 3,
     POOL_DEVICE_BLOCK_MAX_UPTIME = 4,
-    POOL_DEVICE_BLOCK_UNBOUND = 5
+    POOL_DEVICE_BLOCK_UNBOUND = 5,
+    POOL_DEVICE_BLOCK_IO_DISABLED = 6
 };
 
 struct PoolDeviceRuntimeStateEntry {

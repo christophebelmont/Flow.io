@@ -207,7 +207,8 @@ Paramètres principaux:
 - initialisation du bus I2C principal partagé: `i2c_sda`, `i2c_scl`
 - polling: `ads_poll_ms`, `ds_poll_ms`, `digital_poll_ms`
 - ADS: adresses, gain, rate
-- expanders PCF8574/TCA9554/MCP23017: activation, adresse et polarité par instance `expanderXX`
+- expanders PCF8574/TCA9554/MCP23017: activation, adresse et masque par instance `expanderXX`
+- inversion électrique éventuelle des sorties d'expander: propriété fixe du profil matériel, non configurable
 - traces: `trace_enabled`, `trace_period_ms`
 - calibration et précision des entrées analogiques
 - binding, `activeHigh`, `momentary`, `pulseMs` des sorties digitales

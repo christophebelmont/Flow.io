@@ -133,6 +133,10 @@ PoolDeviceSvcStatus PoolDeviceModule::svcWriteDesiredImpl_(uint8_t slot, uint8_t
             unlockState_();
             return POOLDEV_SVC_ERR_IO;
         }
+        if (s.blockReason == POOL_DEVICE_BLOCK_IO_DISABLED) {
+            unlockState_();
+            return POOLDEV_SVC_ERR_DISABLED;
+        }
         if (maxUptimeReached) {
             s.blockReason = POOL_DEVICE_BLOCK_MAX_UPTIME;
             logStartInterlock_(slot, s.blockReason);

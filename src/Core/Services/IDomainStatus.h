@@ -13,15 +13,21 @@
 enum class DomainSlotRuntimeState : uint8_t {
     Sleeping = 0,
     Active,
+    ManuallyDisabled,
     Error
 };
 
-enum class DomainSlotErrorReason : uint8_t {
+enum class DomainSlotStatusReason : uint8_t {
     None = 0,
     Unbound,
     NotConfigured,
     NoBinding,
-    Disabled,
+    IoModuleDisabled,
+    DriverDisabled,
+    ExpanderDisabled,
+    SlotDisabled,
+    HardwareNotDetected,
+    DriverInitFailed,
     NoValidValue,
     PoolDeviceBlocked,
     ReadFailed
@@ -32,7 +38,7 @@ struct DomainSlotStatus {
     IoSlotId ioSlot = IO_SLOT_INVALID;
     IoId ioId = IO_ID_INVALID;
     DomainSlotRuntimeState state = DomainSlotRuntimeState::Sleeping;
-    DomainSlotErrorReason errorReason = DomainSlotErrorReason::None;
+    DomainSlotStatusReason reason = DomainSlotStatusReason::None;
     uint8_t active = 0U;
     uint8_t error = 0U;
     uint8_t hasMeta = 0U;
@@ -49,6 +55,7 @@ struct DomainSlotStatus {
 struct DomainStatusSummary {
     uint16_t total = 0U;
     uint16_t active = 0U;
+    uint16_t manuallyDisabled = 0U;
     uint16_t sleeping = 0U;
     uint16_t error = 0U;
 };
@@ -66,22 +73,28 @@ constexpr const char* domainSlotRuntimeStateName(DomainSlotRuntimeState state)
     switch (state) {
         case DomainSlotRuntimeState::Sleeping: return "sleeping";
         case DomainSlotRuntimeState::Active: return "active";
+        case DomainSlotRuntimeState::ManuallyDisabled: return "manually_disabled";
         case DomainSlotRuntimeState::Error: return "error";
     }
     return "sleeping";
 }
 
-constexpr const char* domainSlotErrorReasonName(DomainSlotErrorReason reason)
+constexpr const char* domainSlotStatusReasonName(DomainSlotStatusReason reason)
 {
     switch (reason) {
-        case DomainSlotErrorReason::None: return "";
-        case DomainSlotErrorReason::Unbound: return "unbound";
-        case DomainSlotErrorReason::NotConfigured: return "not_configured";
-        case DomainSlotErrorReason::NoBinding: return "no_binding";
-        case DomainSlotErrorReason::Disabled: return "disabled";
-        case DomainSlotErrorReason::NoValidValue: return "no_valid_value";
-        case DomainSlotErrorReason::PoolDeviceBlocked: return "pool_device_blocked";
-        case DomainSlotErrorReason::ReadFailed: return "read_failed";
+        case DomainSlotStatusReason::None: return "";
+        case DomainSlotStatusReason::Unbound: return "unbound";
+        case DomainSlotStatusReason::NotConfigured: return "not_configured";
+        case DomainSlotStatusReason::NoBinding: return "no_binding";
+        case DomainSlotStatusReason::IoModuleDisabled: return "io_module_disabled";
+        case DomainSlotStatusReason::DriverDisabled: return "driver_disabled";
+        case DomainSlotStatusReason::ExpanderDisabled: return "expander_disabled";
+        case DomainSlotStatusReason::SlotDisabled: return "slot_disabled";
+        case DomainSlotStatusReason::HardwareNotDetected: return "hardware_not_detected";
+        case DomainSlotStatusReason::DriverInitFailed: return "driver_init_failed";
+        case DomainSlotStatusReason::NoValidValue: return "no_valid_value";
+        case DomainSlotStatusReason::PoolDeviceBlocked: return "pool_device_blocked";
+        case DomainSlotStatusReason::ReadFailed: return "read_failed";
     }
     return "unknown";
 }

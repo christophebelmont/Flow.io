@@ -5113,6 +5113,7 @@
       const key = String(state || '').trim().toLowerCase();
       if (key === 'active') return tr('io.state.active', 'Actif');
       if (key === 'sleeping') return tr('io.state.sleeping', 'Veille');
+      if (key === 'manually_disabled') return tr('io.state.manuallyDisabled', 'Désactivé manuellement');
       if (key === 'error') return tr('io.state.error', 'Erreur');
       return key || '-';
     }
@@ -5120,6 +5121,7 @@
     function ioSummaryStateClass(state) {
       const key = String(state || '').trim().toLowerCase();
       if (key === 'active') return 'is-active';
+      if (key === 'manually_disabled') return 'is-disabled';
       if (key === 'error') return 'is-error';
       return 'is-sleeping';
     }
@@ -5324,6 +5326,10 @@
           tr('io.cards.domainSlots.summary', 'slots domaine actifs')
         );
         appendIoSummarySkeletonCard(
+          tr('io.cards.manuallyDisabled', 'Désactivés manuellement'),
+          tr('io.status.loading', 'Chargement...')
+        );
+        appendIoSummarySkeletonCard(
           tr('io.cards.errors', 'Slots en erreur'),
           tr('io.status.loading', 'Chargement...')
         );
@@ -5335,6 +5341,7 @@
           [
             tr('io.col.driver', 'Driver'),
             tr('io.col.active', 'Actifs'),
+            tr('io.col.manuallyDisabled', 'Désactivés'),
             tr('io.col.errors', 'Erreurs')
           ],
           3
@@ -5409,6 +5416,12 @@
           ioSummaryNumber(summary.domain_slots_error) ? 'error' : 'active'
         );
         appendIoSummaryCard(
+          tr('io.cards.manuallyDisabled', 'Désactivés manuellement'),
+          ioSummaryNumber(summary.io_slots_manually_disabled),
+          tr('io.cards.manuallyDisabled.summary', 'slots désactivés par configuration'),
+          ioSummaryNumber(summary.io_slots_manually_disabled) ? 'manually_disabled' : 'active'
+        );
+        appendIoSummaryCard(
           tr('io.cards.errors', 'Slots en erreur'),
           ioSummaryNumber(summary.error_slots),
           errors.length ? errors.map((slot) => ioSummaryText(slot.label, slot.io_slot)).slice(0, 3).join(', ') : tr('io.cards.errors.none', 'aucune erreur active'),
@@ -5423,6 +5436,7 @@
           [
             { key: 'driver', label: tr('io.col.driver', 'Driver') },
             { key: 'active_slots', label: tr('io.col.active', 'Actifs') },
+            { key: 'manually_disabled_slots', label: tr('io.col.manuallyDisabled', 'Désactivés') },
             { key: 'error_slots', label: tr('io.col.errors', 'Erreurs') }
           ],
           drivers

@@ -110,6 +110,7 @@ const char* PoolDeviceModule::blockReasonStr_(uint8_t reason)
     if (reason == POOL_DEVICE_BLOCK_IO_ERROR) return "io_error";
     if (reason == POOL_DEVICE_BLOCK_MAX_UPTIME) return "max_uptime";
     if (reason == POOL_DEVICE_BLOCK_UNBOUND) return "unbound";
+    if (reason == POOL_DEVICE_BLOCK_IO_DISABLED) return "io_disabled";
     return "none";
 }
 
@@ -341,9 +342,19 @@ bool PoolDeviceModule::configureRuntime_()
         if (!s.used) continue;
 
         bool ioReady = false;
+        bool ioManuallyDisabled = false;
         IoEndpointMeta meta{};
         const IoStatus metaStatus = ioSvc_->meta(ioSvc_->ctx, s.ioId, &meta);
-        if (metaStatus == IO_OK && meta.kind == IO_KIND_DIGITAL_OUT && (meta.capabilities & IO_CAP_W) != 0) {
+        if (metaStatus == IO_OK && ioSvc_->runtimeStatus) {
+            IoRuntimeStatus runtime{};
+            ioManuallyDisabled =
+                ioSvc_->runtimeStatus(ioSvc_->ctx, s.ioId, &runtime) == IO_OK &&
+                runtime.state == IO_RUNTIME_MANUALLY_DISABLED;
+        }
+        if (!ioManuallyDisabled &&
+            metaStatus == IO_OK &&
+            meta.kind == IO_KIND_DIGITAL_OUT &&
+            (meta.capabilities & IO_CAP_W) != 0) {
             ioReady = true;
         } else {
             LOGD("Pool device %s sleeping ioId=%u status=%u kind=%u caps=0x%02X",
@@ -354,7 +365,9 @@ bool PoolDeviceModule::configureRuntime_()
                  (unsigned)meta.capabilities);
             s.actualOn = false;
             s.desiredOn = false;
-            s.blockReason = s.def.enabled ? POOL_DEVICE_BLOCK_UNBOUND : POOL_DEVICE_BLOCK_DISABLED;
+            s.blockReason = !s.def.enabled
+                ? POOL_DEVICE_BLOCK_DISABLED
+                : (ioManuallyDisabled ? POOL_DEVICE_BLOCK_IO_DISABLED : POOL_DEVICE_BLOCK_UNBOUND);
         }
         s.runtimePublishable = ioReady;
 

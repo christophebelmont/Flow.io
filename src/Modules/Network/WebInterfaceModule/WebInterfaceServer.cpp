@@ -3188,6 +3188,7 @@ const char* wavesharePoolDeviceBlockReasonLabel_(uint8_t reason)
         case POOL_DEVICE_BLOCK_IO_ERROR: return "io_error";
         case POOL_DEVICE_BLOCK_MAX_UPTIME: return "max_uptime";
         case POOL_DEVICE_BLOCK_UNBOUND: return "unbound";
+        case POOL_DEVICE_BLOCK_IO_DISABLED: return "io_disabled";
         default: return "blocked";
     }
 }
@@ -3305,6 +3306,7 @@ struct WaveshareIoSummaryState {
     const char* state = "sleeping";
     const char* error = "";
     bool active = false;
+    bool manuallyDisabled = false;
     bool errorState = false;
     IoEndpointMeta meta{};
     IoValue value{};
@@ -3331,6 +3333,7 @@ WaveshareIoSummaryState waveshareIoSummaryStateForSlot_(const DomainStatusServic
 
     out.state = domainSlotRuntimeStateName(shared.state);
     out.active = shared.active != 0U;
+    out.manuallyDisabled = shared.state == DomainSlotRuntimeState::ManuallyDisabled;
     out.errorState = shared.error != 0U;
     out.meta = shared.meta;
     out.value = shared.value;
@@ -3341,9 +3344,9 @@ WaveshareIoSummaryState waveshareIoSummaryStateForSlot_(const DomainStatusServic
     out.poolMeta = shared.poolMeta;
     out.poolActualOn = shared.poolActualOn;
     out.poolActualTsMs = shared.poolActualTsMs;
-    out.error = (shared.errorReason == DomainSlotErrorReason::PoolDeviceBlocked)
+    out.error = (shared.reason == DomainSlotStatusReason::PoolDeviceBlocked)
         ? wavesharePoolDeviceBlockReasonLabel_(shared.poolMeta.blockReason)
-        : domainSlotErrorReasonName(shared.errorReason);
+        : domainSlotStatusReasonName(shared.reason);
     return out;
 }
 
@@ -3362,6 +3365,8 @@ struct WaveshareBindingPortState {
     IoId ioId = IO_ID_INVALID;
     uint32_t tsMs = 0U;
     char valueText[32] = {0};
+    const char* state = "sleeping";
+    const char* reason = "";
     bool bound = false;
     bool valueOk = false;
 };
@@ -3372,6 +3377,15 @@ void waveshareCollectBindingPortStates_(const IOServiceV2* ioSvc,
 {
     using namespace Profiles::Waveshare::IoLayout;
     if (!states || stateCount == 0U || !ioSvc || !ioSvc->count || !ioSvc->idAt || !ioSvc->meta) return;
+
+    if (ioSvc->bindingPortStatus) {
+        for (size_t portIndex = 0U; portIndex < stateCount; ++portIndex) {
+            IoRuntimeStatus runtime{};
+            if (ioSvc->bindingPortStatus(ioSvc->ctx, kBindingPorts[portIndex].portId, &runtime) != IO_OK) continue;
+            states[portIndex].state = ioRuntimeStateName(runtime.state);
+            states[portIndex].reason = ioRuntimeReasonName(runtime.reason);
+        }
+    }
 
     const uint8_t endpointCount = ioSvc->count(ioSvc->ctx);
     for (uint8_t i = 0U; i < endpointCount; ++i) {
@@ -3390,9 +3404,22 @@ void waveshareCollectBindingPortStates_(const IOServiceV2* ioSvc,
         state.bound = true;
         state.ioId = ioId;
 
+        IoRuntimeStatus runtime{};
+        if (ioSvc->runtimeStatus && ioSvc->runtimeStatus(ioSvc->ctx, ioId, &runtime) == IO_OK) {
+            state.state = ioRuntimeStateName(runtime.state);
+            state.reason = ioRuntimeReasonName(runtime.reason);
+            if (runtime.state != IO_RUNTIME_ACTIVE) continue;
+        }
+
         IoValue value{};
-        if (!ioSvc->readValue || ioSvc->readValue(ioSvc->ctx, ioId, &value) != IO_OK || !value.valid) continue;
+        if (!ioSvc->readValue || ioSvc->readValue(ioSvc->ctx, ioId, &value) != IO_OK || !value.valid) {
+            state.state = "error";
+            state.reason = "read_failed";
+            continue;
+        }
         state.valueOk = true;
+        state.state = "active";
+        state.reason = "";
         state.tsMs = value.tsMs;
         waveshareFormatIoValue_(meta, value, state.valueText, sizeof(state.valueText));
     }
@@ -3427,11 +3454,14 @@ struct WaveshareIoResponseSnapshot {
     WaveshareBindingPortState bindingStates[kBindingPortCount]{};
     WaveshareIoSummaryState domainStates[kDomainSlotCount]{};
     uint16_t bindingActive = 0U;
+    uint16_t bindingManuallyDisabled = 0U;
     uint16_t bindingError = 0U;
     uint16_t ioActive = 0U;
+    uint16_t ioManuallyDisabled = 0U;
     uint16_t ioError = 0U;
     DomainStatusSummary domainSummary{};
     uint8_t driverActive[11] = {0};
+    uint8_t driverManuallyDisabled[11] = {0};
     uint8_t driverError[11] = {0};
 };
 
@@ -3443,9 +3473,9 @@ void waveshareCollectIoResponseSnapshot_(const IOServiceV2* ioSvc,
                                        snapshot.bindingStates,
                                        WaveshareIoResponseSnapshot::kBindingPortCount);
     for (const WaveshareBindingPortState& state : snapshot.bindingStates) {
-        if (!state.bound) continue;
-        if (state.valueOk) ++snapshot.bindingActive;
-        else ++snapshot.bindingError;
+        if (strcmp(state.state, "active") == 0) ++snapshot.bindingActive;
+        else if (strcmp(state.state, "manually_disabled") == 0) ++snapshot.bindingManuallyDisabled;
+        else if (strcmp(state.state, "error") == 0) ++snapshot.bindingError;
     }
 
     snapshot.domainSummary.total = (uint16_t)WaveshareIoResponseSnapshot::kDomainSlotCount;
@@ -3454,6 +3484,7 @@ void waveshareCollectIoResponseSnapshot_(const IOServiceV2* ioSvc,
         WaveshareIoSummaryState& state = snapshot.domainStates[i];
         state = waveshareIoSummaryStateForSlot_(domainStatusSvc, preset.id);
         if (state.active) ++snapshot.domainSummary.active;
+        else if (state.manuallyDisabled) ++snapshot.domainSummary.manuallyDisabled;
         else if (state.errorState) ++snapshot.domainSummary.error;
         else ++snapshot.domainSummary.sleeping;
     }
@@ -3468,6 +3499,12 @@ void waveshareCollectIoResponseSnapshot_(const IOServiceV2* ioSvc,
             ++snapshot.ioActive;
             if (state->hasMeta && state->meta.backend < 11U) {
                 ++snapshot.driverActive[state->meta.backend];
+            }
+        }
+        if (state->manuallyDisabled) {
+            ++snapshot.ioManuallyDisabled;
+            if (state->hasMeta && state->meta.backend < 11U) {
+                ++snapshot.driverManuallyDisabled[state->meta.backend];
             }
         }
         if (state->errorState) {
@@ -3546,7 +3583,7 @@ void buildWaveshareIoTopologyResponse_(Print& response,
                                        uint32_t revision)
 {
     using namespace Profiles::Waveshare::IoLayout;
-    response.print("{\"ok\":true,\"schema\":2,\"revision\":");
+    response.print("{\"ok\":true,\"schema\":3,\"revision\":");
     response.print((unsigned long)revision);
     response.print(",\"binding_ports\":[");
     bool first = true;
@@ -3621,25 +3658,31 @@ void buildWaveshareIoRuntimeResponse_(Print& response,
                                       uint32_t topologyRevision)
 {
     using namespace Profiles::Waveshare::IoLayout;
-    response.print("{\"ok\":true,\"schema\":2,\"topology_revision\":");
+    response.print("{\"ok\":true,\"schema\":3,\"topology_revision\":");
     response.print((unsigned long)topologyRevision);
     response.print(",\"summary\":{");
     response.print("\"binding_ports_total\":");
     response.print((unsigned)WaveshareIoResponseSnapshot::kBindingPortCount);
     response.print(",\"binding_ports_active\":");
     response.print((unsigned)snapshot.bindingActive);
+    response.print(",\"binding_ports_manually_disabled\":");
+    response.print((unsigned)snapshot.bindingManuallyDisabled);
     response.print(",\"binding_ports_error\":");
     response.print((unsigned)snapshot.bindingError);
     response.print(",\"io_slots_total\":");
     response.print((unsigned)(sizeof(PoolDomain::kDomainIoSlots) / sizeof(PoolDomain::kDomainIoSlots[0])));
     response.print(",\"io_slots_active\":");
     response.print((unsigned)snapshot.ioActive);
+    response.print(",\"io_slots_manually_disabled\":");
+    response.print((unsigned)snapshot.ioManuallyDisabled);
     response.print(",\"io_slots_error\":");
     response.print((unsigned)snapshot.ioError);
     response.print(",\"domain_slots_total\":");
     response.print((unsigned)(sizeof(PoolDomain::kDomainSlots) / sizeof(PoolDomain::kDomainSlots[0])));
     response.print(",\"domain_slots_active\":");
     response.print((unsigned)snapshot.domainSummary.active);
+    response.print(",\"domain_slots_manually_disabled\":");
+    response.print((unsigned)snapshot.domainSummary.manuallyDisabled);
     response.print(",\"domain_slots_error\":");
     response.print((unsigned)snapshot.domainSummary.error);
     response.print(",\"error_slots\":");
@@ -3647,12 +3690,16 @@ void buildWaveshareIoRuntimeResponse_(Print& response,
     response.print("},\"drivers\":[");
     bool first = true;
     for (uint8_t backend = 0U; backend < 11U; ++backend) {
-        if (snapshot.driverActive[backend] == 0U && snapshot.driverError[backend] == 0U) continue;
+        if (snapshot.driverActive[backend] == 0U &&
+            snapshot.driverManuallyDisabled[backend] == 0U &&
+            snapshot.driverError[backend] == 0U) continue;
         if (!first) response.print(',');
         response.print("{\"driver\":");
         printJsonEscaped_(response, waveshareIoBackendLabel_(backend));
         response.print(",\"active_slots\":");
         response.print((unsigned)snapshot.driverActive[backend]);
+        response.print(",\"manually_disabled_slots\":");
+        response.print((unsigned)snapshot.driverManuallyDisabled[backend]);
         response.print(",\"error_slots\":");
         response.print((unsigned)snapshot.driverError[backend]);
         response.print("}");
@@ -3672,7 +3719,9 @@ void buildWaveshareIoRuntimeResponse_(Print& response,
         response.print(",\"io_id_label\":");
         printJsonEscaped_(response, state.bound ? "" : "Non affecte");
         response.print(",\"state\":");
-        printJsonEscaped_(response, state.bound ? (state.valueOk ? "active" : "error") : "sleeping");
+        printJsonEscaped_(response, state.state);
+        response.print(",\"reason\":");
+        printJsonEscaped_(response, state.reason);
         response.print(",\"last_value\":");
         printJsonEscaped_(response, state.valueOk ? state.valueText : "-");
         response.print(",\"ts_ms\":");
