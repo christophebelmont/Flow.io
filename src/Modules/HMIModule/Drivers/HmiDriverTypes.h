@@ -129,7 +129,9 @@ public:
     virtual bool publishHomeStateBits(uint32_t stateBits) = 0;
     virtual bool publishHomeAlarmBits(uint32_t alarmBits) = 0;
     virtual bool hasDisplayVersion() const { return false; }
+    virtual bool hasDisplayModel() const { return false; }
     virtual const char* displayVersion() const { return ""; }
+    virtual const char* displayModel() const { return ""; }
     virtual bool isLegacyV2() const { return false; }
     virtual bool publishV2Needles(const NextionV2NeedlePublish& publish) {
         (void)publish;

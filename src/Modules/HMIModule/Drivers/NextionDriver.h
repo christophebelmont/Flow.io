@@ -54,9 +54,12 @@ public:
     bool renderConfigMenu(const ConfigMenuView& view) override;
     bool refreshConfigMenuValues(const ConfigMenuView& view) override;
     bool hasDisplayVersion() const override { return versionDetected_; }
+    bool hasDisplayModel() const override { return modelDetected_; }
     const char* displayVersion() const override { return displayVersion_; }
+    const char* displayModel() const override { return displayModel_; }
     bool isLegacyV2() const override;
     bool detectDisplayVersion(uint16_t timeoutMs = 0U, bool force = false);
+    bool detectDisplayModel(uint16_t timeoutMs = 0U, bool force = false);
     bool configureSleep(uint16_t noTouchSeconds, bool wakeOnTouch, bool wakeOnSerial);
     bool refreshSleepState(uint16_t timeoutMs = 0U);
     bool isSleeping() const { return sleeping_; }
@@ -84,6 +87,11 @@ private:
     bool pageReady_ = false;
     bool versionDetected_ = false;
     char displayVersion_[HMI_DISPLAY_VERSION_TEXT_MAX]{};
+    char modelDetected_ = false;
+    char displayModel_[24];
+    char displaySerial_[24];
+    char displayFirmware_[8];
+    char displayFlashSize_[16];
     uint32_t lastRenderMs_ = 0;
     bool sleeping_ = false;
 
@@ -117,6 +125,7 @@ private:
     bool readNumberResponse_(uint32_t& value, uint16_t timeoutMs);
     bool readText_(const char* expr, char* out, size_t outLen, uint16_t timeoutMs);
     bool readTextResponse_(char* out, size_t outLen, uint16_t timeoutMs);
+    bool readTextRaw_(char* out, size_t outLen, uint16_t timeoutMs);
     const char* homeTextObjectName_(HmiHomeTextField field) const;
     const char* homeGaugeObjectName_(HmiHomeGaugeField field) const;
     void sanitizeText_(char* out, size_t outLen, const char* in) const;

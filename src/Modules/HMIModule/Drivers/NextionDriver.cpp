@@ -4,6 +4,8 @@
  */
 
 #include "Modules/HMIModule/Drivers/NextionDriver.h"
+#define LOG_MODULE_ID ((LogModuleId)LogModuleIdValue::HMIModule)
+#include "Core/ModuleLog.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -144,8 +146,10 @@ bool NextionDriver::begin()
     currentPageKnown_ = false;
     currentPage_ = 0;
 
+    (void)detectDisplayModel(500);
     (void)refreshSleepState();
     (void)detectDisplayVersion();
+
     return true;
 }
 
@@ -156,10 +160,13 @@ void NextionDriver::tick(uint32_t)
 bool NextionDriver::sendCmd_(const char* cmd)
 {
     if (!started_ || !cfg_.serial || !cmd) return false;
+
+    while(cfg_.serial->available()) cfg_.serial->read();
+
     cfg_.serial->print(cmd);
-    cfg_.serial->write(NEXTION_FF);
-    cfg_.serial->write(NEXTION_FF);
-    cfg_.serial->write(NEXTION_FF);
+    cfg_.serial->write((byte)NEXTION_FF);
+    cfg_.serial->write((byte)NEXTION_FF);
+    cfg_.serial->write((byte)NEXTION_FF);
     return true;
 }
 
@@ -506,6 +513,48 @@ bool NextionDriver::readTextResponse_(char* out, size_t outLen, uint16_t timeout
     return false;
 }
 
+bool NextionDriver::readTextRaw_(char* out, size_t outLen, uint16_t timeoutMs)
+{
+    // EndOfLine is FFFFFF, not 0x00
+
+    if (!out || outLen == 0U) return false;
+    out[0] = '\0';
+    if (!started_ || !cfg_.serial) return false;
+
+    const uint32_t start = millis();
+    uint8_t nr_of_FF_bytes = 0;
+	bool ff_flag = false;
+    uint8_t index = 0;
+
+    while ((uint32_t)(millis() - start) < (uint32_t)timeoutMs) {
+        while (cfg_.serial->available() > 0) {
+            if (index >= outLen) return false;
+            const int rb = cfg_.serial->read();
+            if (rb == 0) continue;
+            if (rb < 0) break;
+            const uint8_t c = (uint8_t)rb;
+
+            if (c == NEXTION_FF) nr_of_FF_bytes++;
+            else {
+				nr_of_FF_bytes=0;
+				ff_flag = false;
+            }
+
+            if (nr_of_FF_bytes >= 3) ff_flag = true;
+
+			out[index++] = (char)c;
+            if (ff_flag) break;
+        }
+
+        if (ff_flag) break;
+    }
+
+    if (!ff_flag) return false;
+    out[index] = '\0';
+
+    return true;
+}
+
 bool NextionDriver::readNumber_(const char* expr, uint32_t& value, uint16_t timeoutMs)
 {
     if (!started_ || !cfg_.serial || !expr || expr[0] == '\0') return false;
@@ -544,6 +593,81 @@ bool NextionDriver::readText_(const char* expr, char* out, size_t outLen, uint16
     return readTextResponse_(out, outLen, timeoutMs);
 }
 
+bool NextionDriver::detectDisplayModel(uint16_t timeoutMs, bool force)
+{
+    //https://nextion.ca/documentation/nextion-upload-protocol-v1-0/
+
+    if (modelDetected_ && !force) return true;
+
+    char response[128]{};
+    const uint16_t effectiveTimeout = timeoutMs != 0U ? timeoutMs : cfg_.displayVersionReadTimeoutMs;
+
+    sendCmd_("DRAKJHSUYDGBNCJHGJKSHBDN");
+    sendCmd_("");
+
+    if (!readTextRaw_(response, sizeof(response), effectiveTimeout)) return false;
+    if(response[0] != 0x1A) {
+		LOGI("Nextion : can't read information");
+        return false;
+    }
+    delay(200);
+    sendCmd_("connect");
+    if (!readTextRaw_(response, sizeof(response), effectiveTimeout)) return false;
+
+    int index = 5;
+    response[index] = 0;
+    if (strcmp(response, "comok") != 0) return false;
+
+    // skip 1st block
+    while ((index < sizeof(response)) && (response[index] != ',')) index++;
+    index++;
+    int index2 = index;
+    while ((index2 < sizeof(response)) && (response[index2] != ',')) index2++;
+    if (index2 >= sizeof(response)) return false;
+
+    // Extract Display Model Name
+    index2++;
+    index = index2;
+    while ((index2 < sizeof(response)) && (response[index2] != ',')) index2++;
+    if (index2 >= sizeof(response)) return false;
+    response[index2] = 0;
+    strcpy(displayModel_, response+index);
+
+    // Extract Display Fimware version
+    index2++;
+    index = index2;
+    while ((index2 < sizeof(response)) && (response[index2] != ',')) index2++;
+    if (index2 >= sizeof(response)) return false;
+    response[index2] = 0;
+    strcpy(displayFirmware_, response+index);
+
+    // MCU Code
+    index2++;
+    index = index2;
+    while ((index2 < sizeof(response)) && (response[index2] != ',')) index2++;
+    if (index2 >= sizeof(response)) return false;
+
+    // Extract Serial Number
+    index2++;
+    index = index2;
+    while ((index2 < sizeof(response)) && (response[index2] != ',')) index2++;
+    if (index2 >= sizeof(response)) return false;
+    response[index2] = 0;
+    strcpy(displaySerial_, response+index);
+
+    // Extract Display Flash Size, last block ended with FF, not ','
+    index2++;
+    index = index2;
+    while ((index2 < sizeof(response)) && (response[index2] != 0xFF)) index2++;
+    if (index2 >= sizeof(response)) return false;
+    response[index2] = 0;
+    strcpy(displayFlashSize_, response+index);
+
+    LOGI("Nextion detected Model=%s Firwmare=%s Serial=%s Flash=%s bytes", displayModel_, displayFirmware_, displaySerial_, displayFlashSize_);
+    modelDetected_ = true;
+    return true;
+}
+
 bool NextionDriver::detectDisplayVersion(uint16_t timeoutMs, bool force)
 {
     if (versionDetected_ && !force) return true;
@@ -556,6 +680,7 @@ bool NextionDriver::detectDisplayVersion(uint16_t timeoutMs, bool force)
     strncpy(displayVersion_, detected, sizeof(displayVersion_) - 1U);
     displayVersion_[sizeof(displayVersion_) - 1U] = '\0';
     versionDetected_ = true;
+    LOGI("Nextion version : %s", displayVersion_);
     return true;
 }
 
