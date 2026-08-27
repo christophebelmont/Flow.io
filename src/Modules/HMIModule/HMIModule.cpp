@@ -1333,18 +1333,9 @@ bool HMIModule::publishHomeAlarmBits_()
 bool HMIModule::validateDriverDisplayVersion_(bool requireDetection)
 {
     if (!driver_) return true;
-
-    if (!driver_->hasDisplayModel()) {
-        LOGW("Ecran Nextion non detectee. Affichage Nextion desactive.");
-        nextionDisabledByVersion_ = true;
-        applyOutputConfig_();
-        return false;
-    }
-    else LOGI("Ecran Nextion detectee %s", driver_->displayModel());
-
     if (!driver_->hasDisplayVersion()) {
         if (!requireDetection) return true;
-        LOGW("Ecran Nextion VERSION non detectee. Affichage Nextion desactive.");
+        LOGW("Ecran Nextion version non detectee. Affichage Nextion desactive.");
         nextionDisabledByVersion_ = true;
         applyOutputConfig_();
         return false;
@@ -3033,7 +3024,6 @@ void HMIModule::loop()
             strncpy(previousVersion, nextion_.displayVersion(), sizeof(previousVersion) - 1U);
             previousVersion[sizeof(previousVersion) - 1U] = '\0';
         }
-        nextion_.detectDisplayModel(500);
         if (nextion_.detectDisplayVersion(0U, true)) {
             const char* currentVersion = nextion_.displayVersion();
             if (!hadVersion || strcmp(currentVersion, previousVersion) != 0) {

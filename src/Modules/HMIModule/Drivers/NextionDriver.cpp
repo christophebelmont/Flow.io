@@ -147,6 +147,9 @@ bool NextionDriver::begin()
     currentPage_ = 0;
 
     (void)detectDisplayModel(500);
+    sendCmd_("usup=0"); // set sleep mode for all Nextion models
+    sendCmd_("thup=1");
+    sendCmd_("thsp=60");
     (void)refreshSleepState();
     (void)detectDisplayVersion();
 
@@ -161,7 +164,7 @@ bool NextionDriver::sendCmd_(const char* cmd)
 {
     if (!started_ || !cfg_.serial || !cmd) return false;
 
-    while(cfg_.serial->available()) cfg_.serial->read();
+    while(cfg_.serial->available()) cfg_.serial->read(); // clean input pipe
 
     cfg_.serial->print(cmd);
     cfg_.serial->write((byte)NEXTION_FF);
@@ -680,7 +683,6 @@ bool NextionDriver::detectDisplayVersion(uint16_t timeoutMs, bool force)
     strncpy(displayVersion_, detected, sizeof(displayVersion_) - 1U);
     displayVersion_[sizeof(displayVersion_) - 1U] = '\0';
     versionDetected_ = true;
-    LOGI("Nextion version : %s", displayVersion_);
     return true;
 }
 
