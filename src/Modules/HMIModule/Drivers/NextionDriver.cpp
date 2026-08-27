@@ -147,9 +147,7 @@ bool NextionDriver::begin()
     currentPage_ = 0;
 
     (void)detectDisplayModel(500);
-    sendCmd_("usup=0"); // set sleep mode for all Nextion models
-    sendCmd_("thup=1");
-    sendCmd_("thsp=60");
+    (void)configureSleep(60, 1, 0);
     (void)refreshSleepState();
     (void)detectDisplayVersion();
 
