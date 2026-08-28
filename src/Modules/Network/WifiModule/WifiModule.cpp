@@ -505,6 +505,7 @@ void WifiModule::startConnect() {
     // when AP is unavailable.
 
     const wl_status_t beginStatus = WiFi.begin(ssidSafe, passSafe);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // workaround for : STA disconnected reason=2 AUTH_EXPIRE
     lastBeginMs_ = now;
     if (beginStatus == WL_CONNECT_FAILED) {
         beginBackoffMs_ = 8000U;
