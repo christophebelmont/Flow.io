@@ -141,17 +141,17 @@ static bool isSupportedNextionDisplayVersion_(const char* version)
 
 static const char* const kMonthNamesFr[] = {
     "Janvier",
-    "F\xE9""vrier",
+    "Fevrier",
     "Mars",
     "Avril",
     "Mai",
     "Juin",
     "Juillet",
-    "Ao\xFB""t",
+    "Aout",
     "Septembre",
     "Octobre",
     "Novembre",
-    "D\xE9""cembre",
+    "Decembre",
 };
 
 static const char* const kDayNamesFr[] = {
